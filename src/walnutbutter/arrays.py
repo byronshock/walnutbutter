@@ -83,6 +83,7 @@ class ArrayNetwork(Network):
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
+        self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -90,7 +91,7 @@ class ArrayNetwork(Network):
         self.minimum_potential = mesh.minimum_potential
         self._rng = random.Random()
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
-        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(self, name, getattr(mesh, name))
 
         neurons = list(mesh.all_neurons())
@@ -345,9 +346,12 @@ class ArrayNetwork(Network):
             raise ValueError("no input pattern set; call set_input() first")
         self.time = self.input_time if self.input_time is not None else self.next_time()
         self.epoch += 1
-        forced = np.zeros(len(self.neurons_list), dtype=bool)
-        forced[self.input_index[np.asarray(self.input_pattern, dtype=bool)]] = True
-        self._stimulate(forced, self.time)
+        n = len(self.neurons_list)
+        self.input_events = self.input_schedule()  # the same draws as the mesh, from the same stream (§4.3)
+        for place, when in self.input_events:
+            forced = np.zeros(n, dtype=bool)
+            forced[self.input_index[place]] = True
+            self._stimulate(forced, when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self._run(self.horizon)
         self.forget()
@@ -580,7 +584,7 @@ class ArrayNetwork(Network):
             for connection in self.neurons_list[i].outgoing:
                 if connection.is_active:
                     mesh.schedule.signal(connection, time)
-        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
 

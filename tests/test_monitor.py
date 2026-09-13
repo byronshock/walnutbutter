@@ -127,7 +127,8 @@ def test_cli_seed_makes_runs_repeatable(capsys):
 
 
 def test_cli_columns_and_rows_options(capsys):
-    assert cli_main(["--headless", "-v", "--across", "4", "--rows", "3", "--weight", "1"]) == 0
+    # seeded: the small-world shortcuts are random, and about one seed in ten wires a second wave (24 lines)
+    assert cli_main(["--headless", "-v", "--across", "4", "--rows", "3", "--weight", "1", "--seed", "1"]) == 0
     assert capsys.readouterr().out.count("fired") == 12
 
 

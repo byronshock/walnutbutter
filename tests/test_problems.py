@@ -493,3 +493,70 @@ def test_shallow_copy_is_population_copy_one_hop_wide():
     reaches = sum(1 for c in grid.connections.values() if c.source in bottom and c.target in top)
     feeds_back = sum(1 for c in grid.connections.values() if c.source in top and c.target in bottom)
     assert reaches and feeds_back  # one hop from input to output, and the output feeds back: the only cycle here
+
+
+def test_rate_drive_makes_a_bit_a_firing_rate_not_a_mandated_spike():
+    """AUTHORITY.md §4.3: each input neuron is a Poisson process across the epoch."""
+    import statistics
+
+    def grid_with(drive, rate=0.1, off=0.0, seed=4):
+        grid = GridOfNeurons(across=12, rows=2, weight=1.0, omega=0, permute=False, seed=seed)
+        grid.coding, grid.interval = "population", 20.0
+        grid.drive, grid.input_rate, grid.input_rate_off = drive, rate, off
+        grid.set_input_bits([True, False, False, True])
+        return grid
+
+    forced = grid_with("forced")
+    assert forced.input_schedule() == [(p, 0.0) for p in (0, 1, 2, 9, 10, 11)]  # one spike each, all at t_e
+    assert forced.input_schedule() == forced.input_schedule()  # and no randomness to consume
+
+    rated = grid_with("rate")
+    counts, silent, runs = [], 0, 400
+    for _ in range(runs):
+        events = rated.input_schedule()
+        assert all(0.0 <= when < rated.interval for _, when in events)
+        assert [w for _, w in events] == sorted(w for _, w in events)  # in time order
+        assert all(rated.input_pattern[place] for place, _ in events)  # a zero bit fires at rate 0: silence
+        counts.append(len(events))
+        silent += int(not any(place == 0 for place, _ in events))
+    assert 1.6 < statistics.fmean(counts) / 6 < 2.4  # six bit-1 neurons, two spikes each on average over 20 ms
+    assert 0.08 < silent / runs < 0.20  # exp(-0.1 * 20) = 0.135: a bit-1 neuron often produces nothing at all
+
+    background = grid_with("rate", off=0.05)
+    zeros = sum(1 for _ in range(200) for place, _ in background.input_schedule() if not background.input_pattern[place])
+    assert zeros  # with an off-rate a zero bit is a low rate rather than silence
+
+
+def test_rate_drive_runs_and_both_engines_draw_the_same_train():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+
+    def make():
+        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.drive, grid.quash_rate = "rate", 0.02
+        return grid
+
+    mesh, net = make(), ArrayNetwork(make())
+    assert net.drive == "rate" and net.input_rate == mesh.input_rate
+    spread = set()
+    for _ in range(30):
+        run_epoch(mesh, verbose=False)
+        run_epoch(net, verbose=False)
+        assert mesh.input_events == net.input_events  # the same Poisson train, drawn from the same stream
+        assert mesh.input_pattern == net.input_pattern
+        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
+        spread.update(round(when - mesh.time, 6) for _, when in mesh.input_events)
+    assert len(spread) > 30  # the stimuli land all over the epoch, not in one wave
+    assert len({round(w, 6) for w in spread}) > 1 and max(spread) > 5.0
+
+
+def test_a_problem_and_the_command_line_choose_the_drive():
+    args = build_parser().parse_args(["--problem", "shallow_copy"])
+    apply_problem(args)
+    assert args.drive == C.INPUT_DRIVE == "forced"  # every problem today presents its input as it always has
+    args = build_parser().parse_args(["--problem", "shallow_copy", "--drive", "rate", "--input-rate", "0.2"])
+    apply_problem(args)
+    assert args.drive == "rate" and args.input_rate == 0.2

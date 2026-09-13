@@ -49,6 +49,8 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "flip": grid.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
         "hebb": grid.hebb_rate,  # leaky Hebb (§6.12)
         "synapse_tau": grid.synapse_tau,  # the leak of the trace on a synapse (§6.12)
+        "drive": grid.drive,  # how a bit becomes spikes (§4.3)
+        "input_rate": [grid.input_rate, grid.input_rate_off],  # per ms, under rate drive
         "input_cells": grid.input_cells,  # an input zone, or None for the bottom row
         "grid_reach": getattr(grid, "reach", None) if not lattice else None,  # hex steps the grid's local wiring covers
         "problem": getattr(grid, "problem", None),  # what the run was asked to do (problems.PROBLEMS)
@@ -288,6 +290,9 @@ def _restore_clock(grid, data: dict) -> None:
     grid.flip = data.get("flip", grid.flip)
     grid.hebb_rate = data.get("hebb", grid.hebb_rate)
     grid.synapse_tau = data.get("synapse_tau", grid.synapse_tau)
+    grid.drive = data.get("drive", grid.drive)
+    if data.get("input_rate"):
+        grid.input_rate, grid.input_rate_off = data["input_rate"]
 
 
 def _ecc_name(data: dict) -> str | None:

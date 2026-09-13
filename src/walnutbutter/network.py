@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .constants import HEBB_RATE, INTERVAL, POPULATION, QUASH_K, QUASH_RATE, SYNAPSE_TAU
+from .constants import (
+    HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE, SYNAPSE_TAU,
+)
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
@@ -58,6 +60,11 @@ class Network:
         # are) or "population" (each bit repeated `population` times)
         self.population = POPULATION  # neurons per raw bit under population coding
         self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
+        self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
+        self.input_rate = INPUT_RATE  # per ms: what a bit-1 neuron fires at under rate drive
+        self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
+        self.input_events: list[tuple[int, float]] | None = None  # the (place, time) stimuli this epoch actually used;
+        # input_schedule() draws afresh under rate drive, so this is what to read to see what happened
         self.input_cells: list[tuple[int, int]] | None = None  # an input zone, (place, row) cells, in place of the bottom row
         self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
@@ -213,6 +220,39 @@ class Network:
             return []
         return [neuron for neuron, bit in zip(self.input_row(), self.input_pattern) if bit]
 
+    def input_schedule(self) -> list[tuple[int, float]]:
+        """When each input place is stimulated this epoch, as (place, time) in time order (AUTHORITY.md §4.3).
+
+        Under `drive = "forced"` every place whose bit is 1 is stimulated once
+        at the epoch's moment: the behaviour this has always had. Under
+        `drive = "rate"` each place is an independent Poisson process across
+        the epoch, at `input_rate` where its bit is 1 and `input_rate_off`
+        where it is 0, so a bit is a firing rate rather than a mandated spike
+        and a bit-1 neuron may produce no spike at all. The draws come from
+        the network's own seeded stream, in place order, so a seed reproduces
+        them and both engines draw the same train. The refractory period drops
+        whatever it drops when a stimulus arrives, exactly as before.
+        """
+        pattern = self.input_pattern
+        if pattern is None:
+            raise ValueError("no input pattern set; call set_input() first")
+        if self.drive != "rate":
+            return [(place, self.time) for place, bit in enumerate(pattern) if bit]
+        end = self.time + self.interval
+        events: list[tuple[int, float]] = []
+        for place, bit in enumerate(pattern):
+            rate = self.input_rate if bit else self.input_rate_off
+            if rate <= 0.0:
+                continue
+            when = self.time
+            while True:
+                when += self._rng.expovariate(rate)
+                if when >= end:
+                    break
+                events.append((place, when))
+        events.sort(key=lambda event: event[1])
+        return events
+
     def fire_input(self, until: float | None = None) -> list[Wave]:
         """Present the input: schedule the stimulus at its time and run the schedule to the horizon.
 
@@ -224,8 +264,10 @@ class Network:
             raise ValueError("no input pattern set; call set_input() first")
         self.time = self.input_time if self.input_time is not None else self.next_time()
         self.epoch += 1
-        for neuron in self.input_neurons():
-            self.schedule.stimulus(neuron, self.time)
+        row = self.input_row()
+        self.input_events = self.input_schedule()
+        for place, when in self.input_events:
+            self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(), trace=self.rule == "adaline")
         self.forget()

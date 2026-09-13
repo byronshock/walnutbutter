@@ -34,6 +34,7 @@ class Problem:
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
     quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
     hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
+    drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
     flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
 
 

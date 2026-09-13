@@ -31,6 +31,13 @@ REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal take
 INTERVAL = 10.0  # spacing of inputs when no time is given
 BORED_AFTER = 200.0  # ms of silence after which a neuron's threshold has fallen to zero and it fires on its own (Byron, September 12, 2026); 0 = off
 
+# --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
+INPUT_DRIVE = "forced"  # "forced": every bit-1 neuron is made to spike once at the epoch's moment, as it has been;
+# "rate": each input neuron is a Poisson process over the epoch instead, so a bit is a firing rate and not a
+# mandated spike (Byron, September 13, 2026)
+INPUT_RATE = 0.1  # per ms: the rate a bit-1 neuron fires at under rate drive (one spike per 10 ms, two per 20 ms epoch)
+INPUT_RATE_OFF = 0.0  # per ms: the rate a bit-0 neuron fires at; 0 makes a zero bit mean silence, as forced drive does
+
 # --- the problem ------------------------------------------------------------------
 PROBLEM = "reversal"  # what the network is asked to do and how it is watched (problems.PROBLEMS)
 

@@ -18,7 +18,8 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, LEAKY_ELIGIBILITY,
+    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
@@ -283,6 +284,28 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"leaky Hebb (AUTHORITY.md §6.12): a firing neuron potentiates each synapse that still had charge in it by "
         f"this much times its leaky trace. Composes with whatever else runs (default: the problem's, {HEBB_RATE:g} where "
         f"it runs it; 0 = off)",
+    )
+    parser.add_argument(
+        "--drive",
+        choices=("forced", "rate"),
+        default=None,
+        help=f"how a bit becomes spikes (AUTHORITY.md §4.3): forced, one spike at the epoch's moment, or rate, an "
+        f"independent Poisson process across the epoch so a bit is a firing rate and a bit-1 neuron may produce no "
+        f"spike at all (default: the problem's, else {INPUT_DRIVE})",
+    )
+    parser.add_argument(
+        "--input-rate",
+        type=float,
+        default=INPUT_RATE,
+        metavar="PER_MS",
+        help=f"the rate a bit-1 neuron fires at under rate drive (default: {INPUT_RATE:g}/ms)",
+    )
+    parser.add_argument(
+        "--input-rate-off",
+        type=float,
+        default=INPUT_RATE_OFF,
+        metavar="PER_MS",
+        help=f"the rate a bit-0 neuron fires at under rate drive (default: {INPUT_RATE_OFF:g}/ms, silence)",
     )
     parser.add_argument(
         "--flip",
@@ -556,6 +579,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.quash = QUASH_RATE if problem.quash else 0.0
     if args.hebb is None:
         args.hebb = HEBB_RATE if problem.hebb else 0.0
+    if args.drive is None:
+        args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
     if args.flip is None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
@@ -673,6 +698,13 @@ def _run(args: argparse.Namespace) -> int:
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
+            grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
+            if args.drive == "rate":
+                print(f"input drive: rate (AUTHORITY.md §4.3) -- each input neuron a Poisson process across the "
+                      f"{args.interval:g} ms epoch, {args.input_rate:g}/ms where its bit is 1 and "
+                      f"{args.input_rate_off:g}/ms where it is 0, so {args.input_rate * args.interval:.2g} spikes "
+                      f"expected on a bit-1 neuron and no spike at all with probability "
+                      f"{pow(2.718281828459045, -args.input_rate * args.interval):.2g}", file=sys.stderr)
             grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
@@ -911,6 +943,8 @@ def _seed_worker(job: dict) -> dict:
     grid.flip = job.get("flip", 0.0)
     grid.hebb_rate = job.get("hebb", 0.0)
     grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
+    grid.drive = job.get("drive", INPUT_DRIVE)
+    grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -996,7 +1030,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
-                     "synapse_tau": args.synapse_tau})
+                     "synapse_tau": args.synapse_tau,
+                     "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

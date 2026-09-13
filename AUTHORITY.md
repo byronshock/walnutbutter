@@ -71,6 +71,8 @@ literal of its own.
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
 | INTERVAL | 10 ms | spacing of inputs when no time is given |
+| INPUT_DRIVE | forced | how a bit becomes spikes (§4.3): one mandated spike at $t_e$, or `rate`, a Poisson process across the epoch |
+| INPUT_RATE, INPUT_RATE_OFF | 0.1, 0 /ms | the rates a bit-1 and a bit-0 neuron fire at under rate drive |
 | BORED_AFTER | 200 ms | silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4) |
 
 ### 1.3 Learning
@@ -243,6 +245,37 @@ fired this epoch, spiked again after the input's moment, or fired within a
 window before the horizon.) The neurons whose bit is 1 are **forced** to fire
 at $t_e$, refractory period permitting. A neuron forced this epoch is marked as such, which only
 the reinforce rule (§6.7) consults.
+
+**How a bit becomes spikes (Byron, September 13, 2026): "I want to have an
+option to present the inputs as a probabilistic firing rate rather than
+presenting them all at once and seeing what happens."** INPUT_DRIVE names it.
+
+- `forced`, the default and everything above: every neuron whose bit is 1 is
+  made to spike once, at $t_e$, all of them in one wave.
+- `rate`: each input neuron is an independent **Poisson process** across the
+  epoch, at INPUT_RATE where its bit is 1 and INPUT_RATE_OFF where it is 0.
+  A bit is then a firing rate rather than a mandated spike. Inter-spike
+  intervals are drawn $\mathrm{Exp}(\lambda)$ from the network's own seeded
+  stream, in place order, so a seed reproduces the train and both engines
+  draw the same one; the stimuli land wherever they land in $[t_e, t_e +
+  \text{interval})$ and the refractory period drops what it drops, exactly as
+  a forced stimulus is dropped today.
+
+At the default rate a bit-1 neuron expects two spikes across a 20 ms epoch
+and produces none at all $e^{-2} = 14\%$ of the time, so the drive is
+genuinely probabilistic: the pattern is what the rates are, not what the
+spikes were. `Network.input_events` holds the (place, time) train an epoch
+actually used, because `input_schedule()` draws afresh each time it is
+called. An off-rate above zero makes a zero bit a *low* rate rather than
+silence; at zero it means silence, as forced drive does.
+
+This is also the only change that lets §0's "the inputs are the outputs"
+be tested rather than worked around. Under forced drive a stimulus overwrites
+the neuron's state, so a read of the input zone asks what that state was
+after destroying it, which is why §8's input-zone problems have stayed at
+chance under every rule. Under rate drive the input arrives as spikes the
+neuron's own dynamics must accommodate, and there is something left to read.
+That is a prediction, not a result: no problem uses rate drive yet.
 
 **A noisy input (Byron, September 13, 2026).** A problem may corrupt what it
 presents: each bit of the coded, permuted pattern is **flipped independently
