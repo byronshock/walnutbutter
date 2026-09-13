@@ -63,13 +63,14 @@ effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thre
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Callable, Sequence
 
 from .grid import GridOfNeurons
 from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
 from .constants import (
-    BASELINE_RATE, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
+    BASELINE_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
     TARGET, TARGET_RATE, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
 from .dopamine import Dopamine, apply_teacher
@@ -382,24 +383,37 @@ def reinforce(
     sigma: float = SIGMA,
     eligibility: str = ELIGIBILITY,
     late: str = LATE,
+    leaky: bool = LEAKY_ELIGIBILITY,
 ) -> int:
     """Apply the global-reward update for the epoch that has just run. Returns connections changed.
 
     `late` says what a signal that arrived after its target fired (see `landed`)
     earns: "count" the same update as one that landed, "ignore" none, or
     "depress" the opposite.
+
+    `leaky` appends the trace of §6.12 to the chain, so the update becomes
+
+        w_ij <- clip(w_ij + LR * A * e_j * exp(-(t_read_j - t_fired_i) / TAU)),
+
+    with t_read_j the moment j's answer was fixed: its spike if it fired, and
+    the arrival of the signal itself if it did not, since a target that never
+    fired offers no moment at which its synapses can be told apart. Without the
+    trace every synapse that delivered into j gets the same update whatever it
+    delivered; with it, each synapse of a firing neuron is weighted by the
+    charge it still had in it when it fired.
     """
     if eligibility not in ELIGIBILITIES:
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
     if late not in LATE_RULES:
         raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
     if arrays(grid):
-        return grid.reinforce(advantage, lr, sigma, eligibility, late)
+        return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
     if not advantage:
         return 0
     low, high = grid.weight_range
     step = lr * advantage
     perturb = eligibility == "perturb"
+    tau, hop = getattr(grid, "synapse_tau", SYNAPSE_TAU), Neuron.hop()  # the synapse's leak, not the neuron's (§6.12)
     changed = 0
     last_delivery: dict = {}  # once per connection per epoch, by its last delivery (a source may fire more than once)
     for wave in grid.waves:
@@ -421,6 +435,15 @@ def reinforce(
                 e = -e  # arrived after the firing: weakened where an early one would be strengthened
             if not e:
                 continue
+            if leaky:
+                if connection.last_signal is None:
+                    continue  # nothing was ever integrated here, so it was contributing nothing
+                when = target.fired_at if target.has_fired else connection.last_signal
+                # A target that never fired has no moment at which its synapses can be told apart, so
+                # the trace is exp(-hop/TAU) for all of them: the scale changes, the resolution does not.
+                # Reading it at the horizon instead annihilates the whole non-firing half (5e-5 at TAU 2,
+                # a 20 ms epoch), which is the depressive half of the hebb eligibility.
+                e = e * math.exp(-(when - connection.last_signal + hop) / tau)
             weight = connection.weight + step * e
             if weight < low:
                 weight = low
@@ -461,6 +484,7 @@ class Teacher:
         critic: str = CRITIC,
         late: str = LATE,
         rule: str = RULE,
+        leaky: bool = LEAKY_ELIGIBILITY,
     ):
         if rule not in RULES:
             raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
@@ -478,6 +502,7 @@ class Teacher:
         if late not in LATE_RULES:
             raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
         self.late = late  # what a signal arriving after its target fired earns
+        self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
         if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
@@ -547,7 +572,7 @@ class Teacher:
             self.mistakes = sum(abs(e) for e in errors)  # how many output neurons were read wrongly this epoch
             self.moved += apply_adaline(self.grid, errors, self.lr)
         elif self.rule == "reinforce":
-            reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late)
+            reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.grid)
         homeostasis(self.grid, self.homeostasis, self.target_rate, self.threshold_range)
         self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target, self.threshold_range))
@@ -602,7 +627,7 @@ class Teacher:
         elif self.rule == "dopamine":
             settings = f"{self.grid.dopamine.status()}, sigma {self.sigma:g}"
         else:
-            settings = f"{self.eligibility}, lr {self.lr:g}, sigma {self.sigma:g}"
+            settings = f"{self.eligibility}{' + leaky trace' if self.leaky else ''}, lr {self.lr:g}, sigma {self.sigma:g}"
         if self.critic != "row":
             settings += f", critic {self.critic}"
         if self.late != "count":

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .constants import HEBB_RATE, INTERVAL, POPULATION, QUASH_K, QUASH_RATE
+from .constants import HEBB_RATE, INTERVAL, POPULATION, QUASH_K, QUASH_RATE, SYNAPSE_TAU
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
@@ -50,6 +50,7 @@ class Network:
         self.quash_k = QUASH_K  # per ms: the quash falls off with the delay since the previous spike
         self.hebb_rate = 0.0  # leaky Hebb (§6.12): a firing neuron potentiates its gated synapses by this much times
         # their leaky trace. Like the quash it composes with whatever rule pays the read; off until asked.
+        self.synapse_tau = SYNAPSE_TAU  # the leak of that trace, the synapse's own and no longer the neuron's (§6.12)
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
@@ -255,7 +256,7 @@ class Network:
         if self.quash_rate:
             quash(wave, self.quash_rate, self.quash_k, self.weight_range)
         if self.hebb_rate:
-            leaky_hebb(wave, self.hebb_rate, Neuron.tau, Neuron.hop(), self.weight_range)
+            leaky_hebb(wave, self.hebb_rate, self.synapse_tau, Neuron.hop(), self.weight_range)
         if self.dopamine is not None:
             learn(self.dopamine, wave, self.weight_range, mode=MODES.get(self.rule, "apply"))
 

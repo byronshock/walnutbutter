@@ -51,6 +51,7 @@ KNOBS = {  # knob -> (command-line flag, label)
     "quash_k": ("--quash-k", "quash k (/ms)"),
     "flip": ("--flip", "input flip probability"),
     "hebb": ("--hebb", "leaky Hebb rate"),
+    "synapse_tau": ("--synapse-tau", "synapse tau (ms)"),
     "seed": ("--seed", "seed"),
 }
 

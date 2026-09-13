@@ -49,6 +49,12 @@ QUASH_RATE = 0.02  # the rate a problem that quashes uses: a refire weakens each
 QUASH_K = 0.2  # per ms: the quash falls off as exp(-k * (t - t_fired)) with the delay since the previous spike
 
 # --- leaky Hebb (AUTHORITY.md §6.12) -------------------------------------------------
+SYNAPSE_TAU = 10.0  # ms: the leak of the eligibility trace on a synapse (§6.12). It was taken equal to the neuron's TAU
+# 'for computational simplicity', which bought an identity and broke the rule: at TAU 2 the trace attenuates 148x across
+# the 10 ms a network computes over, and every value from 5 ms up recovers it (Byron, September 13, 2026, deciding to
+# decouple them). It governs leaky_hebb and the reinforce rule's leaky eligibility alike.
+LEAKY_ELIGIBILITY = False  # append the leaky trace of §6.12 to the reinforce rule's chain, so the global reward reaches
+# each synapse in proportion to what it was still contributing (Byron, September 13, 2026); off keeps the pre-alpha's rule
 HEBB_RATE = 0.01  # the rate a problem that runs leaky_hebb uses: a firing neuron potentiates each synapse that still
 # had charge in it by this much times the synapse's leaky trace (Byron, September 13, 2026). A starting value, to be
 # swept. Like the quash it composes with whatever else runs, and a network built in the library leaves it off; 0 = off.

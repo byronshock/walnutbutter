@@ -18,7 +18,7 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
@@ -259,6 +259,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"cycles are quashed (AUTHORITY.md §6.11): a refire weakens each contributing synapse by this fraction of "
         f"its weight, falling off with the delay since its previous spike (default: the problem's, {QUASH_RATE:g} where "
         f"it quashes; 0 = off)",
+    )
+    parser.add_argument(
+        "--leaky",
+        action="store_true",
+        default=LEAKY_ELIGIBILITY,
+        help="append the leaky trace of AUTHORITY.md §6.12 to the reinforce rule's chain, so the global reward reaches "
+        "each synapse in proportion to the charge it still had in its target when that target's state was read",
+    )
+    parser.add_argument(
+        "--synapse-tau",
+        type=float,
+        default=SYNAPSE_TAU,
+        metavar="MS",
+        help=f"the leak of the eligibility trace on a synapse (AUTHORITY.md §6.12), the synapse's own and no longer the "
+        f"neuron's: it governs leaky Hebb and the reinforce rule's leaky eligibility alike (default: {SYNAPSE_TAU:g} ms)"
     )
     parser.add_argument(
         "--hebb",
@@ -657,7 +672,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
-            grid.hebb_rate = args.hebb
+            grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
@@ -706,7 +721,8 @@ def _run(args: argparse.Namespace) -> int:
                       f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             else:
                 grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
-                print(f"rule: reinforce ({args.eligibility} eligibility, late signals {args.late}), lr {args.lr:g}, "
+                print(f"rule: reinforce ({args.eligibility} eligibility"
+                      f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
                       f"sigma {args.sigma:g}, no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
@@ -737,6 +753,7 @@ def _run(args: argparse.Namespace) -> int:
                     unstick_target=args.unstick_target,
                     critic=args.critic,
                     late=args.late,
+                    leaky=args.leaky,
                     rule=args.rule,
                 )
                 if loaded:
@@ -893,6 +910,7 @@ def _seed_worker(job: dict) -> dict:
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
     grid.flip = job.get("flip", 0.0)
     grid.hebb_rate = job.get("hebb", 0.0)
+    grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -953,6 +971,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         unstick_target=args.unstick_target,
         critic=args.critic,
         late=args.late,
+        leaky=args.leaky,
         rule=args.rule,
     )
     dopamine = dict(tau=args.dopamine_tau, release_alpha=args.release_alpha, release_theta=args.release_theta,
@@ -976,7 +995,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
-                     "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb})
+                     "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
+                     "synapse_tau": args.synapse_tau})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

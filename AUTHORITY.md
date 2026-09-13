@@ -83,6 +83,8 @@ literal of its own.
 | FLIP | 1/12 | the probability a problem that corrupts its input flips each coded bit with (§4.3, Byron, September 13, 2026); a network in the library does not flip until it is asked to |
 | QUASH_RATE | 0.02 | a refire weakens each contributing synapse by this fraction of its weight (§6.11); 0 = off |
 | QUASH_K | 0.2 /ms | how fast that quash falls off with the delay since the previous spike |
+| LEAKY_ELIGIBILITY | off | append §6.12's trace to the reinforce rule's chain, so the global reward reaches each synapse by what it still had in its target (§6.7) |
+| SYNAPSE_TAU | 10 ms | the leak of the eligibility trace on a synapse (§6.12), the synapse's own and no longer the neuron's; it governs leaky Hebb and the reinforce rule's leaky eligibility alike |
 | HEBB_RATE | 0.01 | leaky Hebb (§6.12): a firing neuron potentiates each gated synapse by this much times its leaky trace; a starting value, to be swept; 0 = off |
 | LR | 0.03 | learning rate |
 | SIGMA | 0.1 | exploration noise: standard deviation added to each neuron's potential at every input |
@@ -499,6 +501,61 @@ firing rate ($r_j$, RATE_MEMORY) and drifts thresholds toward TARGET_RATE
 THRESHOLD_RANGE. Under RULE = dopamine the Teacher only scores and reports;
 the network learns by §6.2–6.6.
 
+*Byron, September 13, 2026: "I want to try the same thing with the REINFORCE
+algorithm."* So §6.12's trace is appended to this rule's chain of
+multiplications too, behind LEAKY_ELIGIBILITY (`--leaky`, off by default so
+the pre-alpha's rule is unchanged):
+
+$$w_{ij} \leftarrow \mathrm{clip}\Big(w_{ij} + \text{LR}\cdot A\cdot e_j\cdot
+e^{-(t^{\text{read}}_j - t^{\text{fired}}_i)/\text{TAU}}\Big),$$
+
+with $t^{\text{read}}_j$ the moment $j$'s answer was fixed: its spike if it
+fired, and the arrival of the signal itself if it did not. It multiplies the
+existing eligibility rather than replacing it, so $e_j$ keeps the per-neuron
+sign the rule already has and the trace adds per-synapse resolution the rule
+never had: without it every synapse that delivered into $j$ receives the same
+update whatever it delivered.
+
+*Claude's reading of the non-firing case, and why it is not the horizon.* A
+neuron that never fired offers no moment at which its synapses can be told
+apart, so all of them take $e^{-\text{hop}/\text{TAU}} = 0.435$ and only the
+scale changes. Evaluating the trace at the horizon instead — the first
+reading, built and measured — annihilates that half of the signal entirely:
+at TAU 2 ms over a 20 ms epoch the trace there is $5\times10^{-5}$, and
+since $e_j = -1$ for a non-firing neuron under the hebb eligibility, it is
+exactly the **depressive** half that vanishes. Measured on shallow_copy at
+two rows it took the rule from 0.948 to 0.626 and the activity from 12.8 to
+14.1 spikes an epoch, and at five rows from 26 to 129.
+
+*Measured, September 13, 2026, and it is the largest result on the branch so
+far.* The trace hurts this rule wherever it is tried — but trying it turned
+up what does work. With ELIGIBILITY = hebb the Teacher sets $\sigma$ to zero,
+so there is no exploration noise at all and $e_j = \pm 1$ by whether $j$
+fired: the rule is then **reward-modulated Hebb**, a Hebbian sign times a
+global advantage $A = R - b$, with no per-neuron target and no perturbation
+to correlate against. On shallow_copy, reading each network at the $\sigma$ it
+was trained with:
+
+| rule | 2 rows | 5 rows, $\omega$ 0 (two hops) |
+|---|---|---|
+| REINFORCE, hebb | 90.5%, 14/16 responses | **97.5%, 16/16, all twelve right in 88.2% of epochs** |
+| REINFORCE, hebb + leaky trace | — | 54.0%, 4/16 |
+| REINFORCE, perturb | 75.4%, 16/16 | 56.8% |
+| ADALINE | 97.1%, 16/16 | 61.3%, 5/16 |
+
+So the two-hop problem is solved, and solved by the rule that gets **one
+global number** and no target at all — while ADALINE, which is handed a
+per-neuron error, cannot do it, because §6.10 moves only the readout's
+incoming weights. What reaches the interior is not a richer signal but a
+rule that is allowed to touch it. This retires the reading of §6.10 that
+credit assignment to the interior was the thing not yet built: it was built,
+in §6.7, and had only ever been run with the perturb eligibility.
+
+It also qualifies §6.12. leaky_hebb run without a teacher collapses the
+network to a single response; the same Hebbian sign with a global factor
+multiplying it solves two hops. The missing ingredient there was the third
+factor, not competition.
+
 *Asked by Byron, September 13, 2026: can we use REINFORCE instead of
 ADALINE?* The rule may now be asked for on any problem, not only a trained
 one; the gate that refused it was plumbing, not a decision, and nothing
@@ -683,6 +740,17 @@ Being proportional to the weight it pulls toward zero from either side, and
 being proportional to the gate it touches only the synapses that carried
 the cycle. It is local, lazy, needs no external signal, and runs under
 every rule, so it composes with the teacher rather than replacing it;
+*Measured, September 13, 2026: the quash is not optional.* On shallow_copy at
+five rows with no shortcuts — a genuine two-hop copy — the rule of §6.7 with
+the hebb eligibility reaches 0.978 with QUASH_RATE 0.02 and 0.965 with 0.1,
+and **0.502 with the quash off**, where the mesh reverberates at 220 spikes an
+epoch against 28 and learns nothing at all. Byron's reading of the refractory
+period was right: without something that closes short loops the network has
+no quiet in which a reward can mean anything. The earlier reading, that the
+quash turns destructive with depth, came from running it against §6.10, which
+trains only the readout and so cannot compensate for what the quash removes;
+it does not generalise to a rule that reaches the interior.
+
 QUASH_RATE 0 switches it off, and a problem says whether it quashes. The
 constants are to be explored (Byron: "we will have to explore this space"),
 and the driver sweeps `quash` and `quash_k`.
@@ -728,10 +796,14 @@ itself: nothing happens on a synapse whose target did not fire. The chain
 adds to $w_{ij}$ rather than multiplying it, since gates of 0 and 1
 multiplying a weight would zero it rather than leave it alone.
 
-**Equal leaks are not only a simplification.** A signal of size $w_{ij}$
-that arrived at $t_a$ is still contributing $w_{ij}e^{-(t -
-t_a)/\text{TAU}}$ to $j$'s potential at $t$ (§5.1), and travel takes exactly
-one hop, so $t_a = t^{\text{fired}}_i + \text{hop}$ and
+**Equal leaks bought an identity — and broke the rule.** *Revised by Byron,
+September 13, 2026: the synapse's leak is its own constant, SYNAPSE_TAU,
+and is no longer taken equal to the neuron's.* The identity below is real,
+and it is what the equality buys; the measurement that follows is why it was
+not worth buying. A signal of size $w_{ij}$ that arrived at $t_a$ is still
+contributing $w_{ij}e^{-(t - t_a)/\text{TAU}}$ to $j$'s potential at $t$
+(§5.1), and travel takes exactly one hop, so $t_a = t^{\text{fired}}_i +
+\text{hop}$ and
 
 $$e^{-(t^{\text{fired}}_j - t^{\text{fired}}_i)/\text{TAU}} =
 e^{-\text{hop}/\text{TAU}} \cdot \frac{\text{what that synapse still
@@ -741,8 +813,57 @@ The trace is exactly proportional to the residual charge the synapse still
 had in the neuron at the moment of the spike it helped cause — absent the
 floor (MINIMUM_POTENTIAL), and outside the reset, which the gate already
 excludes. Setting the synapse's leak to the neuron's is what buys that
-identity: with two different constants the rule would credit a synapse by
+identity: with two different constants the rule credits a synapse by
 something other than its contribution.
+
+*And that is the trade, measured.* The trace is a gradient — it equals
+$\partial p_j/\partial w_{ij}$ at the spike, to six figures, times the
+constant $e^{\text{hop}/\text{TAU}}$ — so appending it makes a rule **more**
+gradient-like with respect to the potential, not less. What it also does, at
+the neuron's own leak, is attenuate by 148 times across the 10 ms a network
+computes over, which lands essentially all the credit on the last synapse to
+arrive before each spike and starves every earlier link in a chain. Sweeping
+the trace's leak on shallow_copy at five rows with no shortcuts, the neuron's
+leak held at 2 ms throughout and only the synapse's moving:
+
+| synapse leak | trace's range over 10 ms | score |
+|---|---|---|
+| 2 ms (= TAU) | 148× | 0.500 |
+| 5 ms | 7.4× | 0.983 |
+| 10 ms | 2.7× | 0.981 |
+| 20 ms | 1.6× | 0.973 |
+| 50 ms | 1.2× | 0.984 |
+| 200 ms | 1.1× | 0.970 |
+| no trace at all | 1.0× | 0.978 |
+
+Early learning slows monotonically as the trace sharpens (0.654 down to
+0.506 over the first thousand epochs), which is the dose-response of a
+dynamic-range effect rather than of a wrong gradient. SYNAPSE_TAU is
+therefore 10 ms: clear of the cliff, and every value from 5 ms up is the
+same within one seed's noise. Note what the sweep does **not** show — above
+5 ms the trace neither helps nor hurts. It has stopped costing anything; it
+has not yet been shown to buy anything.
+
+*And the same sweep run on leaky_hebb itself changes nothing*, which is the
+control that says what the sweep above was about. Unsupervised on
+shallow_copy, with SYNAPSE_TAU at 2, 10 and 50 ms:
+
+| | distinct responses | consistency | row fires |
+|---|---|---|---|
+| 2 rows, untrained | 7/16 | 36.6% | 73.9% |
+| 2 rows, leaky_hebb, any leak | 1–2/16 | 85–89% | 97–98% |
+| 5 rows, untrained | 5/16 | 76.6% | 84.3% |
+| 5 rows, leaky_hebb, any leak | 8–12/16 | **15–17%** | 42–45% |
+| 5 rows, REINFORCE hebb | 16/16 | 58.0% | 57.7% |
+
+At two rows it collapses to one all-on answer whatever the leak. At five it
+does the opposite and answers almost at random — the count of distinct
+responses rises, but the modal answer holds only one epoch in six, against
+77% untrained, so that is chaos rather than selectivity. Flattening the trace
+moves neither outcome. The dynamic range was decisive for the trace **inside
+a rule with a global factor** and is irrelevant to the trace on its own,
+which is the same conclusion §6.12 reached by the other road: what leaky_hebb
+lacks is the third factor, not a better-shaped eligibility.
 
 **What the two time constants do to it.** Write $\rho = \text{REFRACTORY} /
 \text{TAU} = 2.5$ and $h = \text{REFRACTORY\_HOPS} = 3$. The soonest $j$ can

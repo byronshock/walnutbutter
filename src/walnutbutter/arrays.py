@@ -82,7 +82,7 @@ class ArrayNetwork(Network):
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
-        self.hebb_rate = mesh.hebb_rate
+        self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -413,7 +413,7 @@ class ArrayNetwork(Network):
         mask = self.active & fired[self.target] & (self.last_signal > self.previous_fired_at[self.target])
         if not mask.any():
             return 0
-        hop, tau = Neuron.hop(), Neuron.tau
+        hop, tau = Neuron.hop(), self.synapse_tau
         # math.exp, as the object engine uses, so the two agree to the last bit
         step = np.array([self.hebb_rate * math.exp(-(time - s + hop) / tau)
                          for s in self.last_signal[mask].tolist()])
@@ -488,7 +488,8 @@ class ArrayNetwork(Network):
 
     # --- learning: the reinforce rule, factored out ---------------------------------
 
-    def reinforce(self, advantage: float, lr: float, sigma: float, eligibility: str, late: str) -> int:
+    def reinforce(self, advantage: float, lr: float, sigma: float, eligibility: str, late: str,
+                  leaky: bool = False) -> int:
         """The global-reward update, edge by edge, all at once. Returns connections changed."""
         if not advantage:
             return 0
@@ -506,7 +507,17 @@ class ArrayNetwork(Network):
                 e = np.where(arrived_late, -e, e)
         mask &= e != 0
         low, high = self.weight_range
-        self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * e[mask], low, high)
+        if leaky:
+            mask &= self.last_signal > -np.inf  # nothing integrated here: it was contributing nothing
+            hop, tau = Neuron.hop(), self.synapse_tau
+            when = np.where(self.fired_wave[self.target[mask]] >= 0, self.fired_at[self.target[mask]],
+                            self.last_signal[mask])  # no spike, no moment to tell its synapses apart
+            # math.exp, as the object engine uses, so the two agree to the last bit
+            trace = np.array([math.exp(-(w - s + hop) / tau)
+                              for w, s in zip(when.tolist(), self.last_signal[mask].tolist())])
+            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * e[mask] * trace, low, high)
+        else:
+            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * e[mask], low, high)
         self._matrix_dirty = True
         return int(mask.sum())
 

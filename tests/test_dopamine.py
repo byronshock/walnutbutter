@@ -345,3 +345,65 @@ def test_the_local_rule_pays_nothing_at_the_read_but_the_local_rules_still_run(c
                      "--epochs", "20", "--no-save"]) == 0
     err = capsys.readouterr().err
     assert "rule: local" in err and "leaky Hebb 0.01" in err and "quash 0.02" in err
+
+
+def test_the_leaky_trace_appended_to_the_reinforce_chain():
+    """§6.7 with §6.12's trace: the reward reaches each synapse by what it still had in its target."""
+    from walnutbutter.learning import reinforce
+
+    tau, lr, sigma, advantage = 10.0, 0.1, 0.1, 0.5  # the synapse's leak, deliberately not the neuron's
+    Neuron.tau = 2.0
+    try:
+        class Tiny:
+            weight_range = (-1.0, 1.0)
+            horizon = 30.0
+            synapse_tau = tau  # §6.12: the trace leaks at the synapse's own constant, not TAU
+
+        j = Neuron("j")
+        early, late_source = Neuron("early"), Neuron("late")
+        a, b = early.connect(j, 1, weight=0.2), late_source.connect(j, 2, weight=0.2)
+        j.noise, j.has_fired, j.fired_at, j.fired_in_wave = 0.05, True, 20.0, 0
+        a.last_signal, b.last_signal = 12.0, 19.0
+
+        wave = type("W", (), {"number": 0, "delivered": [a, b]})()
+        Tiny.waves = [wave]
+        plain = reinforce(Tiny(), advantage, lr, sigma, "perturb", "count", leaky=False)
+        flat_a, flat_b = a.weight - 0.2, b.weight - 0.2
+        assert plain == 2 and flat_a == pytest.approx(flat_b)  # without the trace every synapse gets the same
+
+        a.weight = b.weight = 0.2
+        assert reinforce(Tiny(), advantage, lr, sigma, "perturb", "count", leaky=True) == 2
+        e = j.noise / sigma
+        assert a.weight - 0.2 == pytest.approx(lr * advantage * e * math.exp(-(20.0 - 12.0 + HOP) / tau))
+        assert b.weight - 0.2 == pytest.approx(lr * advantage * e * math.exp(-(20.0 - 19.0 + HOP) / tau))
+        assert b.weight > a.weight  # the one that was still contributing gets the most of the reward
+
+        j.has_fired = False  # no spike, so no moment to tell its synapses apart: exp(-hop/TAU) for both
+        a.weight = b.weight = 0.2
+        reinforce(Tiny(), advantage, lr, sigma, "perturb", "count", leaky=True)
+        assert a.weight - 0.2 == pytest.approx(lr * advantage * e * math.exp(-HOP / tau))
+        assert a.weight == pytest.approx(b.weight)  # the scale changes, the resolution does not
+        assert Neuron.tau != tau  # and the neuron's leak had nothing to do with any of it
+    finally:
+        Neuron.tau = 2.0
+
+
+def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+
+    def make():
+        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.quash_rate = 0.02
+        return grid
+
+    mesh, net = make(), ArrayNetwork(make())
+    a = Teacher(mesh, seed=1, rule="reinforce", target="copy", critic="row", leaky=True, lr=0.05)
+    b = Teacher(net, seed=1, rule="reinforce", target="copy", critic="row", leaky=True, lr=0.05)
+    assert a.leaky and b.leaky
+    for _ in range(25):
+        assert a.epoch(verbose=False) == b.epoch(verbose=False)
+        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
+    assert [c.weight for c in mesh.connections.values()] != [0.0] * len(mesh.connections)
