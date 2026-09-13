@@ -19,7 +19,8 @@ def quiet(monkeypatch):
 
 
 def test_the_problems_and_the_default():
-    assert set(PROBLEMS) == {"reversal", "sustain_inputs", "improved_sustain", "population_copy", "population_denoise"}
+    assert set(PROBLEMS) == {"reversal", "sustain_inputs", "improved_sustain", "population_copy",
+                             "population_denoise", "shallow_copy"}
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"
     assert PROBLEMS["reversal"].trained and not PROBLEMS["sustain_inputs"].trained
     sustain = PROBLEMS["sustain_inputs"]
@@ -470,3 +471,25 @@ def test_population_denoise_runs_and_both_engines_flip_identically():
         assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
         corrupted += sum(a != b for a, b in zip(mesh.input_pattern, mesh.target_pattern))
     assert corrupted  # thirty epochs of twelve bits at one in twelve: some of them flipped
+
+
+def test_shallow_copy_is_population_copy_one_hop_wide():
+    shallow, deep = PROBLEMS["shallow_copy"], PROBLEMS["population_copy"]
+    assert shallow.rows == 2 and deep.rows == 10  # the only thing that shrinks
+    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute", "reach",
+                 "readout", "read", "trained", "flip"):
+        assert getattr(shallow, same) == getattr(deep, same)
+    args = build_parser().parse_args(["--problem", "shallow_copy"])
+    apply_problem(args)
+    assert args.rows == 2 and args.across == 12 and args.readout == "top" and args.read == "fired"
+    args = build_parser().parse_args(["--problem", "shallow_copy", "--rows", "4"])
+    apply_problem(args)
+    assert args.rows == 4  # an explicit row count still wins
+
+    grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+    top, bottom = set(grid.output_row()), set(grid.input_row())
+    assert len(top) == len(bottom) == 12 and not (top & bottom)  # two rows, and they are different rows
+    assert len(list(grid.all_neurons())) == 24
+    reaches = sum(1 for c in grid.connections.values() if c.source in bottom and c.target in top)
+    feeds_back = sum(1 for c in grid.connections.values() if c.source in top and c.target in bottom)
+    assert reaches and feeds_back  # one hop from input to output, and the output feeds back: the only cycle here

@@ -18,7 +18,7 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, FLIP, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
@@ -259,6 +259,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"cycles are quashed (AUTHORITY.md §6.11): a refire weakens each contributing synapse by this fraction of "
         f"its weight, falling off with the delay since its previous spike (default: the problem's, {QUASH_RATE:g} where "
         f"it quashes; 0 = off)",
+    )
+    parser.add_argument(
+        "--hebb",
+        type=float,
+        default=None,
+        metavar="RATE",
+        help=f"leaky Hebb (AUTHORITY.md §6.12): a firing neuron potentiates each synapse that still had charge in it by "
+        f"this much times its leaky trace. Composes with whatever else runs (default: the problem's, {HEBB_RATE:g} where "
+        f"it runs it; 0 = off)",
     )
     parser.add_argument(
         "--flip",
@@ -530,6 +539,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.no_punish = not args.punish  # the score already knows which neurons should not have fired (§6.9, §6.10)
     if args.quash is None:
         args.quash = QUASH_RATE if problem.quash else 0.0
+    if args.hebb is None:
+        args.hebb = HEBB_RATE if problem.hebb else 0.0
     if args.flip is None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
@@ -646,6 +657,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
+            grid.hebb_rate = args.hebb
             grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
@@ -690,13 +702,15 @@ def _run(args: argparse.Namespace) -> int:
                       f"{f'bit-0 input neurons punished {grid.dopamine.punish_gain:g}x for refiring' if grid.dopamine.punish else 'no punishment'}, "
                       f"weight decay {grid.dopamine.decay:g} per epoch; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
-                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}", file=sys.stderr)
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
+                      f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             else:
                 grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
                 print(f"rule: reinforce ({args.eligibility} eligibility, late signals {args.late}), lr {args.lr:g}, "
                       f"sigma {args.sigma:g}, no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
-                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}", file=sys.stderr)
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
+                      f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             engine = args.engine or (data.get("engine", "objects") if loaded else "objects")
             if engine == "arrays":
                 try:
@@ -878,6 +892,7 @@ def _seed_worker(job: dict) -> dict:
     grid.coding = job.get("coding", "complement")
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
     grid.flip = job.get("flip", 0.0)
+    grid.hebb_rate = job.get("hebb", 0.0)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -961,7 +976,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
-                     "quash": (args.quash, args.quash_k), "flip": args.flip})
+                     "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

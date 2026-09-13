@@ -50,6 +50,7 @@ KNOBS = {  # knob -> (command-line flag, label)
     "quash": ("--quash", "quash rate"),
     "quash_k": ("--quash-k", "quash k (/ms)"),
     "flip": ("--flip", "input flip probability"),
+    "hebb": ("--hebb", "leaky Hebb rate"),
     "seed": ("--seed", "seed"),
 }
 

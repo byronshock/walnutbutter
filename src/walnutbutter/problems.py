@@ -33,6 +33,7 @@ class Problem:
     permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
     quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
+    hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
     flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
 
 
@@ -67,6 +68,16 @@ PROBLEMS: dict[str, Problem] = {
         "the top row in [-1, 1], six of twelve right being zero. Cycles are quashed (§6.11): a refire weakens the "
         "synapses that contributed to it",
         12, 10, trained=False, interval=20.0, readout="top", read="fired", target="copy", critic="row",
+        coding="population", permute=False, rule="teacher", quash=True,
+    ),
+    "shallow_copy": Problem(
+        "shallow_copy",
+        "population_copy shrunk to the smallest network that still has an input row and an output row (Byron, "
+        "September 13, 2026): twelve across, TWO rows, the four raw bits population-coded onto the bottom and the top "
+        "read as fired this epoch. 24 neurons and 215 connections against 120 and 2,195, and the task is one hop wide: "
+        "a rule that can learn anything should learn this, and one that cannot will not be rescued by depth. The floor "
+        "the rules are measured against (AUTHORITY.md §8)",
+        12, 2, trained=False, interval=20.0, readout="top", read="fired", target="copy", critic="row",
         coding="population", permute=False, rule="teacher", quash=True,
     ),
     "population_denoise": Problem(

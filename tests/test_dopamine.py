@@ -241,3 +241,107 @@ def test_sustain_inputs_runs_by_dopamine_and_checkpoints_it(tmp_path, capsys):
     assert cli_main(["--headless", "--order", "update-first", "--dopamine-tau", "0"]) == 2
     assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "8", "-r", "4", "--epochs", "5", "--no-save",
                      "--rule", "dopamine", "--order", "update-first"]) == 0
+
+
+# --- leaky Hebb (AUTHORITY.md §6.12) -------------------------------------------------
+
+def test_leaky_hebb_potentiates_by_the_synapse_leaky_trace():
+    from walnutbutter.dopamine import leaky_hebb
+    from walnutbutter.propagation import Wave
+
+    tau, rate = 2.0, 0.01
+    j, early, late, stale = Neuron("j"), Neuron("early"), Neuron("late"), Neuron("stale")
+    a = early.connect(j, 1, weight=0.2)
+    b = late.connect(j, 2, weight=0.2)
+    c = stale.connect(j, 3, weight=0.2)
+    j.previous_fired_at, j.fired_at = 10.0, 20.0
+    a.last_signal, b.last_signal, c.last_signal = 12.0, 19.0, 9.0  # two carried since the previous spike, one did not
+
+    assert leaky_hebb(Wave(0, 20.0, fired=[j]), rate, tau, HOP, (-1.0, 1.0)) == 2
+    assert a.weight == pytest.approx(0.2 + rate * math.exp(-(20.0 - 12.0 + HOP) / tau))
+    assert b.weight == pytest.approx(0.2 + rate * math.exp(-(20.0 - 19.0 + HOP) / tau))
+    assert c.weight == 0.2  # the gate of §6.5: it carried nothing since the previous spike
+    assert b.weight > a.weight > 0.2  # it only ever grows, and the sooner after the source fired the more
+
+
+def test_leaky_hebb_credits_a_synapse_by_what_it_still_contributed():
+    """The identity §6.12 rests on: the trace is the residual charge, because the two leaks are one constant."""
+    from walnutbutter.dopamine import leaky_hebb
+    from walnutbutter.propagation import Wave
+
+    tau, rate, weight = 2.0, 0.01, 0.4
+    Neuron.tau = tau
+    try:
+        j = Neuron("j")
+        source = Neuron("source")
+        synapse = source.connect(j, 1, weight=weight)
+        arrived, fires_at = 12.0, 17.0
+        j.receive(weight, arrived)  # the signal lands...
+        j.settle()
+        still_there = j.potential_at(fires_at)  # ...and this much of it is left when j fires
+        assert still_there == pytest.approx(weight * math.exp(-(fires_at - arrived) / tau))
+
+        synapse.last_signal = arrived
+        j.previous_fired_at, j.fired_at = 5.0, fires_at
+        leaky_hebb(Wave(0, fires_at, fired=[j]), rate, tau, HOP, (-1.0, 1.0))
+        step = synapse.weight - weight
+        assert step == pytest.approx(rate * math.exp(-HOP / tau) * still_there / weight)
+    finally:
+        Neuron.tau = 2.0
+
+
+def test_leaky_hebb_on_a_first_spike_and_at_the_rails():
+    from walnutbutter.dopamine import leaky_hebb
+    from walnutbutter.propagation import Wave
+
+    first, source = Neuron("first"), Neuron("s")
+    synapse = source.connect(first, 1, weight=0.5)
+    synapse.last_signal = 3.0
+    first.fired_at = 4.0  # its first spike: previous_fired_at is None, so everything that ever landed counts
+    assert first.previous_fired_at is None
+    assert leaky_hebb(Wave(0, 4.0, fired=[first]), 0.01, 2.0, HOP, (-1.0, 1.0)) == 1
+    assert synapse.weight > 0.5
+
+    railed, other = Neuron("railed"), Neuron("o")
+    high = other.connect(railed, 2, weight=0.999)
+    high.last_signal = 3.0
+    railed.fired_at = 4.0
+    leaky_hebb(Wave(0, 4.0, fired=[railed]), 1.0, 2.0, HOP, (-1.0, 1.0))
+    assert high.weight == 1.0  # clipped to WEIGHT_RANGE
+
+
+def test_leaky_hebb_composes_with_the_quash_and_both_engines_agree():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+
+    def make():
+        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.quash_rate, grid.quash_k, grid.hebb_rate = 0.02, 0.2, 0.01
+        return grid
+
+    mesh, net = make(), ArrayNetwork(make())
+    assert net.hebb_rate == 0.01
+    for _ in range(30):
+        run_epoch(mesh, verbose=False)
+        run_epoch(net, verbose=False)
+        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
+
+    alone = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)  # the quash alone, same seed
+    alone.coding, alone.readout, alone.read, alone.interval = "population", "top", "fired", 20.0
+    alone.quash_rate, alone.quash_k = 0.02, 0.2
+    for _ in range(30):
+        run_epoch(alone, verbose=False)
+    both = sum(c.weight for c in mesh.connections.values())
+    quashed = sum(c.weight for c in alone.connections.values())
+    assert both > quashed  # leaky Hebb only ever adds, so composing it with the quash lifts the total
+
+
+def test_the_local_rule_pays_nothing_at_the_read_but_the_local_rules_still_run(capsys):
+    from walnutbutter.learning import RULES
+    assert "local" in RULES
+    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "local", "--hebb", "0.01",
+                     "--epochs", "20", "--no-save"]) == 0
+    err = capsys.readouterr().err
+    assert "rule: local" in err and "leaky Hebb 0.01" in err and "quash 0.02" in err

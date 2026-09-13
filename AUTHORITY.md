@@ -66,7 +66,7 @@ literal of its own.
 | constant | value | meaning |
 |---|---|---|
 | THRESHOLD | 0.25 | $\theta$ every neuron starts with |
-| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off (§5.1) |
+| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower |
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
@@ -83,6 +83,7 @@ literal of its own.
 | FLIP | 1/12 | the probability a problem that corrupts its input flips each coded bit with (§4.3, Byron, September 13, 2026); a network in the library does not flip until it is asked to |
 | QUASH_RATE | 0.02 | a refire weakens each contributing synapse by this fraction of its weight (§6.11); 0 = off |
 | QUASH_K | 0.2 /ms | how fast that quash falls off with the delay since the previous spike |
+| HEBB_RATE | 0.01 | leaky Hebb (§6.12): a firing neuron potentiates each gated synapse by this much times its leaky trace; a starting value, to be swept; 0 = off |
 | LR | 0.03 | learning rate |
 | SIGMA | 0.1 | exploration noise: standard deviation added to each neuron's potential at every input |
 | DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA | 2, 1 ms | shape and scale of the gamma density that gives the amount released against the refire delay past the refractory period |
@@ -338,7 +339,28 @@ spike it fires on its own is a spike like any other: it releases by its
 delay, which at 200 ms is nothing, and it resets the clock on its
 boredom.
 
-## 6. Learning rule — open
+## 6. Learning rules — open
+
+*Byron, September 13, 2026, and it reorganises this section:* "What I
+realised today is that there is not a neuron training rule. There are
+multiple compatible training rules."
+
+So §6 is not a menu of alternatives with one switch. It holds two kinds of
+rule, and they compose:
+
+- **Local rules**, which need nothing but the neuron's own spikes and the
+  stamps on its synapses, and which run under every configuration: the
+  quash (§6.11), leaky Hebb (§6.12), and the weight decay (§6.8). Each has
+  its own rate and each is off until asked for.
+- **A rule that pays at the read**, of which at most one runs: the external
+  teacher (§6.9), ADALINE (§6.10), dopamine (§6.2–6.6) or REINFORCE (§6.7).
+  RULE names it, and `RULE = local` means none of them does and the local
+  rules are the whole of the learning ("no teacher for now", Byron, the
+  same day).
+
+Within a wave the local rules run in a fixed order — quash, then leaky Hebb
+— so a potentiation is not discounted the moment it is made. Only the quash
+depends on the weight it acts on, so no other order matters.
 
 Per §0: a neuron becomes eligible for dopamine release when it fires.
 Dopamine is the global reward used for reinforcement learning. It is
@@ -675,7 +697,114 @@ the epoch that forced a neuron is the one pattern-dependent event a neuron
 can observe locally, still holds; the change is that such a cycle is now
 treated as something to remove rather than to reward.
 
-### 6.12 What is reported
+### 6.12 Leaky Hebb — decided, built
+
+*Byron, September 13, 2026.* The system is primarily defined through two
+time constants: the leak rate parameter, and the absolute refractory window
+implicitly defined through refractory_hops. It is also defined by the
+**synapse's** leak rate parameter, which we take for computational
+simplicity to be the same as the postsynaptic neuron's leak rate parameter.
+The leak rate fully specifies an exponential-decay window
+
+$$f\big(t - t^{\text{fired}}_i\big) = e^{-k\,(t - t^{\text{fired}}_i)},$$
+
+and we define the **leaky eligibility trace on the synapse** as that $f$.
+For Hebbian learning the weight update rule would normally be $w_{ij}
+\leftarrow w_{ij} \times \text{pre\_gate} \times \text{post\_gate} \times
+\text{LR}$, or somesuch; we are going to append $f(t - t^{\text{fired}}_i)$
+to the chain of multiplications. Call this **leaky_hebb**.
+
+*Claude's reading.* With $i$ presynaptic and $j$ postsynaptic as everywhere
+in §6, and $k = 1/\text{TAU}$: at the moment $j$ fires, at $t =
+t^{\text{fired}}_j$, every incoming synapse moves by
+
+$$w_{ij} \leftarrow \mathrm{clip}\Big(w_{ij} + \text{LR}\; g_{ij}\;
+e^{-(t^{\text{fired}}_j - t^{\text{fired}}_i)/\text{TAU}},\
+\text{WEIGHT\_RANGE}\Big),$$
+
+where $g_{ij}$ is the pre-gate of §6.5 — the synapse carried a signal $j$
+integrated since $j$'s previous spike — and the post-gate is the occasion
+itself: nothing happens on a synapse whose target did not fire. The chain
+adds to $w_{ij}$ rather than multiplying it, since gates of 0 and 1
+multiplying a weight would zero it rather than leave it alone.
+
+**Equal leaks are not only a simplification.** A signal of size $w_{ij}$
+that arrived at $t_a$ is still contributing $w_{ij}e^{-(t -
+t_a)/\text{TAU}}$ to $j$'s potential at $t$ (§5.1), and travel takes exactly
+one hop, so $t_a = t^{\text{fired}}_i + \text{hop}$ and
+
+$$e^{-(t^{\text{fired}}_j - t^{\text{fired}}_i)/\text{TAU}} =
+e^{-\text{hop}/\text{TAU}} \cdot \frac{\text{what that synapse still
+contributed to } p_j \text{ when } j \text{ fired}}{w_{ij}}.$$
+
+The trace is exactly proportional to the residual charge the synapse still
+had in the neuron at the moment of the spike it helped cause — absent the
+floor (MINIMUM_POTENTIAL), and outside the reset, which the gate already
+excludes. Setting the synapse's leak to the neuron's is what buys that
+identity: with two different constants the rule would credit a synapse by
+something other than its contribution.
+
+**What the two time constants do to it.** Write $\rho = \text{REFRACTORY} /
+\text{TAU} = 2.5$ and $h = \text{REFRACTORY\_HOPS} = 3$. The soonest $j$ can
+fire after $i$ did is one hop, so the trace never exceeds $e^{-\rho/h} =
+0.435$; one further refractory window on it is down to $e^{-\rho(1 + 1/h)} =
+0.036$. The leak sets the window's shape and the refractory period its
+width, and the ratio $\rho$ alone sets the dynamic range across it, here a
+factor of $e^{\rho} = 12.2$.
+
+**It needs no new state.** A connection already stamps `last_signal`, the
+arrival of the last signal its target integrated, and travel is exactly one
+hop, so $t^{\text{fired}}_i = \texttt{last\_signal} - \text{hop}$ is to
+hand. That also settles which presynaptic spike is meant when $i$ has fired
+more than once: the one whose signal $j$ actually integrated, rather than
+$i$'s most recent — the local reading, and the one that makes the identity
+above exact.
+
+**Settled (Byron, September 13, 2026).**
+
+1. *Sign.* leaky_hebb potentiates and never depresses, and it gets no
+   anti-Hebbian arm of its own, because the depression is another rule's
+   work — see the head of §6. In practice the quash **is** that arm, and it
+   tracks leaky Hebb closely without being asked to: both are driven by the
+   same §6.5 gate and the same exponential, Hebb on every spike and the
+   quash on every refire, and in a busy mesh most spikes are refires.
+   Measured on shallow_copy at two rows, HEBB_RATE 0.01 adds 1.251 of
+   weight per epoch while the quash takes 1.227 and the decay 0.012, a net
+   of +0.013 on a turnover a hundred times its size. At 0.001 the three come
+   to −0.0008. The pair is self-balancing; what the rate chooses is the
+   turnover it balances at, and at 0.01 that equilibrium sits at the rails.
+2. *No teacher, for now.* The rule is unsupervised and is meant to be:
+   RULE = local. It is the first rule here that touches the **interior** of
+   the network at all — §6.10 moves only the readout's incoming weights, and
+   five rows showed that is the binding constraint.
+
+*Measured, September 13, 2026, and it qualifies the above.* Balancing the
+weight budget is not the same as preserving selectivity. Run unsupervised on
+shallow_copy, leaky Hebb with the quash and the decay drives the network to a
+single fixed response: of the sixteen possible inputs the top row answers all
+sixteen identically, every neuron on, every epoch, at HEBB_RATE 0.01 and
+0.001 alike. The same network before any learning answers 6 of the 16
+distinguishably, so the composition made it strictly **less** informative
+than its initialisation; ADALINE on the same task answers all 16 apart. The
+row critic reads that collapse as 0.505, because an all-on row scores exactly
+one half against a code that is half on — the trap §8 already records for
+sustain_inputs, in a new place.
+
+The gap is that no rule in the composition removes weight from a synapse
+*for being uninformative*. Hebb adds on coincidence, the quash removes on
+recurrence, the decay removes uniformly; none of them is selective against a
+synapse that fires with everything. What such compositions conventionally
+need is competition — a neuron's incoming weights normalised against each
+other, or depression on post-without-pre, or a threshold that rises with a
+neuron's own activity. The last of those is half-built already: §5.4 lowers
+a bored neuron's threshold when it is silent and nothing raises it when it
+is overactive. Making that symmetric would be the smallest addition
+consistent with the head of §6, and is not yet decided.
+3. *Name.* leaky_hebb, and it is a local rule with its own rate
+   (HEBB_RATE), not a value of RULE. ELIGIBILITY = hebb inside the reinforce
+   rule (§6.7) is something else, $\pm 1$ by whether $j$ fired.
+
+### 6.13 What is reported
 
 Spikes to date, the neurons fired this epoch, the dopamine value and its
 expectation, releases and updates to date; the score of every epoch, its
@@ -806,3 +935,26 @@ the layout, the inputs, and whether anything outside the network trains it.
   that repairs the flipped patch reaches 1. So the band above 0.833 is
   correction, and the band below it is the cost of the quash, which works
   against sustaining by construction; `--quash 0` separates the two.
+
+- **shallow_copy** (Byron, September 13, 2026): "we are going to shrink the
+  network to see if it can learn at all with a new rule. The same, with
+  output at the top and input at the bottom, but we'll have just two rows."
+  So: population_copy's task on the smallest network that still has an input
+  row and an output row. Twelve across, **two rows**, the four raw bits
+  population-coded onto the bottom, the top read as fired this epoch, the
+  same teacher, the same row critic, no permutation, a 20 ms epoch, reach 2.
+  Twenty-four neurons and 215 connections, against 120 and 2,195.
+
+  The point is that the task is now one hop wide: every input neuron is
+  directly wired to the output neurons above it, so a rule that can learn
+  anything should learn this, and a rule that cannot learn this cannot be
+  rescued by depth. It is the floor the rules are measured against, not a
+  problem worth solving for its own sake.
+
+  *Claude's reading, built:* reach 2 on two rows wires the rows to each other
+  **and to themselves**, and 56 of the 215 connections run top to bottom, so
+  the output row feeds back into the input row. That feedback is the only
+  cycle generator in the network, which makes this also the cleanest place to
+  watch the quash (§6.11) work. Cycles are quashed as in population_copy, and
+  `--quash 0` switches it off. The rule is the problem's default teacher;
+  `--rule` picks any of the four.

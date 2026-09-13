@@ -82,6 +82,7 @@ class ArrayNetwork(Network):
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
+        self.hebb_rate = mesh.hebb_rate
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -250,6 +251,8 @@ class ArrayNetwork(Network):
             self.waves.append(ArrayWave(number, time, idx))
             if self.quash_rate and len(idx):
                 self._quash(time, idx)
+            if self.hebb_rate and len(idx):
+                self._hebb(time, idx)
             if self.dopamine is not None:
                 self._learn(time, idx)  # every wave, fired or not: the pool decays in the same steps as the object engine
         return self.waves
@@ -400,6 +403,23 @@ class ArrayNetwork(Network):
             low, high = self.weight_range
             self.weight[mask] = np.clip(self.weight[mask] * (1.0 - factor[self.target[mask]]), low, high)
             self._matrix_dirty = True
+        return int(mask.sum())
+
+    def _hebb(self, time: float, idx: np.ndarray) -> int:
+        """Leaky Hebb (see dopamine.leaky_hebb) as one vector operation: every firing neuron potentiates its gated synapses."""
+        n = len(self.potential)
+        fired = np.zeros(n, dtype=bool)
+        fired[idx] = True
+        mask = self.active & fired[self.target] & (self.last_signal > self.previous_fired_at[self.target])
+        if not mask.any():
+            return 0
+        hop, tau = Neuron.hop(), Neuron.tau
+        # math.exp, as the object engine uses, so the two agree to the last bit
+        step = np.array([self.hebb_rate * math.exp(-(time - s + hop) / tau)
+                         for s in self.last_signal[mask].tolist()])
+        low, high = self.weight_range
+        self.weight[mask] = np.clip(self.weight[mask] + step, low, high)
+        self._matrix_dirty = True
         return int(mask.sum())
 
     def _learn(self, time: float, idx: np.ndarray) -> float:

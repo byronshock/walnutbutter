@@ -47,6 +47,11 @@ FLIP = 1.0 / 12.0  # the probability a problem that corrupts its input flips eac
 QUASH_RATE = 0.02  # the rate a problem that quashes uses: a refire weakens each contributing synapse by this fraction
 # of its weight. A network built in the library does not quash until it is asked to; 0 = off.
 QUASH_K = 0.2  # per ms: the quash falls off as exp(-k * (t - t_fired)) with the delay since the previous spike
+
+# --- leaky Hebb (AUTHORITY.md §6.12) -------------------------------------------------
+HEBB_RATE = 0.01  # the rate a problem that runs leaky_hebb uses: a firing neuron potentiates each synapse that still
+# had charge in it by this much times the synapse's leaky trace (Byron, September 13, 2026). A starting value, to be
+# swept. Like the quash it composes with whatever else runs, and a network built in the library leaves it off; 0 = off.
 LR = 0.03  # learning rate, both rules
 SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential at every input; 0 switches it off
 DOPAMINE_RELEASE_ALPHA = 2.0  # shape of the gamma density of the amount a refire releases against its delay past the refractory period (Byron, September 12, 2026)

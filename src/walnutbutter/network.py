@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .constants import INTERVAL, POPULATION, QUASH_K, QUASH_RATE
-from .dopamine import MODES, apply_teacher, learn, quash
+from .constants import HEBB_RATE, INTERVAL, POPULATION, QUASH_K, QUASH_RATE
+from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
@@ -48,6 +48,8 @@ class Network:
         self.dopamine = None  # a dopamine.Dopamine when the dopamine or teacher rule runs (set by whoever builds the run)
         self.quash_rate = 0.0  # a refire weakens its contributing synapses by this fraction of their weight (§6.11); off until asked
         self.quash_k = QUASH_K  # per ms: the quash falls off with the delay since the previous spike
+        self.hebb_rate = 0.0  # leaky Hebb (§6.12): a firing neuron potentiates its gated synapses by this much times
+        # their leaky trace. Like the quash it composes with whatever rule pays the read; off until asked.
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
@@ -240,9 +242,20 @@ class Network:
                 connection.weight *= keep
 
     def _on_wave(self, wave: Wave) -> None:
-        """After a wave has fired: cycles are quashed, then the refires learn (dopamine) or earn eligibility for the read."""
+        """After a wave has fired, the local rules run in order and then whatever pays the read.
+
+        They compose (Byron, September 13, 2026: "there is not a neuron
+        training rule. There are multiple compatible training rules"): the
+        quash weakens what carried a cycle, leaky Hebb potentiates what
+        carried the spike, and the rule of §6.9-6.10 pays at the read. The
+        quash goes first, so a potentiation this wave is not discounted the
+        moment it is made; only the quash depends on the weight, so no other
+        order matters.
+        """
         if self.quash_rate:
             quash(wave, self.quash_rate, self.quash_k, self.weight_range)
+        if self.hebb_rate:
+            leaky_hebb(wave, self.hebb_rate, Neuron.tau, Neuron.hop(), self.weight_range)
         if self.dopamine is not None:
             learn(self.dopamine, wave, self.weight_range, mode=MODES.get(self.rule, "apply"))
 

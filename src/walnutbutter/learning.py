@@ -85,7 +85,9 @@ TARGETS: dict[str, Target] = {
     "all-on": lambda pattern: [True] * len(pattern),
 }
 
-RULES = ("teacher", "adaline", "dopamine", "reinforce")  # which learning rule runs (AUTHORITY.md §6)
+RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
+# means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
+# are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
 ELIGIBILITIES = ("perturb", "hebb")
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 

@@ -47,6 +47,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "population": grid.population,  # neurons per raw bit under population coding
         "quash": [grid.quash_rate, grid.quash_k],  # the cycle quash (§6.11)
         "flip": grid.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
+        "hebb": grid.hebb_rate,  # leaky Hebb (§6.12)
         "input_cells": grid.input_cells,  # an input zone, or None for the bottom row
         "grid_reach": getattr(grid, "reach", None) if not lattice else None,  # hex steps the grid's local wiring covers
         "problem": getattr(grid, "problem", None),  # what the run was asked to do (problems.PROBLEMS)
@@ -284,6 +285,7 @@ def _restore_clock(grid, data: dict) -> None:
     if data.get("quash"):
         grid.quash_rate, grid.quash_k = data["quash"]
     grid.flip = data.get("flip", grid.flip)
+    grid.hebb_rate = data.get("hebb", grid.hebb_rate)
 
 
 def _ecc_name(data: dict) -> str | None:

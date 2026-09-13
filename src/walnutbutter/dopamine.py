@@ -43,7 +43,7 @@ from .constants import (
 from .neuron import Neuron
 
 ORDERS = ("release-first", "update-first")
-MODES = {"dopamine": "apply", "teacher": "earn", "adaline": "watch"}  # what a wave's refires do, by the network's rule
+MODES = {"dopamine": "apply", "teacher": "earn", "adaline": "watch", "local": "watch"}  # what a wave's refires do, by the network's rule
 
 
 def gamma_cdf(a: float, x: float) -> float:
@@ -261,6 +261,47 @@ def quash(wave, rate: float, k: float, weight_range: tuple[float, float]) -> int
                 connection.weight = low if weight < low else high if weight > high else weight
                 weakened += 1
     return weakened
+
+
+def leaky_hebb(wave, rate: float, tau: float, hop: float, weight_range: tuple[float, float]) -> int:
+    """A neuron that fires potentiates the synapses that still had charge in it (AUTHORITY.md §6.12). Returns synapses moved.
+
+    Byron, September 13, 2026. The synapse's leak is the postsynaptic
+    neuron's leak, so the leaky trace on a synapse, read at the moment its
+    target fires, is
+
+        f = exp(-(t_fired_j - t_fired_i) / TAU),
+
+    and the update appends it to the Hebbian chain: for every incoming
+    synapse that carried a signal the neuron integrated since its previous
+    spike (the gate of §6.5),
+
+        w <- clip(w + rate * f).
+
+    Because travel takes exactly one hop, t_fired_i is `last_signal - hop`,
+    so the rule needs no state a connection does not already keep. And
+    because the two leaks are the same constant, f is exactly proportional
+    to the charge that synapse still had in the neuron when it fired: the
+    rule credits a synapse by what it was still contributing to the spike
+    it helped cause. It potentiates and never depresses; the depression is
+    other rules' work (§6.8, §6.11), which run alongside it.
+    """
+    low, high = weight_range
+    moved = 0
+    for neuron in wave.fired:
+        previous = neuron.previous_fired_at
+        for connection in neuron.incoming:
+            if not connection.is_active or connection.last_signal is None:
+                continue
+            if previous is not None and connection.last_signal <= previous:
+                continue  # nothing carried since its previous spike
+            step = rate * math.exp(-(wave.time - connection.last_signal + hop) / tau)
+            if not step:
+                continue
+            weight = connection.weight + step
+            connection.weight = low if weight < low else high if weight > high else weight
+            moved += 1
+    return moved
 
 
 def learn(dopamine: Dopamine, wave, weight_range: tuple[float, float], mode: str = "apply") -> float:
