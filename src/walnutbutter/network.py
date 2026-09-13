@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .constants import INTERVAL
-from .dopamine import apply_teacher, learn
+from .constants import INTERVAL, POPULATION, QUASH_K, QUASH_RATE
+from .dopamine import MODES, apply_teacher, learn, quash
 from .exploration import gaussians
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
@@ -34,7 +34,8 @@ class Network:
             raise ValueError(f"weight range must run from low to high, got {weight_range}")
         self.weight_range = (float(low), float(high))
         self.waves: list[Wave] = []  # Waves of the most recent propagation
-        self.input_pattern: list[bool] | None = None  # one bit per place along the bottom row
+        self.input_pattern: list[bool] | None = None  # one bit per place along the bottom row: what is forced
+        self.target_pattern: list[bool] | None = None  # the clean pattern the read is scored against, before any flips (§4.3)
         self.input_bits: list[bool] | None = None  # the raw bits before complement coding
         self.input_coded: list[bool] | None = None  # the complement-coded bits before permutation
         self.permutation: list[int] = list(range(across))  # place i along the bottom row shows coded bit permutation[i]
@@ -45,9 +46,15 @@ class Network:
         self.horizon = 0.0  # the time the schedule has run to: the next input may not come before it
         self.schedule = Schedule()  # signals in flight, across epochs
         self.dopamine = None  # a dopamine.Dopamine when the dopamine or teacher rule runs (set by whoever builds the run)
-        self.rule = "dopamine"  # "dopamine": the refires move the weights themselves; "teacher": they earn eligibility, the teacher pays at the read
+        self.quash_rate = 0.0  # a refire weakens its contributing synapses by this fraction of their weight (§6.11); off until asked
+        self.quash_k = QUASH_K  # per ms: the quash falls off with the delay since the previous spike
+        self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
+        # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
-        self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations) or "raw" (as they are)
+        self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw" (as they
+        # are) or "population" (each bit repeated `population` times)
+        self.population = POPULATION  # neurons per raw bit under population coding
+        self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
         self.input_cells: list[tuple[int, int]] | None = None  # an input zone, (place, row) cells, in place of the bottom row
         self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
@@ -109,17 +116,26 @@ class Network:
         return self.time + self.interval if self.epoch else 0.0
 
     def set_input(self, pattern, time: float | None = None) -> None:
-        """Store the input pattern, one boolean per input neuron, and the time it arrives (default: next_time())."""
+        """Store the input pattern, one boolean per input neuron, and the time it arrives (default: next_time()).
+
+        Under `flip` the pattern is corrupted on the way in (§4.3): each bit is
+        flipped independently with that probability, drawn from the network's own
+        seeded stream, so `input_pattern` is what the row is forced with and
+        `target_pattern` is the clean pattern the read is scored against. With
+        flip at 0 nothing is drawn and the two are the same.
+        """
         pattern = [bool(b) for b in pattern]
         if len(pattern) != self.input_width():
             raise ValueError(f"input pattern has {len(pattern)} bits but the input covers {self.input_width()} neurons")
         time = self.next_time() if time is None else float(time)
         if self.epoch and before(time, self.horizon):
             raise ValueError(f"input time {time} is before the schedule has already run to, {self.horizon}")
-        self.input_pattern = pattern
+        self.target_pattern = pattern
+        self.input_pattern = [bit != (self._rng.random() < self.flip) for bit in pattern] if self.flip else list(pattern)
         self.input_time = time
         for neuron, bit in zip(self.input_row(), pattern):
-            neuron.should_fire = bit  # the learning rule reverses its sign for a neuron that should not fire (dopamine.py)
+            neuron.should_fire = bit  # what the neuron should do, not what it was forced with; the learning rule
+            # reverses its sign for a neuron that should not fire (dopamine.py)
 
     @property
     def code(self) -> Code | None:
@@ -128,10 +144,14 @@ class Network:
     def raw_bit_count(self) -> int:
         """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits."""
         width = self.input_width()
-        if self.coding == "raw":
+        if self.coding in ("raw", "population"):
             if self.code:
-                raise ValueError("an error-correcting code needs complement coding; raw coding lays the bits down as they are")
-            return width
+                raise ValueError(f"an error-correcting code needs complement coding, not {self.coding}")
+            if self.coding == "raw":
+                return width
+            if width % self.population:
+                raise ValueError(f"population coding needs a multiple of {self.population} input neurons, got {width}")
+            return width // self.population
         if width % 2:
             raise ValueError(f"complement coding needs an even number of input neurons, got {width}")
         if self.code:
@@ -163,7 +183,12 @@ class Network:
         if len(bits) != wanted:
             raise ValueError(f"expected {wanted} input bits for {self.input_width()} input neurons, got {len(bits)}")
         word = self.code.encode(bits) if self.code else bits
-        coded = list(word) if self.coding == "raw" else complement_code(word)
+        if self.coding == "raw":
+            coded = list(word)
+        elif self.coding == "population":
+            coded = [bit for bit in word for _ in range(self.population)]  # each bit fills its own patch of the row
+        else:
+            coded = complement_code(word)
         self.set_input([coded[i] for i in self.permutation], time)
         self.input_data = bits if self.code else None
         self.input_bits = word  # the bits that were complement-coded: the codeword with ecc, the raw bits without
@@ -199,7 +224,7 @@ class Network:
         for neuron in self.input_neurons():
             self.schedule.stimulus(neuron, self.time)
         self.horizon = self.time + self.interval if until is None else float(until)
-        waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone())
+        waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(), trace=self.rule == "adaline")
         self.forget()
         return waves
 
@@ -215,9 +240,11 @@ class Network:
                 connection.weight *= keep
 
     def _on_wave(self, wave: Wave) -> None:
-        """After a wave has fired: the refires learn (dopamine), or earn eligibility for the teacher to pay at the read."""
+        """After a wave has fired: cycles are quashed, then the refires learn (dopamine) or earn eligibility for the read."""
+        if self.quash_rate:
+            quash(wave, self.quash_rate, self.quash_k, self.weight_range)
         if self.dopamine is not None:
-            learn(self.dopamine, wave, self.weight_range, teacher=self.rule == "teacher")
+            learn(self.dopamine, wave, self.weight_range, mode=MODES.get(self.rule, "apply"))
 
     def total_spikes(self) -> int:
         return sum(neuron.spikes for neuron in self.all_neurons())
@@ -241,7 +268,7 @@ class Network:
         for neuron, amount in (inputs or {}).items():
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
-        return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone())
+        return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(), trace=self.rule == "adaline")
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -251,7 +278,7 @@ class Network:
         """
         for neuron in self.all_neurons():
             neuron.reset(discharge)
-        if self.rule == "teacher":
+        if self.rule in ("teacher", "adaline"):
             for connection in self.connections.values():
                 connection.eligibility = 0.0  # a new epoch earns its own credit
         self.waves = []

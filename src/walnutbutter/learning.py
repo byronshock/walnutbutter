@@ -85,7 +85,7 @@ TARGETS: dict[str, Target] = {
     "all-on": lambda pattern: [True] * len(pattern),
 }
 
-RULES = ("teacher", "dopamine", "reinforce")  # which learning rule runs (AUTHORITY.md §6)
+RULES = ("teacher", "adaline", "dopamine", "reinforce")  # which learning rule runs (AUTHORITY.md §6)
 ELIGIBILITIES = ("perturb", "hebb")
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 
@@ -101,10 +101,13 @@ def output_row(grid: GridOfNeurons) -> list[Neuron]:
 
 
 def expected_outputs(grid: GridOfNeurons, target: str = "reversed") -> list[bool]:
-    """What the top row should show for the grid's current input pattern."""
-    if grid.input_pattern is None:
+    """What the read should show for the grid's current input: the clean pattern, which flips (§4.3) may differ from."""
+    pattern = getattr(grid, "target_pattern", None)
+    if pattern is None:
+        pattern = grid.input_pattern
+    if pattern is None:
         raise ValueError("no input pattern set")
-    return TARGETS[target](grid.input_pattern)
+    return TARGETS[target](pattern)
 
 
 def output_fired(grid: GridOfNeurons) -> list[bool]:
@@ -192,15 +195,55 @@ def decoded_exact(grid: GridOfNeurons, target: str = "reversed") -> float:
 def teacher_score(grid: GridOfNeurons, target: str = "copy") -> float:
     """The external teacher's score for the read (AUTHORITY.md §6.10), in [-1, 1] for a four-neuron input zone.
 
-    Byron, September 12, 2026: +TEACHER_CREDIT for a forced-input neuron
-    that sustains, +TEACHER_CREDIT for an input neuron whose input is zero
-    and does not fire, -TEACHER_CREDIT for a forced-input neuron that fails
-    to sustain, -TEACHER_CREDIT for an input neuron whose input is zero and
-    does fire. With four inputs the possible scores are -1, -0.5, 0, 0.5, 1.
+    Byron, September 12, 2026: +0.25 for a forced-input neuron that
+    sustains, +0.25 for an input neuron whose input is zero and does not
+    fire, and -0.25 for each of those read wrongly, so four inputs give
+    -1, -0.5, 0, 0.5 or 1. That 0.25 is 1/4, so the credit is TEACHER_CREDIT
+    when one is set and 1/n otherwise: the score spans [-1, 1] for a zone of
+    any size, and twelve outputs score 0 when six are right (Byron,
+    September 13, 2026).
     """
     fired = output_fired(grid)
     want = expected_outputs(grid, target)
-    return TEACHER_CREDIT * sum(1 if f == w else -1 for f, w in zip(fired, want))
+    credit = TEACHER_CREDIT if TEACHER_CREDIT is not None else 1.0 / len(want)
+    return credit * sum(1 if f == w else -1 for f, w in zip(fired, want))
+
+
+def adaline_errors(grid: GridOfNeurons, target: str = "copy") -> list[float]:
+    """The error at each output neuron, desired minus actual (AUTHORITY.md §6.10).
+
+    +1 for a neuron that should have been on and was not, -1 for one that
+    was on and should not have been, 0 for one read correctly. A correct
+    epoch therefore moves nothing: ADALINE corrects mistakes only.
+    """
+    fired = output_fired(grid)
+    want = expected_outputs(grid, target)
+    return [float(w) - float(f) for f, w in zip(fired, want)]
+
+
+def apply_adaline(grid: GridOfNeurons, errors, lr: float) -> int:
+    """Widrow-Hoff at the read: every synapse into output neuron j moves by lr * error_j * what it delivered. Returns synapses moved.
+
+    The eligibility trace is the presynaptic activity the target integrated
+    this epoch (propagation.Schedule.run with `trace`), so a synapse that
+    delivered nothing moves by nothing. Only the scored neurons' incoming
+    weights learn; the rest of the mesh is an untrained reservoir. The trace
+    is cleared either way, so an epoch's activity never counts twice.
+    """
+    if arrays(grid):
+        return grid.apply_adaline(errors, lr)
+    error = {neuron: e for neuron, e in zip(output_row(grid), errors)}
+    low, high = grid.weight_range
+    moved = 0
+    for connection in grid.connections.values():
+        if connection.eligibility:
+            step = lr * error.get(connection.target, 0.0) * connection.eligibility
+            if step:
+                weight = connection.weight + step
+                connection.weight = low if weight < low else high if weight > high else weight
+                moved += 1
+            connection.eligibility = 0.0
+    return moved
 
 
 def sustained(grid: GridOfNeurons, target: str = "copy") -> float:
@@ -420,9 +463,9 @@ class Teacher:
         if rule not in RULES:
             raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
         self.rule = rule
-        if rule in ("dopamine", "teacher") and getattr(grid, "dopamine", None) is None:
+        if rule != "reinforce" and getattr(grid, "dopamine", None) is None:
             grid.dopamine = Dopamine(lr=lr)
-        grid.rule = rule if rule in ("dopamine", "teacher") else "dopamine"  # the reinforce rule leaves the schedule's hook alone
+        grid.rule = rule if rule != "reinforce" else "dopamine"  # the reinforce rule leaves the schedule's hook alone
         if target not in TARGETS:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
@@ -444,6 +487,7 @@ class Teacher:
         self.unstuck_count = 0  # how many epoch-nudges the output un-sticking has applied
         self.moved = 0  # synapses the external teacher has moved
         self.last_signal: float | None = None  # the teacher's score for the last epoch, in [-1, 1]
+        self.mistakes = 0.0  # output neurons read wrongly in the last epoch (the ADALINE rule)
         self.history: list[dict] = []  # one entry per progress report; saved in checkpoints
         if not 0.0 < target_rate < 1.0:
             raise ValueError(f"target firing rate must be between 0 and 1, got {target_rate}")
@@ -496,6 +540,10 @@ class Teacher:
         self.last_signal = teacher_score(self.grid, self.target) if self.rule == "teacher" else None
         if self.rule == "teacher":
             self.moved += apply_teacher(self.grid, self.last_signal, self.lr)  # the teacher pays the epoch's eligibility
+        elif self.rule == "adaline":
+            errors = adaline_errors(self.grid, self.target)
+            self.mistakes = sum(abs(e) for e in errors)  # how many output neurons were read wrongly this epoch
+            self.moved += apply_adaline(self.grid, errors, self.lr)
         elif self.rule == "reinforce":
             reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late)
         update_rates(self.grid)
@@ -508,6 +556,8 @@ class Teacher:
             level, expected = ("", "") if pool is None else (f"{pool.peek(self.grid.horizon):.6g}", f"{pool.expected():.6g}")
             if self.rule == "teacher":
                 level, expected = f"{self.last_signal:+g}", f"{self.moved}"  # the teacher's signal, and synapses moved to date
+            elif self.rule == "adaline":
+                level, expected = f"{self.mistakes:g}", f"{self.moved}"  # output neurons read wrongly, and synapses moved to date
             self._trace.write(f"{self.grid.epoch},{self.grid.time:g},{level},{expected},{reward:.6g}\n")
         self.total_reward += reward
         self.last_reward = reward
@@ -539,12 +589,14 @@ class Teacher:
         return entry
 
     def status(self) -> str:
-        verb = {"dopamine": "scoring", "teacher": "teaching"}.get(self.rule, "learning")  # under the dopamine rule the Teacher only scores
+        verb = {"dopamine": "scoring", "teacher": "teaching", "adaline": "correcting"}.get(self.rule, "learning")
         if self.average is None:
             return f"{verb} {self.target}: no epochs yet"
         if self.rule == "teacher":
             signal = "none yet" if self.last_signal is None else f"{self.last_signal:+g}"
             settings = f"signal {signal}, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
+        elif self.rule == "adaline":
+            settings = f"{self.mistakes:g} wrong, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
         elif self.rule == "dopamine":
             settings = f"{self.grid.dopamine.status()}, sigma {self.sigma:g}"
         else:

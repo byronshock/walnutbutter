@@ -47,6 +47,9 @@ KNOBS = {  # knob -> (command-line flag, label)
     "bored_after": ("--bored-after", "bored after (ms)"),
     "tau": ("--tau", "tau (ms)"),
     "threshold": ("--threshold", "threshold"),
+    "quash": ("--quash", "quash rate"),
+    "quash_k": ("--quash-k", "quash k (/ms)"),
+    "flip": ("--flip", "input flip probability"),
     "seed": ("--seed", "seed"),
 }
 

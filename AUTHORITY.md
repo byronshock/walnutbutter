@@ -77,8 +77,12 @@ literal of its own.
 
 | constant | value | meaning |
 |---|---|---|
-| RULE | teacher | which learning rule runs: teacher (§6.10), dopamine (§6.2-6.6) or reinforce (§6.7) |
-| TEACHER_CREDIT | 0.25 | what each input neuron read correctly adds to the teacher's score, and each one read wrongly subtracts |
+| RULE | teacher | which learning rule runs: teacher (§6.9), adaline (§6.10), dopamine (§6.2-6.6) or reinforce (§6.7) |
+| TEACHER_CREDIT | none | credit per neuron in the teacher's score; unset normalises it to span [−1, 1] for a zone of any size (0.25 at four neurons, 1/12 at twelve) |
+| POPULATION | 3 | neurons per raw bit under population coding (§4.3) |
+| FLIP | 1/12 | the probability a problem that corrupts its input flips each coded bit with (§4.3, Byron, September 13, 2026); a network in the library does not flip until it is asked to |
+| QUASH_RATE | 0.02 | a refire weakens each contributing synapse by this fraction of its weight (§6.11); 0 = off |
+| QUASH_K | 0.2 /ms | how fast that quash falls off with the delay since the previous spike |
 | LR | 0.03 | learning rate |
 | SIGMA | 0.1 | exploration noise: standard deviation added to each neuron's potential at every input |
 | DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA | 2, 1 ms | shape and scale of the gamma density that gives the amount released against the refire delay past the refractory period |
@@ -228,12 +232,28 @@ shows coded bit $\pi(i)$. With an error-correcting code (`--ecc`), 4 data
 bits are first encoded to 7 (Hamming) or 6 (parity) before complement
 coding.
 
-(A problem may instead lay the raw bits down as they are, `coding = raw`:
-sustain_inputs does, §8. A problem also says what "on" means at the read:
+(A problem may instead lay the raw bits down as they are, `coding = raw`,
+which sustain_inputs does, or repeat each bit over POPULATION neurons,
+`coding = population`, which population_copy does: 1001 becomes
+111000000111 on a twelve-wide row (Byron, September 13, 2026). §8. A problem also says what "on" means at the read:
 fired this epoch, spiked again after the input's moment, or fired within a
 window before the horizon.) The neurons whose bit is 1 are **forced** to fire
 at $t_e$, refractory period permitting. A neuron forced this epoch is marked as such, which only
 the reinforce rule (§6.7) consults.
+
+**A noisy input (Byron, September 13, 2026).** A problem may corrupt what it
+presents: each bit of the coded, permuted pattern is **flipped independently
+with probability FLIP** before the row is forced. The flips come from the
+network's own seeded stream, so a seed reproduces them, and nothing is drawn
+when FLIP is 0, which leaves every run made before this bit-for-bit as it was.
+Two patterns then exist where one did before: the **presented** pattern, which
+says which neurons are forced, and the **target** pattern, the clean one, which
+is what the read is scored against and what `should_fire` records. The network
+is therefore asked to *repair* its input rather than merely carry it. With
+population coding the redundancy is three neurons a bit, so a single flip inside
+a patch is outvoted by its two neighbours, which is the whole reason the
+corruption is correctable at all. FLIP = 0 collapses the two patterns into one
+and this section reads as it did before.
 
 ### 4.4 Waves
 
@@ -457,6 +477,39 @@ firing rate ($r_j$, RATE_MEMORY) and drifts thresholds toward TARGET_RATE
 THRESHOLD_RANGE. Under RULE = dopamine the Teacher only scores and reports;
 the network learns by §6.2–6.6.
 
+*Asked by Byron, September 13, 2026: can we use REINFORCE instead of
+ADALINE?* The rule may now be asked for on any problem, not only a trained
+one; the gate that refused it was plumbing, not a decision, and nothing
+outside the network moves a threshold either way. But on a problem that
+reads the **input zone** the rule as written above is blind on half of what
+it scores, for two independent reasons, and both are §6 decisions to make
+rather than bugs to fix:
+
+1. **The forced skip.** The update passes over every connection whose
+   target was forced this epoch, because "its firing was not the network's
+   doing". That is exactly right when the read is *fired this epoch* and
+   exactly wrong when the read is *spiked again* (§4.3): under that read the
+   forced spike is not what is scored, the refire is, and the refire is the
+   network's doing. Measured on population_denoise, 74 of the 166 synapses
+   entering the scored zone are skipped.
+2. **The eligibility says nothing about a refire.** $e_j = \xi_j/\sigma$ is
+   the exploration noise added to $j$'s potential at $t_e$; a forced neuron
+   spikes regardless of it and resets, so the draw cannot explain whether it
+   refired 6 ms later. $e_j = \pm 1$ by `has_fired` (hebb) is $+1$ for every
+   forced neuron by construction. In one measured epoch the five forced
+   neurons read True, True, True, True, True under hebb while the read they
+   are scored on was False, True, True, True, False.
+
+Three forms follow, and which one is meant is open. (a) The rule exactly as
+written, which now runs. (b) The read as the eligibility: lift the skip
+under `read = "again"` and take $e_j = \pm 1$ by whether $j$ refired, which
+is the score function of a Bernoulli "did I refire" policy. (c) REINFORCE on
+§6.9's trace: keep the teacher's eligibility, the release on gated synapses,
+and pay it with the advantage $A = R - b$ in place of the raw score $S$ —
+the same machinery as the current rule with one substitution. Under (a) and
+(b) there is no weight decay (§6.8), because the decay is carried by the
+dopamine pool and the reinforce rule runs without one.
+
 ### 6.8 Earned activity — decided for now
 
 *Proposed by Claude, September 12, 2026, after the punishment rule (§6.5)
@@ -540,23 +593,89 @@ locally would double-count it; `--punish` turns it back on. Weight decay
 it is posed for: reversal the reinforce rule, sustain_inputs and
 improved_sustain the teacher.
 
-### 6.10 A cycle has been found — noted, not implemented
+### 6.10 ADALINE with an eligibility trace — decided, built
 
-*Byron and Cedric, September 13, 2026:* we have a new learning rule. When a
-forced-input neuron fires again within the epoch, a cycle has been found.
-Not to be implemented right now; noted here as the next rule to try.
+*Decided (Byron, September 13, 2026):* implement the ADALINE learning rule
+with an eligibility trace.
 
-The finding it answers is the one the sweeps of September 12 and 13 kept
-arriving at (`docs/findings-2026-09-13.md`): nothing a neuron can observe
-differs between an epoch where it should fire and one where it should not,
-because the mesh around it behaves the same either way and its own forced
-spike reaches nothing but itself. A refire *within the epoch that forced
-it* is the one event that cannot happen without that neuron's own spike
-having travelled out and come back. It is pattern-dependent by
-construction, it is local to the neuron that observes it, and it is exactly
-what the task asks the substance to do.
+*Claude's reading, built (`--rule adaline`).* Widrow-Hoff assigns each
+output its own error rather than broadcasting one scalar, so this is a
+**departure from §0's global reinforcement**: the signal is no longer
+global, and only the scored neurons' incoming weights learn. Noted for
+Byron and Cedric, not smuggled.
 
-### 6.11 What is reported
+The error at output neuron $j$ is desired minus actual,
+
+$$\epsilon_j = d_j - y_j \in \{-1, 0, +1\},$$
+
+with $d_j$ the neuron's bit this epoch (1 it should sustain, 0 it should
+not fire) and $y_j$ whether it was read as on (§8). A neuron read correctly
+has $\epsilon_j = 0$ and moves nothing: ADALINE corrects mistakes only,
+where the teacher of §6.9 paid every synapse on every epoch.
+
+The eligibility trace is the presynaptic activity, accumulated through the
+epoch because the input to a spiking neuron is spread over it: each synapse
+counts the signals its target actually integrated along it (a signal
+dropped into a refractory neuron does not count),
+
+$$x_{ij} = \#\{\text{signals } i \to j \text{ integrated this epoch}\}.$$
+
+At the read every synapse moves by the rule's own form, and the trace is
+cleared so an epoch's activity never counts twice:
+
+$$w_{ij} \leftarrow \mathrm{clip}\big(w_{ij} + \text{LR} \cdot \epsilon_j \cdot x_{ij},\ \text{WEIGHT\_RANGE}\big).$$
+
+A synapse whose target is not scored has $\epsilon_j = 0$, so the mesh
+behind the scored neurons is an untrained reservoir and only the readout
+learns, which is what a single-layer rule means here. True ADALINE uses the
+analog net input rather than the binary output; a spiking neuron that
+resets has no such quantity to hand, so the binary form is used and the
+difference is noted. The dopamine pool still runs and is still reported but
+decides nothing, the bit-0 punishment is off (the error already knows), and
+the exploration noise, the bored neurons and the weight decay are
+unchanged.
+
+### 6.11 Quashing cycles — decided, built
+
+*Byron, September 13, 2026, turning the rule around:* when a neuron fires
+itself, it has found a cycle. Cycles may be BAD. The whole point of having
+an absolute refractory period is to quash short cycles. Sustain may be
+exactly what we don't want a neural network doing. We may have had the
+learning rule backward: cycles need to be quashed, so move the contributing
+weights in the direction that will actually do this. The quash is
+proportional to the synaptic gating, the weight, and an exponential decay
+$e^{-k(t - t_{\text{fired}})}$.
+
+*Built.* A neuron cannot tell its own returning spike from anyone else's
+without tracing ancestry, which §6.4 rules out, so "fires itself" is read
+as a refire, and the delay since the previous spike is the evidence of how
+tight the loop was (Byron, September 13, 2026: "the refire delay is
+evidence of how tight the loop is"). When a neuron refires at $t$ with its
+previous spike at $t_{\text{prev}}$, every incoming synapse that carried a
+signal it integrated since that spike, the gate of §6.5, moves by
+
+$$w_{ij} \leftarrow \mathrm{clip}\Big(w_{ij}\big(1 - \text{QUASH\_RATE}\,
+e^{-\text{QUASH\_K}\,(t - t_{\text{prev}})}\big),\ \text{WEIGHT\_RANGE}\Big).$$
+
+Being proportional to the weight it pulls toward zero from either side, and
+being proportional to the gate it touches only the synapses that carried
+the cycle. It is local, lazy, needs no external signal, and runs under
+every rule, so it composes with the teacher rather than replacing it;
+QUASH_RATE 0 switches it off, and a problem says whether it quashes. The
+constants are to be explored (Byron: "we will have to explore this space"),
+and the driver sweeps `quash` and `quash_k`.
+
+*What it answers.* Every sweep of September 12 and 13 ended with the mesh
+either reverberating or dead (`docs/findings-2026-09-13.md`), and the rules
+that paid for refires drove it to whichever of those its constants chose.
+Quashing inverts the sign on exactly that quantity, so activity that loops
+gets weaker and activity that crosses the mesh once does not: the dynamics
+are self-limiting for the first time. §6.10's note, that a refire inside
+the epoch that forced a neuron is the one pattern-dependent event a neuron
+can observe locally, still holds; the change is that such a cycle is now
+treated as something to remove rather than to reward.
+
+### 6.12 What is reported
 
 Spikes to date, the neurons fired this epoch, the dopamine value and its
 expectation, releases and updates to date; the score of every epoch, its
@@ -650,3 +769,40 @@ the layout, the inputs, and whether anything outside the network trains it.
   outside the network training it. A problem may name any input zone, a
   list of (place, row) cells (`Network.set_input_cells`), in place of the
   bottom row; a neuron may sit in several zones at once.
+
+- **population_copy** (Byron, September 13, 2026), the problem the quashing
+  rule (§6.11) is tested on. The four raw bits are population-coded, three
+  neurons a bit, onto a twelve-wide bottom row of a ten-row grid: 1001
+  becomes 111000000111, 0001 becomes 000000000111. The outputs are read
+  across the top, and the target is the copied population code. The teacher
+  scores the top row in $[-1, 1]$, six of twelve right being zero, which is
+  §6.9's score with the credit normalised to the zone. No permutation, a
+  20 ms epoch, reach 2, and each output read as fired this epoch. Cycles
+  are quashed; the teacher also pays, and `--lr 0` isolates the quash.
+
+- **population_denoise** (Byron, September 13, 2026), the same network
+  inspected somewhere else. *Byron:* "I want to know whether this is doing
+  something useful, and it's not at the output zone that I want to look. I
+  guess this is a new subtask with the same teacher that looks at the output
+  zone. I want to use that teacher but inspect the INPUT zone under the
+  condition that the input signal has flipped bits with probability 1/12."
+
+  Everything is population_copy's — the twelve-wide bottom row of a ten-row
+  grid, population coding, no permutation, 20 ms epochs, reach 2, the §6.9
+  teacher with its credit normalised to 1/12, cycles quashed — except where the
+  read is taken and what reaches the row. Each of the twelve coded bits is
+  flipped with probability FLIP = 1/12 (§4.3), so about one neuron an epoch is
+  wrong; the **input zone** is read back, a neuron on if it spiked again after
+  the input's moment; and the score is the row critic against the **clean**
+  code, not the corrupted one.
+
+  *Claude's reading, built:* the target is the clean pattern, because that is
+  the only reading under which the corruption carries information — with the
+  corrupted pattern as the target this is sustain_inputs with extra variety.
+  Three baselines say what the number means. A silent network reads all-off and
+  scores 0 on average, the clean code carrying six ones and six zeros. A network
+  that perfectly sustains whatever it was forced with scores
+  $(11 - 1)/12 = 0.833$, carrying the flip through faithfully. Only a network
+  that repairs the flipped patch reaches 1. So the band above 0.833 is
+  correction, and the band below it is the cost of the quash, which works
+  against sustaining by construction; `--quash 0` separates the two.

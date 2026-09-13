@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .constants import ACROSS, ROWS
+from .constants import ACROSS, FLIP, ROWS
 
 
 @dataclass(frozen=True)
@@ -32,13 +32,15 @@ class Problem:
     input_cells: tuple | None = None  # an input zone, (place, row) cells counted from 0, in place of the bottom row
     permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
+    quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
+    flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
 
 
 PROBLEMS: dict[str, Problem] = {
     "reversal": Problem(
         "reversal",
         "the top row learns to show the bottom row reversed, taught by a Teacher with a target and a critic",
-        ACROSS, ROWS, trained=True, rule="reinforce",
+        ACROSS, ROWS, trained=True, rule="reinforce", quash=False,
     ),
     "sustain_inputs": Problem(
         "sustain_inputs",
@@ -48,7 +50,7 @@ PROBLEMS: dict[str, Problem] = {
         "is the fraction of the four whose read state matches the pattern: the forced ones on, the others off. "
         "Scored by the Teacher, not trained by it: the neurons learn by dopamine (AUTHORITY.md §6, §8)",
         4, ROWS, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row", coding="raw",
-        rule="teacher",
+        rule="teacher", quash=False,
     ),
     "improved_sustain": Problem(
         "improved_sustain",
@@ -56,6 +58,25 @@ PROBLEMS: dict[str, Problem] = {
         "the 4 raw input bits presented in the middle, row 4 places 4 to 7 counted from 1 (row 3, places 3 to 6 from 0), "
         "no permutation; 20 ms epochs, the same neurons read back (spiked again), the row critic, learning by dopamine",
         10, 7, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row", coding="raw",
-        reach=3, input_cells=((3, 3), (4, 3), (5, 3), (6, 3)), permute=False, rule="teacher",
+        reach=3, input_cells=((3, 3), (4, 3), (5, 3), (6, 3)), permute=False, rule="teacher", quash=False,
+    ),
+    "population_copy": Problem(
+        "population_copy",
+        "population coding (Byron, September 13, 2026): the 4 raw bits each fill three neurons of a 12-wide bottom row, "
+        "so 1001 lands as 111000000111, and the top row of a 10-row grid should show the same code. The teacher scores "
+        "the top row in [-1, 1], six of twelve right being zero. Cycles are quashed (§6.11): a refire weakens the "
+        "synapses that contributed to it",
+        12, 10, trained=False, interval=20.0, readout="top", read="fired", target="copy", critic="row",
+        coding="population", permute=False, rule="teacher", quash=True,
+    ),
+    "population_denoise": Problem(
+        "population_denoise",
+        "population_copy's network read somewhere else (Byron, September 13, 2026): the same 12-wide, 10-row grid, the "
+        "same population coding, the same teacher and the same quash, but each of the twelve coded bits is flipped with "
+        "probability 1/12 on the way in, and it is the INPUT zone that is read back, on meaning spiked again after the "
+        "input's moment. The score is against the CLEAN code, so the network is asked to repair its input: 0 for silence, "
+        "0.833 for carrying the corruption through faithfully, 1 only for correcting it (AUTHORITY.md §4.3, §8)",
+        12, 10, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row",
+        coding="population", permute=False, rule="teacher", quash=True, flip=FLIP,
     ),
 }

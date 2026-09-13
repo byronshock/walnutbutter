@@ -51,6 +51,8 @@ walnutbutter --step          # window where each Space press runs one epoch
 walnutbutter --no-learn      # just watch the untrained network
 walnutbutter --problem sustain_inputs   # the 16 four-bit inputs as they are on 4 neurons, 20 ms epochs; score = which input neurons spiked again, against the pattern; learns by dopamine (AUTHORITY.md §8)
 walnutbutter --problem improved_sustain # the same on a 10x7 grid wired to reach 3, the 4 inputs in the middle of the middle row
+walnutbutter --problem population_copy  # 4 bits population-coded over 12 neurons (1001 -> 111000000111), copied to the top row, cycles quashed
+walnutbutter --problem population_denoise  # the same network, but one bit in twelve flips on the way in and the INPUT zone is read back against the clean code
 walnutbutter --trace runs/sustain.csv   # one line per epoch: epoch, time, dopamine, expected, score (default: next to the checkpoint)
 walnutbutter --rule reinforce           # the pre-alpha's global-reward rule instead, run by the Teacher
 walnutbutter --refractory-hops 3.7 --release-theta 2 --order update-first   # the clock and dopamine knobs (see --help)
@@ -436,6 +438,23 @@ each gated incoming synapse instead of moving it; at the read every synapse
 moves by `lr * score * eligibility` and the trace is cleared. The dopamine
 pool still runs and is reported but decides nothing, and the bit-0
 punishment is off, since the score already accounts for those neurons.
+
+**Quashing cycles** (`--quash RATE`, AUTHORITY.md §6.11). A refire is a
+cycle, and a cycle is treated as something to remove: every incoming
+synapse that carried a signal the neuron integrated since its previous
+spike is multiplied by `1 - quash * exp(-quash_k * delay)`, where the delay
+is the time since that spike. It pulls a weight toward zero from either
+side, touches only the synapses that carried the cycle, and needs no
+external signal, so it runs alongside whichever rule is chosen. A problem
+says whether it quashes; `--quash 0` switches it off.
+
+**ADALINE** (`--rule adaline`, AUTHORITY.md §6.10). Widrow-Hoff with an
+eligibility trace: each scored neuron gets its own error, +1 if it should
+have been on and was not, −1 if it was on and should not have been, 0 if it
+was read correctly, and every synapse into it moves by `lr * error * what
+that synapse delivered this epoch`. A correct epoch moves nothing, and only
+the scored neurons' incoming weights learn, so the mesh behind them is an
+untrained reservoir. Unlike the other rules the signal is not global.
 
 **The reinforce rule** (`--rule reinforce`) is the pre-alpha's global
 reinforcement, factored out and kept for comparison. On a trained problem

@@ -129,6 +129,7 @@ class Schedule:
         waves: list[Wave] | None = None,
         on_wave: Callable[[Wave], None] | None = None,
         everyone: list[Neuron] | None = None,
+        trace: bool = False,
     ) -> list[Wave]:
         """Process every wave due before `until`, appending to and returning `waves`.
 
@@ -138,6 +139,9 @@ class Schedule:
         also fires any neuron that has become ready without being touched:
         one whose threshold has fallen with its silence (Neuron.threshold_at),
         or one recovered from a refractory period with enough potential.
+        With `trace`, every synapse counts the signals its target integrated
+        along it this epoch: the presynaptic activity the ADALINE rule needs
+        (AUTHORITY.md §6.10).
         """
         waves = [] if waves is None else waves
         hop = Neuron.hop()
@@ -164,6 +168,8 @@ class Schedule:
                     target = payload.target
                     if target.receive(payload.weight, time):
                         payload.last_signal = time
+                        if trace:
+                            payload.eligibility += 1.0  # presynaptic activity, as this target saw it
                         if target.touched_stamp != mark:  # each neuron once per wave, without a set
                             target.touched_stamp = mark
                             touched.append(target)

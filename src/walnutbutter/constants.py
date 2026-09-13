@@ -37,7 +37,16 @@ PROBLEM = "reversal"  # what the network is asked to do and how it is watched (p
 # --- learning: dopamine (AUTHORITY.md §6) --------------------------------------------
 RULE = "teacher"  # which learning rule runs (learning.RULES): teacher (an external teacher scores the read, Byron, September 12, 2026),
 # dopamine (the student as its own teacher), or the reinforce rule factored out below
-TEACHER_CREDIT = 0.25  # what each input neuron read correctly adds to the teacher's score, and each one read wrongly subtracts
+TEACHER_CREDIT = None  # credit per neuron in the teacher's score; None normalises it to span [-1, 1] whatever the zone's size
+# (Byron's 0.25 is 1/4, the four-input zone; twelve outputs give 1/12, so six right is zero)
+POPULATION = 3  # neurons per raw bit under population coding (Byron, September 13, 2026): 1001 -> 111000000111
+FLIP = 1.0 / 12.0  # the probability a problem that corrupts its input flips each coded bit with (Byron, September 13, 2026,
+# reading the input zone back): a network built in the library does not flip until it is asked to; 0 = off
+
+# --- quashing cycles (AUTHORITY.md §6.11) -------------------------------------------
+QUASH_RATE = 0.02  # the rate a problem that quashes uses: a refire weakens each contributing synapse by this fraction
+# of its weight. A network built in the library does not quash until it is asked to; 0 = off.
+QUASH_K = 0.2  # per ms: the quash falls off as exp(-k * (t - t_fired)) with the delay since the previous spike
 LR = 0.03  # learning rate, both rules
 SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential at every input; 0 switches it off
 DOPAMINE_RELEASE_ALPHA = 2.0  # shape of the gamma density of the amount a refire releases against its delay past the refractory period (Byron, September 12, 2026)

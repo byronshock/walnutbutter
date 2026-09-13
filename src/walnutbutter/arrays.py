@@ -81,13 +81,15 @@ class ArrayNetwork(Network):
         self.horizon = mesh.horizon
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
+        self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
+        self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
         self.threshold = mesh.threshold
         self.minimum_potential = mesh.minimum_potential
         self._rng = random.Random()
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
-        for name in ("input_pattern", "input_bits", "input_coded", "input_data"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data"):
             setattr(self, name, getattr(mesh, name))
 
         neurons = list(mesh.all_neurons())
@@ -222,7 +224,11 @@ class ArrayNetwork(Network):
                 potential[take] = np.maximum(potential[take] + incoming[take], floor[take])
                 delivering = self.active & (firing[self.source] > 0)
                 self.delivered_wave[delivering] = number
-                self.last_signal[delivering & take[self.target]] = time
+                integrated = delivering & take[self.target]
+                self.last_signal[integrated] = time
+                if self.rule == "adaline":
+                    # presynaptic activity, as this target saw it: a source that fired twice into the same moment delivers twice
+                    self.eligibility[integrated] += firing[self.source[integrated]]
             fire_forced = (stimulus & ~refractory) if stimulus is not None else np.zeros(n, dtype=bool)
             if Neuron.bored_after > 0.0:  # threshold homeostasis: the threshold falls with the silence since the last spike
                 since = np.where(self.fired_at == -np.inf, 0.0, self.fired_at)
@@ -242,6 +248,8 @@ class ArrayNetwork(Network):
                 if out_degree @ fired > 0:  # someone has active connections out: signals in flight
                     self._arrive_all(fired.astype(float), time + hop)
             self.waves.append(ArrayWave(number, time, idx))
+            if self.quash_rate and len(idx):
+                self._quash(time, idx)
             if self.dopamine is not None:
                 self._learn(time, idx)  # every wave, fired or not: the pool decays in the same steps as the object engine
         return self.waves
@@ -286,7 +294,7 @@ class ArrayNetwork(Network):
             self.potential[:] = 0.0
         self.fired_wave[:] = -1
         self.forced[:] = False
-        if self.rule == "teacher":
+        if self.rule in ("teacher", "adaline"):
             self.eligibility[:] = 0.0  # a new epoch earns its own credit
         self.noise[:] = 0.0
         self.delivered_wave[:] = -1
@@ -327,7 +335,7 @@ class ArrayNetwork(Network):
     def set_input(self, pattern, time: float | None = None) -> None:
         super().set_input(pattern, time)
         self.sign[:] = 1.0
-        self.sign[self.input_index[~np.asarray(self.input_pattern, dtype=bool)]] = -1.0
+        self.sign[self.input_index[~np.asarray(self.target_pattern, dtype=bool)]] = -1.0  # what it should do, not what it was forced with
 
     def fire_input(self, until: float | None = None) -> list[ArrayWave]:
         if self.input_pattern is None:
@@ -375,6 +383,25 @@ class ArrayNetwork(Network):
 
     # --- learning: dopamine ---------------------------------------------------------
 
+    def _quash(self, time: float, idx: np.ndarray) -> int:
+        """A refire is a cycle: weaken its contributing synapses (see dopamine.quash), as one vector operation."""
+        previous = self.previous_fired_at[idx]
+        ridx = idx[previous > -np.inf]
+        if not len(ridx):
+            return 0
+        n = len(self.potential)
+        factor = np.zeros(n)
+        # math.exp on the object engine's side too, so the two agree to the last bit
+        factor[ridx] = [self.quash_rate * math.exp(-self.quash_k * (time - t)) for t in self.previous_fired_at[ridx].tolist()]
+        refired = np.zeros(n, dtype=bool)
+        refired[ridx] = True
+        mask = self.active & refired[self.target] & (self.last_signal > self.previous_fired_at[self.target])
+        if mask.any():
+            low, high = self.weight_range
+            self.weight[mask] = np.clip(self.weight[mask] * (1.0 - factor[self.target[mask]]), low, high)
+            self._matrix_dirty = True
+        return int(mask.sum())
+
     def _learn(self, time: float, idx: np.ndarray) -> float:
         """The refires among the neurons `idx` firing at `time` release, then move their gated incoming weights (dopamine.learn)."""
         dopamine = self.dopamine
@@ -409,7 +436,23 @@ class ArrayNetwork(Network):
             self.weight[mask] = np.clip(self.weight[mask] + step[self.target[mask]], low, high)
             self._matrix_dirty = True
 
-        return dopamine.step(time, releases, earn if self.rule == "teacher" else update)
+        nothing = lambda _advantage: None  # noqa: E731  (the ADALINE rule keeps its own trace; the pool only runs)
+        return dopamine.step(time, releases, {"teacher": earn, "adaline": nothing}.get(self.rule, update))
+
+    def apply_adaline(self, errors, lr: float) -> int:
+        """The ADALINE update as vectors: every synapse into output neuron j moves by lr * error_j * what it delivered."""
+        n = len(self.potential)
+        error = np.zeros(n)
+        error[self.output_index] = np.asarray(errors, dtype=float)
+        moved = self.eligibility != 0.0
+        step = lr * error[self.target] * self.eligibility
+        touched = moved & (step != 0.0)
+        if touched.any():
+            low, high = self.weight_range
+            self.weight[touched] = np.clip(self.weight[touched] + step[touched], low, high)
+            self._matrix_dirty = True
+        self.eligibility[:] = 0.0
+        return int(touched.sum())
 
     def apply_teacher(self, signal: float, lr: float) -> int:
         """An external teacher's signal at the read (see dopamine.apply_teacher), as one vector operation."""
@@ -506,7 +549,7 @@ class ArrayNetwork(Network):
             for connection in self.neurons_list[i].outgoing:
                 if connection.is_active:
                     mesh.schedule.signal(connection, time)
-        for name in ("input_pattern", "input_bits", "input_coded", "input_data"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data"):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
 

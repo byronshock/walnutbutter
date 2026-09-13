@@ -18,7 +18,7 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    ACROSS, BORED_AFTER, CRITIC, FLIP, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
@@ -204,7 +204,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=RULES,
         default=None,
         help=f"the learning rule (AUTHORITY.md §6): teacher (an external teacher scores the read and pays the epoch's "
-        f"eligibility), dopamine (the neurons pay themselves as they refire), or reinforce (the pre-alpha's rule). "
+        f"eligibility), adaline (Widrow-Hoff: each scored neuron's own error times what each synapse delivered), "
+        f"dopamine (the neurons pay themselves as they refire), or reinforce (the pre-alpha's rule). "
         f"Default: the problem's, else {RULE}",
     )
     parser.add_argument(
@@ -249,6 +250,30 @@ def build_parser() -> argparse.ArgumentParser:
         choices=ORDERS,
         default=DOPAMINE_ORDER,
         help=f"at a refire, release the dopamine before the weight update or after it (default: {DOPAMINE_ORDER})",
+    )
+    parser.add_argument(
+        "--quash",
+        type=float,
+        default=None,
+        metavar="RATE",
+        help=f"cycles are quashed (AUTHORITY.md §6.11): a refire weakens each contributing synapse by this fraction of "
+        f"its weight, falling off with the delay since its previous spike (default: the problem's, {QUASH_RATE:g} where "
+        f"it quashes; 0 = off)",
+    )
+    parser.add_argument(
+        "--flip",
+        type=float,
+        default=None,
+        metavar="P",
+        help=f"corrupt the input (AUTHORITY.md §4.3): flip each coded bit with this probability before the row is forced, "
+        f"and score the read against the clean pattern (default: the problem's, {FLIP:g} where it corrupts; 0 = off)",
+    )
+    parser.add_argument(
+        "--quash-k",
+        type=float,
+        default=QUASH_K,
+        metavar="PER_MS",
+        help=f"how fast the quash falls off with that delay, exp(-k * delay) (default: {QUASH_K:g})",
     )
     parser.add_argument(
         "--punish",
@@ -471,8 +496,8 @@ def cli_main(argv: list[str] | None = None) -> int:
     if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
         print("error: --tau, --refractory, --refractory-hops and --interval must be positive", file=sys.stderr)
         return 2
-    if args.bored_after < 0:
-        print("error: --bored-after must not be negative", file=sys.stderr)
+    if args.bored_after < 0 or (args.quash is not None and args.quash < 0) or args.quash_k < 0:
+        print("error: --bored-after, --quash and --quash-k must not be negative", file=sys.stderr)
         return 2
     if args.dopamine_tau <= 0 or args.release_alpha <= 0 or args.release_theta <= 0 or args.expectation_tau <= 0:
         print("error: --dopamine-tau, --release-alpha, --release-theta and --expectation-tau must be positive", file=sys.stderr)
@@ -494,19 +519,19 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.across = 2 * CODES[args.ecc].code_bits if args.ecc else problem.across
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
     if not problem.trained:
-        if args.rule == "reinforce":
-            raise ValueError(f"{args.problem} is not trained externally; the reinforce rule needs a trained problem")
-        args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold
+        args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
     if problem.target is not None:
         args.target = problem.target
     if problem.critic is not None:
         args.critic = problem.critic
     if args.rule is None:
         args.rule = problem.rule or RULE
-    if args.rule == "teacher":
-        if problem.readout != "input":
-            raise ValueError(f"the teacher rule scores the input neurons, which {args.problem} does not read")
-        args.no_punish = not args.punish  # the teacher's score already knows about bit-0 neurons (§6.10)
+    if args.rule in ("teacher", "adaline"):
+        args.no_punish = not args.punish  # the score already knows which neurons should not have fired (§6.9, §6.10)
+    if args.quash is None:
+        args.quash = QUASH_RATE if problem.quash else 0.0
+    if args.flip is None:
+        args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
         args.interval = problem.interval if problem.interval is not None else INTERVAL
     args.readout, args.read, args.read_window, args.coding = problem.readout, problem.read, problem.read_window, problem.coding
@@ -620,6 +645,8 @@ def _run(args: argparse.Namespace) -> int:
             grid.interval = args.interval
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
+            grid.quash_rate, grid.quash_k = args.quash, args.quash_k
+            grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
                     f"problem {args.problem}: {PROBLEMS[args.problem].description}. Epochs {args.interval:g} ms apart; "
@@ -650,7 +677,7 @@ def _run(args: argparse.Namespace) -> int:
             if not args.no_permute or loaded:
                 laid = "coded" if grid.coding == "complement" else "raw"
                 print(f"input permutation: place i along the bottom row shows {laid} bit {grid.permutation}", file=sys.stderr)
-            if args.rule in ("dopamine", "teacher"):
+            if args.rule != "reinforce":
                 grid.rule = args.rule
                 if grid.dopamine is None:  # a loaded checkpoint brings its own pool
                     grid.dopamine = Dopamine(tau=args.dopamine_tau, release_alpha=args.release_alpha, release_theta=args.release_theta,
@@ -662,9 +689,14 @@ def _run(args: argparse.Namespace) -> int:
                       f"{grid.dopamine.expectation_tau:g} ms from {grid.dopamine.expectation:g}, lr {grid.dopamine.lr:g}, "
                       f"{f'bit-0 input neurons punished {grid.dopamine.punish_gain:g}x for refiring' if grid.dopamine.punish else 'no punishment'}, "
                       f"weight decay {grid.dopamine.decay:g} per epoch; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
-                      f"bored after {Neuron.bored_after:g} ms", file=sys.stderr)
+                      f"bored after {Neuron.bored_after:g} ms, "
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}", file=sys.stderr)
             else:
-                grid.dopamine = None
+                grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
+                print(f"rule: reinforce ({args.eligibility} eligibility, late signals {args.late}), lr {args.lr:g}, "
+                      f"sigma {args.sigma:g}, no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
+                      f"bored after {Neuron.bored_after:g} ms, "
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}", file=sys.stderr)
             engine = args.engine or (data.get("engine", "objects") if loaded else "objects")
             if engine == "arrays":
                 try:
@@ -844,6 +876,8 @@ def _seed_worker(job: dict) -> dict:
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
     grid.coding = job.get("coding", "complement")
+    grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
+    grid.flip = job.get("flip", 0.0)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -926,7 +960,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
-                     "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding})
+                     "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
+                     "quash": (args.quash, args.quash_k), "flip": args.flip})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

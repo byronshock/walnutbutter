@@ -43,6 +43,7 @@ from .constants import (
 from .neuron import Neuron
 
 ORDERS = ("release-first", "update-first")
+MODES = {"dopamine": "apply", "teacher": "earn", "adaline": "watch"}  # what a wave's refires do, by the network's rule
 
 
 def gamma_cdf(a: float, x: float) -> float:
@@ -229,16 +230,50 @@ class Dopamine:
         return dopamine
 
 
-def learn(dopamine: Dopamine, wave, weight_range: tuple[float, float], teacher: bool = False) -> float:
+def quash(wave, rate: float, k: float, weight_range: tuple[float, float]) -> int:
+    """A refire is a cycle: weaken the synapses that contributed to it (AUTHORITY.md §6.11). Returns synapses weakened.
+
+    Byron, September 13, 2026: cycles need to be quashed, and the quash is
+    proportional to the synaptic gating, the weight, and an exponential
+    decay in the delay since the neuron's previous spike. For a neuron
+    refiring at $t$ whose previous spike was at $t_{prev}$, every incoming
+    synapse that carried a signal it integrated since that spike moves by
+
+        w <- w - rate * w * exp(-k * (t - t_prev))
+
+    which pulls the weight toward zero, hardest for the tightest loop. It is
+    local (the neuron's own spikes and the stamps on its synapses), lazy
+    (nothing happens until a refire) and needs no external signal, so it
+    runs under every rule; `rate` 0 switches it off.
+    """
+    low, high = weight_range
+    weakened = 0
+    for neuron in wave.fired:
+        previous = neuron.previous_fired_at
+        if previous is None:
+            continue  # its first spike: no cycle to quash
+        factor = rate * math.exp(-k * (wave.time - previous))
+        if not factor:
+            continue
+        for connection in neuron.incoming:
+            if connection.is_active and connection.last_signal is not None and connection.last_signal > previous:
+                weight = connection.weight * (1.0 - factor)
+                connection.weight = low if weight < low else high if weight > high else weight
+                weakened += 1
+    return weakened
+
+
+def learn(dopamine: Dopamine, wave, weight_range: tuple[float, float], mode: str = "apply") -> float:
     """The object engine's learning for one wave: its refires release, then move their gated incoming weights.
 
     A refire is a firing neuron with a previous spike. The gate: an incoming
     connection counts if its last integrated signal came after that
     previous spike. Returns the advantage the wave saw.
 
-    With `teacher`, the weights are not moved: each gated synapse adds the
-    refire's release to its `eligibility`, and an external teacher applies
-    the epoch's signal to the trace at the read (`apply_teacher`).
+    `mode` says what a refire does: "apply" moves the weights (the dopamine
+    rule), "earn" adds the release to each gated synapse's `eligibility` for
+    an external teacher to pay at the read (`apply_teacher`), and "watch"
+    only lets the pool run, for a rule that keeps its own trace (ADALINE).
     """
     refires = []
     for neuron in wave.fired:
@@ -270,7 +305,8 @@ def learn(dopamine: Dopamine, wave, weight_range: tuple[float, float], teacher: 
                     weight = connection.weight + step
                     connection.weight = low if weight < low else high if weight > high else weight
 
-    return dopamine.step(wave.time, [release for _, release in refires], earn if teacher else update)
+    nothing = lambda _advantage: None  # noqa: E731  ("watch": the pool runs, the weights do not move)
+    return dopamine.step(wave.time, [release for _, release in refires], {"earn": earn, "watch": nothing}.get(mode, update))
 
 
 def apply_teacher(grid, signal: float, lr: float) -> int:
