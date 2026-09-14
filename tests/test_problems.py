@@ -593,9 +593,12 @@ def test_the_default_drive_leaves_no_wave_front_at_time_zero():
 def test_the_driving_process_is_not_the_spike_train():
     """AUTHORITY.md §4.3: the Poisson process drives, and the refractory period makes the spike train a renewal one."""
     import statistics
-    from walnutbutter.constants import INPUT_RATE, REFRACTORY
+    from walnutbutter.constants import INPUT_CV, INPUT_RATE, REFRACTORY, cv_for_rate, rate_for_cv
 
-    assert INPUT_RATE == 0.5  # a driving rate, five times the spike rate it replaced
+    assert INPUT_CV == 0.6  # the drive is specified by the CV it produces, and lambda follows (§4.3)
+    assert INPUT_RATE == pytest.approx(rate_for_cv(0.6)) == pytest.approx(2 / 15)
+    assert cv_for_rate(INPUT_RATE) == pytest.approx(INPUT_CV)  # the two coordinates round-trip
+    assert 1000.0 * (1 - INPUT_CV) / REFRACTORY == pytest.approx(80.0)  # rate = (1 - CV) / REFRACTORY, exactly
 
     def train(rate, epochs=400):
         grid = GridOfNeurons(across=12, rows=5, weight=0.0, seed=1, permute=False, omega=0)  # weight 0: no mesh drive
@@ -613,16 +616,16 @@ def test_the_driving_process_is_not_the_spike_train():
         return arrivals, spikes, isis
 
     arrivals, spikes, isis = train(INPUT_RATE)
-    assert spikes < arrivals * 0.35  # five sevenths of the arrivals land inside a refractory period and are dropped
+    kept = 1.0 / (INPUT_RATE * REFRACTORY + 1.0)  # the rest land inside a refractory period and are dropped
+    assert spikes == pytest.approx(arrivals * kept, rel=0.1) and kept < 0.65
     assert all(gap >= REFRACTORY - 1e-9 for gap in isis)  # nothing fires sooner than the refractory period allows
     mean = statistics.fmean(isis)
     assert mean == pytest.approx(REFRACTORY + 1.0 / INPUT_RATE, rel=0.05)  # dead time plus an exponential wait
-    cv = statistics.stdev(isis) / mean
-    assert cv == pytest.approx((1.0 / INPUT_RATE) / mean, rel=0.1)
-    assert cv < 0.35  # far below a Poisson train's 1.0: this is what "not a Poisson process" buys
 
-    slow_cv = (lambda i: statistics.stdev(i) / statistics.fmean(i))(train(0.1)[2])
-    assert slow_cv > cv * 2  # a low driving rate is the old behaviour: the refractory period rarely binds
+    for rate in (3.8, INPUT_RATE, 0.05):  # the CV the drive produces is the one the identity predicts, across the range
+        measured = (lambda i: statistics.stdev(i) / statistics.fmean(i))(train(rate)[2])
+        assert measured == pytest.approx(cv_for_rate(rate), rel=0.12), rate
+        assert measured < 1.0  # always below a Poisson train's 1.0: this is what "not a Poisson process" buys
 
 
 # --- the same problem, only NOT (AUTHORITY.md §8) ------------------------------------

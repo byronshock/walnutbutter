@@ -18,12 +18,13 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
+    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
+    cv_for_rate, rate_for_cv,
 )
 from .dopamine import ORDERS, Dopamine
 from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
@@ -343,13 +344,24 @@ def build_parser() -> argparse.ArgumentParser:
         f"spike at all (default: the problem's, else {INPUT_DRIVE})",
     )
     parser.add_argument(
+        "--cv",
+        type=float,
+        default=INPUT_CV,
+        metavar="CV",
+        help=f"the coefficient of variation of the input spike train, which is how the drive is specified "
+        f"(AUTHORITY.md §4.3): the rate follows as (1 - CV)/REFRACTORY, so {INPUT_CV:g} is "
+        f"{1000.0 * (1.0 - INPUT_CV) / REFRACTORY:.0f} Hz. 0 would need infinite drive and 1 none "
+        f"(default: {INPUT_CV:g})",
+    )
+    parser.add_argument(
         "--input-rate",
         type=float,
-        default=INPUT_RATE,
+        default=None,
         metavar="PER_MS",
-        help=f"the rate of the Poisson process that DRIVES a bit-1 neuron -- not the rate it fires at, since arrivals "
-        f"inside the refractory period are dropped and it fires at the first one after, giving a mean interspike "
-        f"interval of REFRACTORY + 1/rate (default: {INPUT_RATE:g}/ms)",
+        help=f"the drive in its other coordinate: the rate of the Poisson process that DRIVES a bit-1 neuron -- not "
+        f"the rate it fires at, since arrivals inside the refractory period are dropped and it fires at the first one "
+        f"after, giving a mean interspike interval of REFRACTORY + 1/rate. Overrides --cv "
+        f"(default: whatever --cv works out to, {INPUT_RATE:g}/ms)",
     )
     parser.add_argument(
         "--input-rate-off",
@@ -633,6 +645,11 @@ def READ_MEANS(args) -> str:
 def apply_problem(args: argparse.Namespace) -> None:
     """Settle what the problem decides: whether a Teacher scores or trains, the epoch's length, the target, the readout."""
     problem = PROBLEMS[args.problem]
+    if args.input_rate is None:  # the drive is given as a CV; lambda is the coordinate the schedule wants (§4.3)
+        # With no refractory period there is no dead time, so the train is Poisson and its CV is 1 whatever the rate:
+        # the CV coordinate does not reach it. Such a run is rejected further down; leave the default and let it be.
+        args.input_rate = rate_for_cv(args.cv, args.refractory) if args.refractory > 0 else INPUT_RATE
+    args.cv = cv_for_rate(args.input_rate, args.refractory)  # and --input-rate, if given, sets the CV it implies
     if args.across is None:
         args.across = 2 * CODES[args.ecc].code_bits if args.ecc else problem.across
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
@@ -787,11 +804,12 @@ def _run(args: argparse.Namespace) -> int:
                       f"(§4.5), the same for any network run at this input seed", file=sys.stderr)
             if args.drive == "rate":
                 isi = args.refractory + 1.0 / args.input_rate if args.input_rate else float("inf")
-                print(f"input drive: rate (AUTHORITY.md §4.3) -- a Poisson process DRIVES each input neuron across the "
-                      f"{args.interval:g} ms epoch at {args.input_rate:g}/ms of arrivals where its bit is 1 and "
-                      f"{args.input_rate_off:g}/ms where it is 0. Arrivals inside the refractory period are dropped, so "
-                      f"a bit-1 neuron fires every {isi:.2f} ms on average ({1000.0 / isi:.0f} Hz), at a coefficient of "
-                      f"variation of {(1.0 / args.input_rate) / isi:.2f} against a Poisson train's 1", file=sys.stderr)
+                print(f"input drive: rate at CV {args.cv:.3g} (AUTHORITY.md §4.3) -- a Poisson process DRIVES each "
+                      f"input neuron across the {args.interval:g} ms epoch at {args.input_rate:g}/ms of arrivals where "
+                      f"its bit is 1 and {args.input_rate_off:g}/ms where it is 0. Arrivals inside the refractory "
+                      f"period are dropped, so a bit-1 neuron fires every {isi:.2f} ms on average "
+                      f"({1000.0 / isi:.0f} Hz, {args.interval / isi:.1f} spikes an epoch), at a coefficient of "
+                      f"variation of {args.cv:.2f} against a Poisson train's 1", file=sys.stderr)
             grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(

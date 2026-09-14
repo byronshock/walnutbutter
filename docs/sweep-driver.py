@@ -53,6 +53,7 @@ KNOBS = {  # knob -> (command-line flag, label)
     "hebb": ("--hebb", "leaky Hebb rate"),
     "synapse_tau": ("--synapse-tau", "synapse tau (ms)"),
     "input_rate": ("--input-rate", "input rate (/ms)"),
+    "cv": ("--cv", "input train CV"),
     "rate_tau": ("--rate-tau", "rate read tau (ms)"),
     "read_window": ("--read-window", "read window (ms)"),
     "rate_on": ("--rate-on", "target on rate (Hz)"),

@@ -40,13 +40,36 @@ INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron acros
 # continuous time. "forced": every bit-1 neuron is made to spike at once at the epoch's moment, which locks every
 # spike in the network onto a hop grid anchored there -- a unified wave front at time zero, which Byron ruled out on
 # September 14, 2026: "I don't want any such thing."
-INPUT_RATE = 0.5  # per ms: the rate of that driving process, not the rate the neuron fires at. Arrivals inside the
-# refractory period are dropped, so the neuron fires at the first arrival after it ends and the spike train is a
-# renewal process with dead time, not a Poisson one: mean ISI = REFRACTORY + 1/rate, so 7 ms and 143 Hz here (71% of
-# saturation, 5 spikes an epoch), at a coefficient of variation of 0.29 against a Poisson train's 1.0 -- sub-Poisson
-# and refractory-dominated, but not as near-clockwork as a faster drive makes it. Byron, September 14, 2026: real
-# neural signalling is not a Poisson process, so the driving process gets its own, much higher rate (this is five
-# times the 0.1 it replaced) and the refractory period does the rest.
+INPUT_CV = 0.6  # the drive is specified by the coefficient of variation of the spike train it produces, not by its
+# own rate (Byron, September 14, 2026). Arrivals inside the refractory period are dropped, so the neuron fires at the
+# first arrival after it ends and its spike train is a renewal process with DEAD TIME, not a Poisson one: mean ISI =
+# REFRACTORY + 1/lambda. That ties the rate and the CV together exactly -- the train runs at (1 - CV)/REFRACTORY, so
+# 200 * (1 - CV) Hz -- and CV is the end of that axis worth naming, because it is the quantity the neuroscience
+# literature reports. 0.6 gives lambda 0.133/ms, a 12.5 ms interval, 80 Hz and 2.8 spikes across a 35 ms epoch. It
+# sits inside the 0.5-1.0 that visual cortex shows (Softky & Koch 1993) and well clear of the starvation at CV 0.95,
+# where an epoch holds a third of a spike. The sweep of September 14 found the whole middle of this axis flat, so the
+# choice rests on the biology, not on the measurement.
+
+
+def rate_for_cv(cv: float, refractory: float = REFRACTORY) -> float:
+    """The drive rate lambda whose spike train has this coefficient of variation (AUTHORITY.md §4.3).
+
+    Needs a refractory period: the dead time is the only thing that makes the train sub-Poisson, so with
+    REFRACTORY at 0 the CV is 1 at every rate and no lambda answers a request for less.
+    """
+    if not 0.0 < cv < 1.0:
+        raise ValueError(f"CV must be strictly between 0 and 1 (0 needs infinite drive, 1 needs none), got {cv}")
+    if refractory <= 0.0:
+        raise ValueError("a CV below 1 needs a refractory period; with none the drive is Poisson whatever its rate")
+    return (1.0 - cv) / (refractory * cv)
+
+
+def cv_for_rate(rate: float, refractory: float = REFRACTORY) -> float:
+    """The coefficient of variation of the spike train a drive rate of lambda produces; 1.0 for no drive at all."""
+    return 1.0 if rate <= 0.0 else (1.0 / rate) / (refractory + 1.0 / rate)
+
+
+INPUT_RATE = rate_for_cv(INPUT_CV)  # per ms: the rate of the driving process, not the rate the neuron fires at
 INPUT_RATE_OFF = 0.0  # per ms: the driving rate for a bit-0 neuron; 0 makes a zero bit mean silence, as forced drive does
 
 # --- reading a rate rather than a bit (AUTHORITY.md §4.3, §6.9) --------------------

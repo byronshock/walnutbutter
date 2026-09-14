@@ -72,11 +72,12 @@ literal of its own.
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
 | INPUT_DRIVE | rate | how a bit becomes spikes (§4.3): a Poisson process drives each input neuron across the epoch. `forced`, one mandated spike at $t_e$, locks every spike onto a hop lattice and is retired as the default |
-| INPUT_RATE, INPUT_RATE_OFF | 0.5, 0 /ms | the rates of the Poisson processes that *drive* a bit-1 and a bit-0 neuron; the neuron fires at the first arrival after its refractory period, at 143 Hz and CV 0.29 (§4.3) |
+| INPUT_CV | 0.6 | how the drive is specified (§4.3): the coefficient of variation of the spike train it produces. The rate follows exactly, $(1-\text{CV})/\text{REFRACTORY}$, so 80 Hz and 2.8 spikes an epoch |
+| INPUT_RATE, INPUT_RATE_OFF | 0.133, 0 /ms | the same drive in the other coordinate: the rates of the Poisson processes that *drive* a bit-1 and a bit-0 neuron. INPUT_RATE is derived from INPUT_CV; the neuron fires at the first arrival after its refractory period (§4.3) |
 | RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
-| BORED_AFTER | 200 ms | silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4) |
+| BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods |
 
 ### 1.3 Learning
 
@@ -317,22 +318,132 @@ $$\text{ISI} = \text{REFRACTORY} + \mathrm{Exp}(\lambda), \qquad
 \bar r = \frac{1}{\text{REFRACTORY} + 1/\lambda}, \qquad
 \text{CV} = \frac{1/\lambda}{\text{REFRACTORY} + 1/\lambda}.$$
 
-At INPUT_RATE = 0.5/ms that is a mean interval of 7 ms, 143 Hz — 71% of
-saturation, 5 spikes across a 35 ms epoch — at a coefficient of variation of
-**0.29**, where a Poisson train's is exactly 1 and a real cortical train's is
-nearer 0.5–1.0. Five sevenths of the arrivals are discarded, which is the
-point: the rate sets how soon after the dead time the neuron goes, and the
-refractory period sets everything else. A low $\lambda$ recovers the old
-behaviour, where the refractory period rarely binds and the train is nearly
-Poisson (CV 0.61 at 0.1/ms); a high one drives it toward clockwork (CV 0.05 at
-4/ms).
+**The rate and the CV are one axis, not two** *(September 14, 2026, working
+out what a CV sweep would be sweeping)*. Eliminating $\lambda$ between those
+two expressions gives
 
-*Chosen (Byron, September 14, 2026):* $\lambda = 0.5$/ms, five times the rate
-it replaced. It is the second-best cell of the rate × interval grid at the
-35 ms epoch we run (0.838 against 0.858 for the near-Poisson 0.1/ms, and above
-every faster drive), and its CV of 0.29 is the closest of the values swept to
-what real trains do — the faster drives buy regularity the task does not
-reward and biology does not display.
+$$\bar r = \frac{1 - \text{CV}}{\text{REFRACTORY}}, \qquad
+\lambda = \frac{1 - \text{CV}}{\text{REFRACTORY} \cdot \text{CV}},$$
+
+so at REFRACTORY = 5 ms the train runs at exactly $200(1 - \text{CV})$ Hz. The
+irregularity and the rate are in exact bijection: there is no setting of
+$\lambda$ that makes the train fast and irregular, or slow and clocklike,
+because the dead time is the only thing making it regular and it is a fixed 5
+ms. To vary one while holding the other needs a second knob — a refractory
+period that moves with it, or a drive that is not a Poisson process. Sweeping
+CV and sweeping $\lambda$ are therefore the same experiment in two coordinate
+systems, and a result along that axis cannot say which of the two the network
+is responding to.
+
+At the default CV of **0.6** that is $\lambda = 0.133$/ms, a mean interval of
+12.5 ms, 80 Hz — 40% of saturation, 2.8 spikes across a 35 ms epoch — against a
+Poisson train's CV of exactly 1 and a visual cortical train's 0.5–1.0 [1]. Two
+arrivals in five are discarded, which is the point: the rate sets how soon after
+the dead time the neuron goes, and the refractory period sets everything else. A
+low $\lambda$ leaves the refractory period rarely binding and the train nearly
+Poisson (CV 0.67 at 0.1/ms); a high one drives it toward clockwork (CV 0.05 at
+3.8/ms).
+
+*Where the 0.5–1.0 comes from, and what it does not cover (references added at
+Byron's request, September 14, 2026).*
+
+1. **Softky & Koch (1993)**, *J. Neurosci.* **13**(1):334–350, "The highly
+   irregular firing of cortical cells is inconsistent with temporal integration
+   of random EPSPs". V1 and MT of awake behaving macaque; CV of the ISI
+   distribution generally **0.5 to 1.0**, near-Poisson, for non-bursting cells
+   at sustained rates up to 300 Hz. This is the source of the figure quoted
+   above. Their argument is the one this model sits inside: a neuron
+   integrating many random EPSPs *should* fire regularly, and cortex does not.
+2. **Shadlen & Newsome (1998)**, *J. Neurosci.* **18**(10):3870–3896, "The
+   variable discharge of cortical neurons". The standard answer to (1): an
+   integrate-and-fire unit in a high-input regime, with excitation balanced
+   against inhibition, produces CV near 1 on its own. The irregularity is a
+   property of the input, not of the spike generator.
+3. **Holt, Softky, Koch & Douglas (1996)**, *J. Neurophysiol.*
+   **75**(5):1806–1814. The same cells fire **regularly in slice** under
+   constant current and **irregularly in vivo**, which settles (2)
+   experimentally and introduces CV2, the adjacent-interval measure that is
+   insensitive to a drifting rate.
+4. **Maimon & Assad (2009)**, *Neuron* **62**(3):426–440, "Beyond Poisson:
+   increased spike-time regularity across primate parietal cortex". The
+   counterexample: visual areas fire irregularly, but association and
+   motor-like parietal areas are **markedly more regular**. Poisson-like
+   firing is not a universal property of neocortex, so "0.5–1.0" is a claim
+   about visual cortex and not about cortex.
+5. **Berry & Meister (1998)**, *J. Neurosci.* **18**(6):2200–2211,
+   "Refractoriness and neural precision". Retinal ganglion cells modelled as
+   probabilistic firing gated by a recovery function — **this model's
+   dead-time renewal process, with a soft recovery instead of a hard one** —
+   and longer refractoriness makes the response *more* reproducible. The
+   mechanism by which REFRACTORY pulls this system's CV down is the one they
+   describe.
+
+*What the references do not license.* Our CV is produced entirely by the dead
+time, and is therefore locked to the rate by the identity above. Cortex gets
+its irregularity from (2) and (3), the structure of the input, at whatever rate
+it happens to be firing. So matching cortex on CV here is matching one number,
+not the mechanism that produces it, and a network tuned to CV 0.5–1.0 by
+lowering $\lambda$ is a network that has been made **quiet**, not one that has
+been made cortical.
+
+*Swept (Byron, September 14, 2026): CV in steps of 0.05 from 0.05 to 0.95 on
+reaching_copy, six seeds, 100,000 epochs, one shared input stream per seed
+(§4.5), the Rust loop.* 114 arms. The answer is **nothing across the whole
+usable range, then a collapse when the input runs out**:
+
+![CV against score](cv-reaching-100k.png)
+
+| band | rate | spikes/epoch | score |
+|---|---|---|---|
+| CV 0.05–0.30, near-clockwork | 190–140 Hz | 6.7–4.9 | 0.6364 |
+| CV 0.35–0.65 | 130–70 Hz | 4.6–2.5 | 0.6500 |
+| CV 0.70–0.95, near-Poisson | 60–10 Hz | 2.1–0.35 | 0.6372 |
+
+Paired on the seed, the middle band beats the fast one by 0.0136 ($t = 2.1$)
+and the slow one by 0.0128 ($t = 1.1$) — neither survives contact with the
+noise. The spread across the whole CV axis is 0.068, the spread across *seeds*
+is 0.035, and the seed-by-CV residual has a standard deviation of 0.030. **The
+noise in one cell is the size of the entire effect.**
+
+The one real result is at the far end: everything else beats CV 0.95 by
+**+0.0435 ($t = 3.65$), 6 seeds of 6**. That is 10 Hz, 0.35 spikes in a 35 ms
+epoch, so most epochs present *no input at all*. It is not a fact about
+regularity; it is the drive being switched off.
+
+So over a **nineteen-fold range of input rate** — 190 Hz clockwork down to
+10 Hz near-Poisson — this network scores the same. What it reads is which
+neurons fired at all within the epoch (`read = "fired"`), and one spike is
+enough for that, so neither the rate above one spike per epoch nor the
+regularity of the train reaches the readout. The result is a property of the
+read, and the way to make the input's timing matter is to change what the
+teacher looks at, not how the input is driven.
+
+*This also undercuts an earlier finding.* The 108-arm doubled_copy sweep put
+$\lambda = 1$ above $\lambda = 0.1$ by 0.0172 in 6 seeds of 6 — the same axis,
+in the CV coordinate 0.17 against 0.67, where this sweep finds 0.638 against
+0.644, i.e. nothing. That sweep predates §4.5, so its arms did not share an
+input stream; a 0.017 difference is inside the 0.030 residual measured here.
+Treat it as unreplicated.
+
+**Decided (Byron, September 14, 2026): the drive is specified by its CV, and
+the default is CV = 0.6.** INPUT_CV is the constant; $\lambda$ =
+INPUT_RATE follows from it as $(1-\text{CV})/(\text{REFRACTORY}\cdot\text{CV})$
+and is what the schedule actually draws with. `--cv` is the flag; `--input-rate`
+still takes the other coordinate and reports the CV it implies. CV is the end of
+the axis worth naming because it is the quantity the literature reports, and
+because it is bounded: 0 and 1 are the two physical limits, where a rate has no
+natural scale.
+
+CV 0.6 is $\lambda = 0.133$/ms, a 12.5 ms mean interval, **80 Hz, 2.8 spikes
+across a 35 ms epoch**. It replaces $\lambda = 0.5$/ms (CV 0.29, 143 Hz).
+
+*What this choice does and does not rest on.* Not on the sweep: the whole middle
+of the CV axis measured flat, and CV 0.6's first place there is inside the
+noise. It rests on the two things the sweep did establish and on the biology —
+CV 0.6 is inside the 0.5–1.0 that visual cortex shows (Softky & Koch 1993,
+[1] above), and it is far from the only region the sweep found to matter, the
+starvation at CV 0.95 where an epoch holds a third of a spike. Between a
+defensible prior and a flat measurement, the prior decides.
 
 **`rate` is the default from September 14, 2026, and `forced` is what it
 replaces.** *Byron, asking what the epoch resets and what it does not: "The

@@ -34,12 +34,14 @@ ROOT = Path(__file__).resolve().parent.parent
 KNOBS = {  # knob -> command-line flag on the simulator, for the record in the report
     "interval": "--interval",
     "input_rate": "--input-rate",
+    "cv": "--cv",  # the input train's coefficient of variation; the drive's own coordinate (§4.3)
     "rows": "--rows",
     "lr": "--lr",
     "quash": "--quash",
     "rate_tau": "--rate-tau",
     "seed": "--seed",
 }
+DERIVED = ("cv",)  # knobs that are a reparametrisation of another, handled by hand in grid_of
 
 
 def parse() -> argparse.Namespace:
@@ -65,11 +67,13 @@ def grid_of(problem: str, arm: dict):
 
     argv = ["--problem", problem]
     for knob, value in arm.items():
-        if knob in ("seed", "rows"):
+        if knob in ("seed", "rows") or knob in DERIVED:
             continue
         argv += [KNOBS[knob], f"{value:g}"]
     if "rows" in arm:
         argv += ["--rows", f"{arm['rows']:g}"]
+    if "cv" in arm:
+        argv += ["--cv", f"{arm['cv']:.12g}"]
     args = build_parser().parse_args(argv)
     apply_problem(args)
     Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
