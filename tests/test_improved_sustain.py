@@ -5,6 +5,7 @@ import json
 import pytest
 
 from walnutbutter.cli import apply_problem, build_parser, cli_main
+from walnutbutter import constants as C
 from walnutbutter.grid import GridOfNeurons, hex_distance
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -54,7 +55,8 @@ def test_an_input_zone_replaces_the_bottom_row():
 def test_the_problem_and_its_settings():
     p = PROBLEMS["improved_sustain"]
     assert (p.across, p.rows, p.reach, p.input_cells, p.permute, p.coding) == (10, 7, 3, ((3, 3), (4, 3), (5, 3), (6, 3)), False, "raw")
-    assert (p.readout, p.read, p.target, p.critic, p.interval) == ("input", "again", "copy", "row", 20.0)
+    assert (p.readout, p.read, p.target, p.critic) == ("input", "again", "copy", "row")
+    assert p.interval is None and C.INTERVAL == 35.0  # no problem pins an interval any more (§4.2)
     args = build_parser().parse_args(["--problem", "improved_sustain"])
     apply_problem(args)
     assert args.across == 10 and args.rows == 7 and args.grid_reach == 3 and args.no_permute and args.input_cells == p.input_cells

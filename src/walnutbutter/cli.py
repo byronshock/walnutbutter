@@ -19,7 +19,7 @@ from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF,
-    LEAKY_ELIGIBILITY,
+    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
@@ -287,6 +287,37 @@ def build_parser() -> argparse.ArgumentParser:
         f"it runs it; 0 = off)",
     )
     parser.add_argument(
+        "--read",
+        choices=("fired", "again", "window", "rate"),
+        default=None,
+        help="what the teacher reads at the end of an epoch (AUTHORITY.md §4.3): fired this epoch, spiked again after "
+        "the input's moment, fired within the read window, or rate, the exponential-window firing-rate estimate scored "
+        "against RATE_ON and RATE_OFF (default: the problem's)",
+    )
+    parser.add_argument(
+        "--read-window",
+        type=float,
+        default=None,
+        metavar="MS",
+        help=f"the window of the window read: a neuron is on if it spiked this recently before the epoch's end "
+        f"(default: the problem's, else {READ_WINDOW:g} ms)",
+    )
+    parser.add_argument(
+        "--rate-tau",
+        type=float,
+        default=RATE_TAU,
+        metavar="MS",
+        help=f"the exponential window the rate read estimates over (default: {RATE_TAU:g} ms)",
+    )
+    parser.add_argument(
+        "--rate-on",
+        type=float,
+        default=RATE_ON,
+        metavar="HZ",
+        help=f"the rate an output the target says should be on is driven to; off is silence (default: {RATE_ON:g} Hz, "
+        f"which is 1/REFRACTORY: saturation)",
+    )
+    parser.add_argument(
         "--explore",
         choices=("wave", "epoch"),
         default=EXPLORE,
@@ -374,7 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--critic",
         choices=sorted(CRITICS),
-        default=CRITIC,
+        default=None,
         help=f"how the reward is judged: row (fraction of output neurons matching the target), sustained (of the "
         f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), decoded "
         f"(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
@@ -568,6 +599,18 @@ def cli_main(argv: list[str] | None = None) -> int:
         Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hops, was_bored, was_tau
 
 
+def READ_MEANS(args) -> str:
+    """How the banner says what "on" means at the read (AUTHORITY.md §4.3)."""
+    if args.read == "again":
+        return "spiked again after the input"
+    if args.read == "fired":
+        return "fired this epoch"
+    if args.read == "rate":
+        return (f"a firing rate over a {args.rate_tau:g} ms window, scored against {args.rate_on:g} Hz on and 0 Hz off "
+                f"(§6.9: the targets are saturation and silence)")
+    return f"fired in the last {args.read_window:g} ms"
+
+
 def apply_problem(args: argparse.Namespace) -> None:
     """Settle what the problem decides: whether a Teacher scores or trains, the epoch's length, the target, the readout."""
     problem = PROBLEMS[args.problem]
@@ -578,8 +621,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
     if problem.target is not None:
         args.target = problem.target
-    if problem.critic is not None:
-        args.critic = problem.critic
+    if args.critic is None:
+        args.critic = problem.critic if problem.critic is not None else CRITIC  # --critic overrides the problem's
     if args.rule is None:
         args.rule = problem.rule or RULE
     if args.rule in ("teacher", "adaline"):
@@ -594,7 +637,13 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
         args.interval = problem.interval if problem.interval is not None else INTERVAL
-    args.readout, args.read, args.read_window, args.coding = problem.readout, problem.read, problem.read_window, problem.coding
+    args.readout, args.coding = problem.readout, problem.coding
+    if args.read_window is None:
+        args.read_window = problem.read_window
+    if args.read is None:
+        args.read = problem.read  # --read overrides what the problem asks for
+    if args.read == "window" and args.read_window is None:
+        args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
     if args.rows == ROWS and problem.rows != ROWS:
@@ -708,7 +757,8 @@ def _run(args: argparse.Namespace) -> int:
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
-            grid.explore = args.explore
+            grid.explore, grid.rate_on = args.explore, args.rate_on
+            Neuron.rate_tau = args.rate_tau
             if args.drive == "rate":
                 print(f"input drive: rate (AUTHORITY.md §4.3) -- each input neuron a Poisson process across the "
                       f"{args.interval:g} ms epoch, {args.input_rate:g}/ms where its bit is 1 and "
@@ -720,7 +770,7 @@ def _run(args: argparse.Namespace) -> int:
                 print(
                     f"problem {args.problem}: {PROBLEMS[args.problem].description}. Epochs {args.interval:g} ms apart; "
                     f"scored on the {args.readout} row against {args.target} by the {args.critic} critic, on meaning "
-                    f"{'spiked again after the input' if args.read == 'again' else 'fired this epoch' if args.read == 'fired' else f'fired in the last {args.read_window:g} ms'}; "
+                    f"{READ_MEANS(args)}; "
                     "nothing outside the network trains it",
                     file=sys.stderr,
                 )
@@ -959,7 +1009,8 @@ def _seed_worker(job: dict) -> dict:
     grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
-    grid.explore = job.get("explore", EXPLORE)
+    grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
+    Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -1047,7 +1098,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
-                     "explore": args.explore})
+                     "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

@@ -68,7 +68,7 @@ def test_run_epoch_clears_every_neuron_before_firing(capsys):
     assert grid.waves[0].fired == grid.input_neurons()
     assert grid.input_pattern == [False, True, False, True, False, True]
     assert any(fired_before[n.name] != n.fired_in_wave for n in grid.neurons.values())
-    assert "epoch 2 at 10 ms: input 010 -> coded 010101 -> bottom row 010101" in capsys.readouterr().out
+    assert "epoch 2 at 35 ms: input 010 -> coded 010101 -> bottom row 010101" in capsys.readouterr().out
 
 
 def test_run_epoch_keeps_weights_and_shortcuts(capsys):
@@ -199,7 +199,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
 def test_cli_epochs_without_learn_just_runs_them(capsys):
     assert cli_main(["--headless", "-v", "--across", "8", "--rows", "4", "--seed", "1", "--epochs", "5", "--no-learn"]) == 0
     out = capsys.readouterr().out
-    assert out.count("epoch ") == 5 and "epoch 5 at 40 ms:" in out
+    assert out.count("epoch ") == 5 and "epoch 5 at 140 ms:" in out
 
 
 def test_cli_rejects_unknown_target():

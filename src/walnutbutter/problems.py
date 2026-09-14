@@ -47,19 +47,19 @@ PROBLEMS: dict[str, Problem] = {
     "sustain_inputs": Problem(
         "sustain_inputs",
         "the 16 four-bit inputs laid down as they are on 4 neurons (no complement coding, so 0000 forces nothing and "
-        "1111 forces all four); an input is forced, the mesh reverberates for 20 ms, and the same neurons are read "
+        "1111 forces all four); an input is forced, the mesh reverberates for one epoch, and the same neurons are read "
         "(the inputs are the outputs): on if they spiked again after the input's moment. The score "
         "is the fraction of the four whose read state matches the pattern: the forced ones on, the others off. "
         "Scored by the Teacher, not trained by it: the neurons learn by dopamine (AUTHORITY.md §6, §8)",
-        4, ROWS, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row", coding="raw",
+        4, ROWS, trained=False, readout="input", read="again", target="copy", critic="row", coding="raw",
         rule="teacher", quash=False,
     ),
     "improved_sustain": Problem(
         "improved_sustain",
         "sustain_inputs on a different topology (Byron, September 12, 2026): a 10-across, 7-row hex grid wired to reach 3, "
         "the 4 raw input bits presented in the middle, row 4 places 4 to 7 counted from 1 (row 3, places 3 to 6 from 0), "
-        "no permutation; 20 ms epochs, the same neurons read back (spiked again), the row critic, learning by dopamine",
-        10, 7, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row", coding="raw",
+        "no permutation; the same neurons read back (spiked again), the row critic, learning by dopamine",
+        10, 7, trained=False, readout="input", read="again", target="copy", critic="row", coding="raw",
         reach=3, input_cells=((3, 3), (4, 3), (5, 3), (6, 3)), permute=False, rule="teacher", quash=False,
     ),
     "population_copy": Problem(
@@ -68,7 +68,7 @@ PROBLEMS: dict[str, Problem] = {
         "so 1001 lands as 111000000111, and the top row of a 10-row grid should show the same code. The teacher scores "
         "the top row in [-1, 1], six of twelve right being zero. Cycles are quashed (§6.11): a refire weakens the "
         "synapses that contributed to it",
-        12, 10, trained=False, interval=20.0, readout="top", read="fired", target="copy", critic="row",
+        12, 10, trained=False, readout="top", read="fired", target="copy", critic="row",
         coding="population", permute=False, rule="teacher", quash=True,
     ),
     "shallow_copy": Problem(
@@ -78,7 +78,7 @@ PROBLEMS: dict[str, Problem] = {
         "read as fired this epoch. 24 neurons and 215 connections against 120 and 2,195, and the task is one hop wide: "
         "a rule that can learn anything should learn this, and one that cannot will not be rescued by depth. The floor "
         "the rules are measured against (AUTHORITY.md §8)",
-        12, 2, trained=False, interval=20.0, readout="top", read="fired", target="copy", critic="row",
+        12, 2, trained=False, readout="top", read="fired", target="copy", critic="row",
         coding="population", permute=False, rule="teacher", quash=True,
     ),
     "population_denoise": Problem(
@@ -88,7 +88,7 @@ PROBLEMS: dict[str, Problem] = {
         "probability 1/12 on the way in, and it is the INPUT zone that is read back, on meaning spiked again after the "
         "input's moment. The score is against the CLEAN code, so the network is asked to repair its input: 0 for silence, "
         "0.833 for carrying the corruption through faithfully, 1 only for correcting it (AUTHORITY.md §4.3, §8)",
-        12, 10, trained=False, interval=20.0, readout="input", read="again", target="copy", critic="row",
+        12, 10, trained=False, readout="input", read="again", target="copy", critic="row",
         coding="population", permute=False, rule="teacher", quash=True, flip=FLIP,
     ),
 }

@@ -4,7 +4,7 @@ import math
 
 from .clock import slack
 from .connection import Connection
-from .constants import BORED_AFTER, MINIMUM_POTENTIAL, REFRACTORY, REFRACTORY_HOPS, TAU, THRESHOLD
+from .constants import BORED_AFTER, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS, TAU, THRESHOLD
 
 
 class Neuron:
@@ -27,6 +27,7 @@ class Neuron:
     tau = TAU  # leak time constant, nominal milliseconds (see constants.py); math.inf switches the leak off
     refractory = REFRACTORY  # absolute refractory period, nominal milliseconds (see constants.py)
     refractory_hops = REFRACTORY_HOPS  # refractory period / hop time (see constants.py)
+    rate_tau = RATE_TAU  # ms: the exponential window the read estimates a firing rate over (see constants.py, §4.3)
     bored_after = BORED_AFTER  # ms of silence after which the threshold has fallen to zero (see constants.py); 0 = off
 
     @classmethod
@@ -48,6 +49,8 @@ class Neuron:
         self.has_fired = False  # fired in the current epoch
         self.fired_in_wave: int | None = None  # the wave of the current epoch it (last) fired in; None until it fires
         self.forced = False  # forced to fire by the stimulus in the current epoch
+        self.rate_level = 0.0  # Hz: the exponential-window estimate of this neuron's firing rate, brought up to rate_at
+        self.rate_at = 0.0  # when that estimate was last brought up to date; lazy, like the potential's leak
         self.should_fire: bool | None = None  # an input neuron's bit this epoch (True forced, False should not fire); None: not an input
         self.fired_at: float | None = None  # clock time of the last spike, across epochs
         self.previous_fired_at: float | None = None  # clock time of the spike before that
@@ -96,6 +99,19 @@ class Neuron:
         if elapsed > 0.0 and Neuron.tau != math.inf:
             return self.potential * math.exp(-elapsed / Neuron.tau)
         return self.potential
+
+    def firing_rate(self, now: float) -> float:
+        """This neuron's firing rate at `now` in Hz, an exponential window of width `Neuron.rate_tau` (AUTHORITY.md §4.3).
+
+        Each spike puts 1/rate_tau on the trace and it decays with the same
+        constant, so a neuron that has never fired, or whose spikes are long
+        past, reads zero. The trace is not reset between epochs: it is the
+        neuron's own state, and at a 35 ms epoch a spike from the epoch before
+        contributes 0.09% of one.
+        """
+        if not self.rate_level:
+            return 0.0
+        return self.rate_level * math.exp(-(now - self.rate_at) / Neuron.rate_tau)
 
     def leak(self, now: float) -> None:
         """Bring the potential up to `now`: decay it for the time since the last update. Lazy, so call it on arrival."""
@@ -174,6 +190,8 @@ class Neuron:
             self.previous_fired_at = self.fired_at
             self.fired_at = now
             self.last_update = now
+            self.rate_level = self.firing_rate(now) + 1000.0 / Neuron.rate_tau  # Hz: one spike's worth (§4.3)
+            self.rate_at = now
         if Neuron.verbose:
             print(f"{self.name} fired in wave {wave}.")
         return [connection for connection in self.outgoing if connection.is_active]

@@ -85,6 +85,7 @@ class ArrayNetwork(Network):
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
+        self.rate_on = mesh.rate_on
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -113,6 +114,8 @@ class ArrayNetwork(Network):
         # the clock: when each neuron last spiked (-inf: never), the spike before that, and how many spikes ever
         self.fired_at = np.array([-np.inf if x.fired_at is None else x.fired_at for x in neurons], dtype=float)
         self.previous_fired_at = np.array([-np.inf if x.previous_fired_at is None else x.previous_fired_at for x in neurons], dtype=float)
+        self.rate_level = np.array([x.rate_level for x in neurons], dtype=float)  # Hz, brought up to rate_at (§4.3)
+        self.rate_at = np.array([x.rate_at for x in neurons], dtype=float)
         self.spikes = np.array([x.spikes for x in neurons], dtype=np.int64)
         self.last_update = np.array([x.last_update for x in neurons], dtype=float)  # the lazy leak's bookkeeping
 
@@ -245,6 +248,12 @@ class ArrayNetwork(Network):
             if len(idx):
                 self.previous_fired_at[idx] = self.fired_at[idx]
                 self.fired_at[idx] = time
+                # the rate trace: one spike's worth on, decaying with Neuron.rate_tau (§4.3). math.exp, as the
+                # object engine uses, so the two agree to the last bit; a level of 0 short-circuits there too.
+                self.rate_level[idx] = [0.0 if not lv else lv * math.exp(-(time - at) / Neuron.rate_tau)
+                                        for lv, at in zip(self.rate_level[idx].tolist(), self.rate_at[idx].tolist())]
+                self.rate_level[idx] += 1000.0 / Neuron.rate_tau
+                self.rate_at[idx] = time
                 self.last_update[idx] = time
                 potential[idx] = 0.0  # the spike resets the potential
                 fired_wave[idx] = number
@@ -377,6 +386,12 @@ class ArrayNetwork(Network):
         self._stimulate(forced, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self._run(self.horizon)
+
+    def output_rates(self) -> list[float]:
+        """Each output neuron's firing rate at the read, in Hz (see Network.output_rates)."""
+        now, out = self.horizon, self.output_index
+        return [0.0 if not lv else lv * math.exp(-(now - at) / Neuron.rate_tau)
+                for lv, at in zip(self.rate_level[out].tolist(), self.rate_at[out].tolist())]
 
     def output_times(self) -> list[float | None]:
         return [float(self.fired_at[i]) if self.fired_wave[i] >= 0 else None for i in self.output_index]

@@ -53,6 +53,9 @@ KNOBS = {  # knob -> (command-line flag, label)
     "hebb": ("--hebb", "leaky Hebb rate"),
     "synapse_tau": ("--synapse-tau", "synapse tau (ms)"),
     "input_rate": ("--input-rate", "input rate (/ms)"),
+    "rate_tau": ("--rate-tau", "rate read tau (ms)"),
+    "read_window": ("--read-window", "read window (ms)"),
+    "rate_on": ("--rate-on", "target on rate (Hz)"),
     "seed": ("--seed", "seed"),
 }
 
@@ -70,8 +73,10 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--order", default=None, help="release-first or update-first (fixed for the sweep)")
     for flag, help_text in (("rows", "row count, overriding the problem's"), ("omega", "small-world shortcut fraction"),
                             ("drive", "how a bit becomes spikes: forced or rate"),
+                            ("read", "what the teacher reads: fired, again, window or rate"),
                             ("explore", "when the exploration draw is taken: wave or epoch"), ("rule", "which rule pays at the read"),
-                            ("eligibility", "perturb or hebb, for the reinforce rule")):
+                            ("eligibility", "perturb or hebb, for the reinforce rule"),
+                            ("critic", "how the reward is judged: row, population, sustained, decoded")):
         parser.add_argument(f"--{flag}", default=None, help=f"{help_text} (fixed for the sweep)")
     parser.add_argument("--leaky", action="store_true", help="pass --leaky to every arm")
     parser.add_argument("--no-punish", action="store_true", help="pass --no-punish to every arm")
@@ -112,7 +117,7 @@ def run_arm(job: tuple) -> dict:
         command += [KNOBS[knob][0], f"{value:g}"]
     if args.order:
         command += ["--order", args.order]
-    for flag in ("rows", "omega", "drive", "rule", "eligibility"):
+    for flag in ("rows", "omega", "drive", "read", "rule", "eligibility", "explore", "critic"):
         if getattr(args, flag) is not None:
             command += [f"--{flag}", str(getattr(args, flag))]
     if args.leaky:

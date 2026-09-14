@@ -26,7 +26,8 @@ def test_the_command_line_defaults_are_the_constants():
     assert (args.dopamine_tau, args.release_alpha, args.release_theta, args.order) == (
         C.DOPAMINE_TAU, C.DOPAMINE_RELEASE_ALPHA, C.DOPAMINE_RELEASE_THETA, C.DOPAMINE_ORDER)
     assert args.problem == C.PROBLEM
-    assert (args.target, args.critic, args.eligibility, args.late) == (C.TARGET, C.CRITIC, C.ELIGIBILITY, C.LATE)
+    assert (args.target, args.eligibility, args.late) == (C.TARGET, C.ELIGIBILITY, C.LATE)
+    assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
     assert (args.lr, args.sigma, args.homeostasis, args.target_rate) == (C.LR, C.SIGMA, C.HOMEOSTASIS, C.TARGET_RATE)
     assert (args.unstick, args.unstick_target, tuple(args.threshold_range)) == (C.UNSTICK, C.UNSTICK_TARGET, C.THRESHOLD_RANGE)
 

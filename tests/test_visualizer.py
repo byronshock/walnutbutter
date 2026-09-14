@@ -189,7 +189,7 @@ def test_show_opens_on_the_fired_mesh_and_space_advances_epochs(monkeypatch, cap
     monkeypatch.setattr(pygame.event, "get", fake_get)
     viz.show(grid, 200, 150)
     assert "epoch 1 at 0 ms:" in seen[0] and "unfired" not in seen[0]  # no pre-activation preview
-    assert "epoch 3 at 20 ms:" in seen[2]
+    assert "epoch 3 at 70 ms:" in seen[2]
     assert grid.epoch == 3  # state of the last epoch survives closing
 
 

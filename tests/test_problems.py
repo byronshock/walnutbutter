@@ -25,13 +25,14 @@ def test_the_problems_and_the_default():
     assert PROBLEMS["reversal"].trained and not PROBLEMS["sustain_inputs"].trained
     sustain = PROBLEMS["sustain_inputs"]
     assert sustain.across == 4 and sustain.coding == "raw"  # the 16 four-bit inputs as they are on 4 neurons
-    assert (sustain.interval, sustain.readout, sustain.read, sustain.target, sustain.critic) == (20.0, "input", "again", "copy", "row")
+    assert (sustain.readout, sustain.read, sustain.target, sustain.critic) == ("input", "again", "copy", "row")
+    assert sustain.interval is None  # every problem takes INTERVAL now, swept to 35 ms (§4.2)
 
 
 def test_apply_problem_settles_interval_target_readout_and_training():
     args = build_parser().parse_args(["--problem", "sustain_inputs"])
     apply_problem(args)
-    assert args.interval == 20.0 and args.target == "copy" and args.readout == "input" and args.read == "again"
+    assert args.interval == C.INTERVAL == 35.0 and args.target == "copy" and args.readout == "input" and args.read == "again"
     assert args.critic == "row" and args.coding == "raw" and args.across == 4
     assert args.learn and args.homeostasis == 0 and args.unstick == 0  # scored, never trained from outside
     args = build_parser().parse_args(["--problem", "sustain_inputs", "--interval", "7"])
@@ -161,17 +162,17 @@ def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
                      "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
     assert "-> coded" not in err
-    assert "problem sustain_inputs" in err and "Epochs 20 ms apart" in err and "by the row critic, on meaning spiked again after the input" in err
+    assert "problem sustain_inputs" in err and "Epochs 35 ms apart" in err and "by the row critic, on meaning spiked again after the input" in err
     assert "shows raw bit" in err
     assert "teaching copy" in err and "rule: teacher" in err and f"tracing every epoch to {trace}" in err
     data = json.loads(save.read_text())
-    assert data["across"] == 4 and data["epoch"] == 12 and data["problem"] == "sustain_inputs" and data["interval"] == 20.0
+    assert data["across"] == 4 and data["epoch"] == 12 and data["problem"] == "sustain_inputs" and data["interval"] == 35.0
     assert data["coding"] == "raw" and data["learning"]["target"] == "copy" and data["learning"]["critic"] == "row"
     assert data["learning"]["rule"] == "teacher"
     lines = trace.read_text().splitlines()
     assert lines[0] == "epoch,time_ms,dopamine,expected,score" and len(lines) == 13
     epoch, time_ms, dopamine, expected, score = lines[-1].split(",")
-    assert epoch == "12" and float(time_ms) == 220.0 and float(dopamine) >= 0 and float(expected) >= 0 and 0 <= float(score) <= 1
+    assert epoch == "12" and float(time_ms) == 11 * 35.0 and float(dopamine) >= 0 and float(expected) >= 0 and 0 <= float(score) <= 1
     assert cli_main(["--headless", "--load-weights", str(save), "--epochs", "3", "--no-save"]) == 0
     err = capsys.readouterr().err
     assert "problem: sustain_inputs (from the checkpoint)" in err and "teaching copy" in err and "tracing" not in err
@@ -185,7 +186,7 @@ def test_reversal_is_unchanged(tmp_path, capsys):
     save = tmp_path / "r.json"
     assert cli_main(["--headless", "--seed", "3", "--epochs", "3", "-r", "4", "--save-weights", str(save), "--no-trace"]) == 0
     data = json.loads(save.read_text())
-    assert data["problem"] == "reversal" and "learning" in data and data["across"] == 8 and data["interval"] == 10.0
+    assert data["problem"] == "reversal" and "learning" in data and data["across"] == 8 and data["interval"] == 35.0
     assert not save.with_suffix(".csv").exists()
 
 

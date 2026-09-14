@@ -28,15 +28,26 @@ MINIMUM_POTENTIAL = -1.0  # floor on a potential: inhibition and carried-over ch
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
 REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11, 2026)
-INTERVAL = 10.0  # spacing of inputs when no time is given
+INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
+# shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms
+# the problems had inherited and never chosen (Byron, same day, defaulting it here and removing every override)
 BORED_AFTER = 200.0  # ms of silence after which a neuron's threshold has fallen to zero and it fires on its own (Byron, September 12, 2026); 0 = off
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "forced"  # "forced": every bit-1 neuron is made to spike once at the epoch's moment, as it has been;
 # "rate": each input neuron is a Poisson process over the epoch instead, so a bit is a firing rate and not a
 # mandated spike (Byron, September 13, 2026)
-INPUT_RATE = 0.1  # per ms: the rate a bit-1 neuron fires at under rate drive (one spike per 10 ms, two per 20 ms epoch)
+INPUT_RATE = 0.1  # per ms: the rate a bit-1 neuron fires at under rate drive (one spike per 10 ms, 3.5 per 35 ms epoch)
 INPUT_RATE_OFF = 0.0  # per ms: the rate a bit-0 neuron fires at; 0 makes a zero bit mean silence, as forced drive does
+
+# --- reading a rate rather than a bit (AUTHORITY.md §4.3, §6.9) --------------------
+RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate over (Byron, September 14, 2026). Each
+# spike puts 1/RATE_TAU on the neuron's trace and it decays with the same constant, so no spikes means a rate of zero.
+RATE_ON = 200.0  # Hz: the rate an output the target says should be on is driven to. 200 Hz is 1/REFRACTORY, the fastest
+# the absolute refractory period allows: FOR NOW the teacher aims at saturation, not at a middling set point (§6.9).
+RATE_OFF = 0.0  # Hz: and one that should be off is driven to silence.
+READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only counting spikes this recently before the
+# epoch's end (Byron, September 14, 2026, going forward with bit reading and a five-millisecond window)
 
 # --- the problem ------------------------------------------------------------------
 PROBLEM = "reversal"  # what the network is asked to do and how it is watched (problems.PROBLEMS)

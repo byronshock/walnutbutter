@@ -14,7 +14,7 @@ from typing import Iterable
 
 from .constants import (
     EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
-    SYNAPSE_TAU,
+    RATE_ON, SYNAPSE_TAU,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
@@ -73,6 +73,7 @@ class Network:
         self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
+        self.rate_on = RATE_ON  # Hz: the rate a target-on output is driven to, and what output_levels divides by (§4.3)
         self.ecc: str | None = None  # name of the error-correcting code applied before complement coding, if any
         self.input_data: list[bool] | None = None  # the raw data bits when ecc is on
 
@@ -116,10 +117,28 @@ class Network:
         if self.read == "again":
             after = self.time + slack(self.time)  # strictly after the input's moment: a forced neuron must have spiked again
             return [neuron.fired_at is not None and neuron.fired_at > after for neuron in self.output_row()]
+        if self.read == "rate":
+            return [level >= 0.5 for level in self.output_levels()]  # half of saturation: for reporting and decoding
         if self.read == "window" and self.read_window is not None:
             since = self.horizon - self.read_window
             return [neuron.fired_at is not None and neuron.fired_at + slack(neuron.fired_at) >= since for neuron in self.output_row()]
         return [neuron.has_fired for neuron in self.output_row()]
+
+    def output_rates(self) -> list[float]:
+        """Each output neuron's firing rate at the read, in Hz (AUTHORITY.md §4.3): the exponential window of Neuron.firing_rate."""
+        return [neuron.firing_rate(self.horizon) for neuron in self.output_row()]
+
+    def output_levels(self) -> list[float]:
+        """What the teacher reads, one number in [0, 1] per output neuron (AUTHORITY.md §6.9).
+
+        Under `read = "rate"` it is the measured rate over `rate_on`, clipped:
+        0 is silence and 1 is saturation. Under every other read it is the
+        boolean of `output_fired` as 0.0 or 1.0, so a rule scored this way is
+        scored exactly as it was before the rate read existed.
+        """
+        if self.read == "rate":
+            return [min(1.0, max(0.0, rate / self.rate_on)) for rate in self.output_rates()]
+        return [1.0 if fired else 0.0 for fired in self.output_fired()]
 
     def input_width(self) -> int:
         """How many neurons the input covers: one bit of the (coded, permuted) pattern each."""

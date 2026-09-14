@@ -49,7 +49,7 @@ walnutbutter                 # open the window, free-run, learn, report accuracy
 walnutbutter --headless --epochs 20000 -q   # the same without a window, for a fixed number of epochs
 walnutbutter --step          # window where each Space press runs one epoch
 walnutbutter --no-learn      # just watch the untrained network
-walnutbutter --problem sustain_inputs   # the 16 four-bit inputs as they are on 4 neurons, 20 ms epochs; score = which input neurons spiked again, against the pattern; learns by dopamine (AUTHORITY.md §8)
+walnutbutter --problem sustain_inputs   # the 16 four-bit inputs as they are on 4 neurons; score = which input neurons spiked again, against the pattern; learns by dopamine (AUTHORITY.md §8)
 walnutbutter --problem improved_sustain # the same on a 10x7 grid wired to reach 3, the 4 inputs in the middle of the middle row
 walnutbutter --problem population_copy  # 4 bits population-coded over 12 neurons (1001 -> 111000000111), copied to the top row, cycles quashed
 walnutbutter --problem shallow_copy  # the same task on two rows: 24 neurons, one hop from input to output, the floor every rule is measured against

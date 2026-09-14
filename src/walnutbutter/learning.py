@@ -118,19 +118,29 @@ def output_fired(grid: GridOfNeurons) -> list[bool]:
     return grid.output_fired()
 
 
+def output_levels(grid: GridOfNeurons) -> list[float]:
+    """What the teacher reads: one number in [0, 1] per output neuron (see Network.output_levels, AUTHORITY.md §6.9).
+
+    Under a boolean read these are 0.0 and 1.0 and every score below is what
+    it always was; under `read = "rate"` they are the measured firing rate
+    over RATE_ON, so silence reads 0 and saturation reads 1.
+    """
+    return grid.output_levels()
+
+
 def output_errors(grid: GridOfNeurons, target: str = "reversed") -> dict[Neuron, int]:
     """Error per output neuron: +1 should have fired, -1 should not have, 0 correct."""
     return {
-        neuron: int(want) - int(fired)
-        for neuron, fired, want in zip(output_row(grid), output_fired(grid), expected_outputs(grid, target))
+        neuron: float(want) - level
+        for neuron, level, want in zip(output_row(grid), output_levels(grid), expected_outputs(grid, target))
     }
 
 
 def accuracy(grid: GridOfNeurons, target: str = "reversed") -> float:
     """Fraction of the output row that matches the target, 0 to 1. This is the reward."""
-    fired = output_fired(grid)
+    levels = output_levels(grid)
     want = expected_outputs(grid, target)
-    return sum(1 for f, w in zip(fired, want) if f == w) / len(want)
+    return sum(1.0 - abs(level - float(w)) for level, w in zip(levels, want)) / len(want)
 
 
 # --- reading the output row as a receiver would ------------------------------------
@@ -195,7 +205,38 @@ def decoded_exact(grid: GridOfNeurons, target: str = "reversed") -> float:
     return 1.0 if decoded_output(grid, target) == expected_data(grid) else 0.0
 
 
-def teacher_score(grid: GridOfNeurons, target: str = "copy") -> float:
+def population_vote(fired: Sequence[bool], population: int) -> list[bool]:
+    """Majority vote within each group of `population` neurons: a raw bit is 1 if most of its group fired.
+
+    Byron, September 14, 2026: "If two of the three neurons fired, that is a
+    1. If one of the three fired, that is a 0. Three is a 1, and none is a 0."
+    """
+    groups = [fired[i:i + population] for i in range(0, len(fired), population)]
+    return [sum(1 for f in group if f) * 2 > population for group in groups]
+
+
+def population_output(grid: GridOfNeurons, target: str = "copy") -> list[bool]:
+    """The raw bits a receiver would decode from the output row by majority vote (AUTHORITY.md §6.13)."""
+    return population_vote(output_fired(grid), grid.population)
+
+
+def population_accuracy(grid: GridOfNeurons, target: str = "copy") -> float:
+    """The kinder teacher: a quarter of a point per raw bit the majority vote gets right (AUTHORITY.md §6.13).
+
+    Byron, September 14, 2026: "Output patterns will be scored against the
+    desired input as follows: for each bit, award 0.25 points if the output
+    bit matches the desired input." With four raw bits a quarter each, that
+    is the fraction of raw bits right, in [0, 1] like every other critic, and
+    0.25 a bit falls out of there being four of them. Both the read and the
+    target are decoded the same way, so a flipped input (§4.3) is scored
+    against the clean code and any target arrangement works.
+    """
+    want = population_vote(expected_outputs(grid, target), grid.population)
+    got = population_output(grid, target)
+    return sum(1 for a, b in zip(got, want) if a == b) / len(want)
+
+
+def teacher_score(grid: GridOfNeurons, target: str = "copy", critic: str = "row") -> float:
     """The external teacher's score for the read (AUTHORITY.md §6.10), in [-1, 1] for a four-neuron input zone.
 
     Byron, September 12, 2026: +0.25 for a forced-input neuron that
@@ -206,10 +247,11 @@ def teacher_score(grid: GridOfNeurons, target: str = "copy") -> float:
     any size, and twelve outputs score 0 when six are right (Byron,
     September 13, 2026).
     """
-    fired = output_fired(grid)
+    if TEACHER_CREDIT is None:
+        return 2.0 * CRITICS[critic](grid, target) - 1.0
+    levels = output_levels(grid)  # a credit fixed by hand only makes sense neuron by neuron, so the row form stands
     want = expected_outputs(grid, target)
-    credit = TEACHER_CREDIT if TEACHER_CREDIT is not None else 1.0 / len(want)
-    return credit * sum(1 if f == w else -1 for f, w in zip(fired, want))
+    return TEACHER_CREDIT * sum(1.0 - 2.0 * abs(level - float(w)) for level, w in zip(levels, want))
 
 
 def adaline_errors(grid: GridOfNeurons, target: str = "copy") -> list[float]:
@@ -219,9 +261,9 @@ def adaline_errors(grid: GridOfNeurons, target: str = "copy") -> list[float]:
     was on and should not have been, 0 for one read correctly. A correct
     epoch therefore moves nothing: ADALINE corrects mistakes only.
     """
-    fired = output_fired(grid)
+    levels = output_levels(grid)
     want = expected_outputs(grid, target)
-    return [float(w) - float(f) for f, w in zip(fired, want)]
+    return [float(w) - level for level, w in zip(levels, want)]
 
 
 def apply_adaline(grid: GridOfNeurons, errors, lr: float) -> int:
@@ -255,10 +297,10 @@ def sustained(grid: GridOfNeurons, target: str = "copy") -> float:
     Byron, September 12, 2026: the neurons that were not forced are not
     scored at all. With no neuron to sustain the score is 0.
     """
-    fired = output_fired(grid)
+    levels = output_levels(grid)
     want = expected_outputs(grid, target)
-    forced = [f for f, w in zip(fired, want) if w]
-    return sum(1 for f in forced if f) / len(forced) if forced else 0.0
+    on = [level for level, w in zip(levels, want) if w]
+    return sum(on) / len(on) if on else 0.0
 
 
 CRITICS = {
@@ -266,6 +308,7 @@ CRITICS = {
     "sustained": sustained,  # of the neurons the target says should be on, the fraction on: the forced neurons that sustained
     "decoded": decoded_accuracy,  # fraction of data bits right after reading and error-correcting the row
     "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
+    "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
 }
 
 
@@ -442,7 +485,7 @@ def reinforce(
                 # A target that never fired has no moment at which its synapses can be told apart, so
                 # the trace is exp(-hop/TAU) for all of them: the scale changes, the resolution does not.
                 # Reading it at the horizon instead annihilates the whole non-firing half (5e-5 at TAU 2,
-                # a 20 ms epoch), which is the depressive half of the hebb eligibility.
+                # a 35 ms epoch), which is the depressive half of the hebb eligibility.
                 e = e * math.exp(-(when - connection.last_signal + hop) / tau)
             weight = connection.weight + step * e
             if weight < low:
@@ -496,7 +539,7 @@ class Teacher:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic != "row" and target not in ("reversed", "copy"):
+        if critic not in ("row", "population") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
         self.critic = critic
         if late not in LATE_RULES:
@@ -564,7 +607,7 @@ class Teacher:
         if self.baseline is None:
             self.baseline = reward
         advantage = reward - self.baseline
-        self.last_signal = teacher_score(self.grid, self.target) if self.rule == "teacher" else None
+        self.last_signal = teacher_score(self.grid, self.target, self.critic) if self.rule == "teacher" else None
         if self.rule == "teacher":
             self.moved += apply_teacher(self.grid, self.last_signal, self.lr)  # the teacher pays the epoch's eligibility
         elif self.rule == "adaline":

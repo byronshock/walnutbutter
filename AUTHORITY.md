@@ -70,9 +70,12 @@ literal of its own.
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower |
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
-| INTERVAL | 10 ms | spacing of inputs when no time is given |
+| INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
 | INPUT_DRIVE | forced | how a bit becomes spikes (§4.3): one mandated spike at $t_e$, or `rate`, a Poisson process across the epoch |
 | INPUT_RATE, INPUT_RATE_OFF | 0.1, 0 /ms | the rates a bit-1 and a bit-0 neuron fire at under rate drive |
+| RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
+| READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
+| RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
 | BORED_AFTER | 200 ms | silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4) |
 
 ### 1.3 Learning
@@ -224,6 +227,44 @@ the horizon the schedule has already run to. In order:
 5. **Report.** The output is read (and, under the reinforce rule, scored
    and reinforced, §6.7).
 
+*Swept, September 14, 2026: how long should an epoch be?* INTERVAL was never
+chosen, only inherited. On shallow_copy at five rows under rate drive with
+reward-modulated Hebb, six seeds and 100,000 epochs, against both critics:
+
+| epoch | 5 | 19 | 20 | 21 | 25 | 26 | 30 | 35 | 40 | 45 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| row critic | 0.529 | 0.781 | 0.794 | 0.799 | | 0.830 | | | | |
+| population critic | 0.535 | 0.800 | 0.814 | 0.818 | 0.847 | 0.849 | 0.858 | **0.869** | **0.869** | 0.865 |
+
+Three findings. **Nothing distinguishes 20 ms**: 19, 20 and 21 lie on a smooth
+monotonic line with no step at the boundary, which is what should be expected
+once stated — nothing in the model knows what the interval is supposed to be,
+so the epoch edge has no status of its own. **The optimum is a plateau at
+35–40 ms**, about twice the inherited value: every step up to 35 wins in six
+seeds of six, 40 over 35 wins in three of six and gains 0.0007, and 45 loses
+in four of six. Seed-to-seed spread also triples past 30 ms (sd 0.003 below,
+0.012 above), so the far end is both no better and less reliable. **And the
+critic does not interact with the epoch at all**: the population critic sits a
+near-constant +0.019 above the row critic at every interval but the collapsed
+one. Same shape, shifted — the signature of a kinder yardstick rather than a
+different behaviour, agreeing with §6.13's cross-scoring.
+
+The 5 ms arm collapses to chance for four reasons at once: the epoch equals
+REFRACTORY so no neuron can fire twice, three waves barely span the two hops
+the task needs, and at 0.1/ms half of all epochs present no input at all.
+
+*Not yet separated:* at a fixed input rate a longer epoch buys both more
+settling time and more input spikes (2.0 at 20 ms, 3.5 at 35). Scaling the
+rate as 1/INTERVAL would hold the spike count constant and say which of the
+two the plateau is about.
+
+*Decided (Byron, September 14, 2026), on the strength of the above:* INTERVAL
+is **35 ms**, and no problem overrides it. The five that pinned 20 ms — a
+value inherited from the first sustain task and never chosen — no longer set
+an interval at all, so the epoch's length now lives in exactly one place.
+Anything measured before this ran at 20 ms (or at 10 ms for reversal) and is
+labelled as such where it matters.
+
 ### 4.3 Input and output
 
 The network's input is its bottom row (the bottom layer, for columns); its
@@ -262,8 +303,8 @@ presenting them all at once and seeing what happens."** INPUT_DRIVE names it.
   \text{interval})$ and the refractory period drops what it drops, exactly as
   a forced stimulus is dropped today.
 
-At the default rate a bit-1 neuron expects two spikes across a 20 ms epoch
-and produces none at all $e^{-2} = 14\%$ of the time, so the drive is
+At the default rate a bit-1 neuron expects 3.5 spikes across a 35 ms epoch
+and produces none at all $e^{-3.5} = 3\%$ of the time, so the drive is
 genuinely probabilistic: the pattern is what the rates are, not what the
 spikes were. `Network.input_events` holds the (place, time) train an epoch
 actually used, because `input_schedule()` draws afresh each time it is
@@ -277,6 +318,149 @@ after destroying it, which is why §8's input-zone problems have stayed at
 chance under every rule. Under rate drive the input arrives as spikes the
 neuron's own dynamics must accommodate, and there is something left to read.
 That is a prediction, not a result: no problem uses rate drive yet.
+
+**What the teacher reads (Byron, September 14, 2026): a rate, not a bit.**
+"Let's make the teacher read spike counts instead of a bit. It should
+estimate the rate using an exponential decay window with time constant 5 ms:
+if there are no spikes, the rate is zero." A fourth `read` joins the three
+above:
+
+$$r_j(t) = \frac{1}{\text{RATE\_TAU}}\sum_{k}
+e^{-(t - t^{(k)}_j)/\text{RATE\_TAU}},$$
+
+the sum over $j$'s spikes, read at the horizon and expressed in Hz. Each
+spike puts one spike's worth on the trace and it decays with the same
+constant, so a neuron that has never fired reads zero, and so does one whose
+spikes are long past. The trace is a property of the neuron and is **not**
+reset between epochs; at a 35 ms epoch a spike from the epoch before
+contributes 0.09% of one.
+
+Two coincidences are not coincidences. RATE_TAU = 5 ms is REFRACTORY, so a
+**single spike read at its own moment reads exactly 200 Hz**; and 200 Hz is
+$1/\text{REFRACTORY}$, the fastest the absolute refractory period allows.
+RATE_ON is therefore saturation in the strict sense — no train can average
+more.
+
+*Claude's reading of what this costs, worth knowing before it is swept.* The
+estimator is unbiased in time-average: a train at exactly the refractory
+period averages 200.5 Hz over one interval. Its **instantaneous** value is
+not, and swings from 117 Hz to 316 Hz across that interval depending on where
+in it the read happens to fall. So a perfectly saturated neuron read at the
+horizon scores a level anywhere from 0.58 to 1.00, and a perfect answer will
+often not read as one. That is a property of reading an exponential window at
+a single instant, not of the network.
+
+> **⚠ The window strategy may be wrong, recorded at Byron's request
+> (September 14, 2026).** *Byron:* "The biggest problem is still with the
+> teacher. It is watching a 20 ms window and asking how many times the neuron
+> fired. I don't want to change the window strategy — which may be WRONG
+> because it does not follow the neural dynamics — for now."
+>
+> *Claude's reading of the objection.* Everything about this read is imposed
+> from outside the network. RATE_TAU is a constant the experimenter picks,
+> not anything the neuron has; the read happens at the horizon, an instant
+> the experimenter picks; and none of the network's own timescales — the 2 ms
+> leak, the 5 ms refractory period, the 1.67 ms hop — enters the estimate
+> except by the coincidence that RATE_TAU was set equal to one of them. A
+> read that followed the dynamics would ask the neuron something about its
+> own state rather than counting its spikes against a wall clock. Kept for
+> now, and swept rather than assumed: §8's read-window sweep varies RATE_TAU
+> from 2 ms to the full 20 ms epoch.
+>
+> What that sweep also varies, which is worth knowing when reading it: one
+> spike read at its own moment reads $1000/\text{RATE\_TAU}$ Hz, so the number
+> of spikes needed to read as fully on is $\text{RATE\_TAU}/5$. At 5 ms it is
+> exactly one spike, at 2 ms it is 0.4 of one — a single spike over-saturates
+> and the read is a bit in disguise — and at 20 ms it is four. So the sweep
+> runs from a binary read to a genuinely graded one, and the window's width
+> and the read's resolution move together rather than independently.
+
+> *Swept, September 14, 2026: eight windows from 2 ms to the full 20 ms
+> epoch, six seeds, 100,000 epochs, on shallow_copy at five rows under rate
+> drive with reward-modulated Hebb.* The optimum is **RATE_TAU = 5 ms**,
+> which beats both ends in six seeds of six — and 5 ms is REFRACTORY, the one
+> width at which a single spike reads exactly RATE_ON. So the best window is
+> the most bit-like one that is not degenerate, and the read gets worse the
+> more genuinely graded it becomes. The whole sweep spans 0.517 to 0.526,
+> against a floor of 0.5.
+>
+> Scoring the trained networks under both reads settles what that means. A
+> network **taught on the bit** scores 0.568 under the rate read and 0.741
+> under the bit read; the best network taught on the rate scores 0.520 and
+> 0.609. The rate teacher produces a worse network **by the rate's own
+> measure**, so this is not a harsher yardstick applied to the same
+> behaviour.
+>
+> And the risk §6.9 records is realised, not hypothetical: the rate-taught
+> networks carry mean $|w|$ of 0.54 with 39 to 80 weights at the rails,
+> against 0.34 and 9 for the bit-taught one, while firing **fewer** spikes an
+> epoch (22.7 against 30.5). The teacher asks for more rate, the refractory
+> period caps what it can deliver, and the weights absorb the difference.
+> This is the evidence for Byron's own reservation above rather than against
+> it.
+
+> *Decided (Byron, September 14, 2026):* "We are going to go forward with bit
+> reading and a five-millisecond window to get the job done." So the read is
+> `window` at READ_WINDOW = 5 ms — a **bit**, but counting only spikes within
+> the last 5 ms before the epoch's end — and the rate read stays built,
+> swept and available rather than in use. That window is the one §8 recorded
+> abandoning on September 12, for reading one phase in three of a sustaining
+> neuron as off; it returns because the alternative measured worse, not
+> because that objection was answered.
+
+> *Validated at Byron's request, September 14, 2026, and the validation
+> refuses half of the decision.* Eight input interspike intervals from 2 ms
+> to 20 ms against that fixed read, six seeds, 100,000 epochs. The input's
+> timescale barely matters: the whole sweep spans 0.523 to 0.528 and the
+> per-seed winners are scattered across six of the eight intervals, so no ISI
+> is distinguishable from its neighbours. (Byron predicted 12.5 ms; it came
+> sixth of eight, losing to 10 ms in five seeds of six by 0.004.)
+>
+> What the sweep does show is that the **window** is the wrong half of the
+> decision. Every arm sits near 0.525 where the same configuration read as
+> `fired` scored 0.80, and cross-scoring settles that this is the teacher and
+> not the yardstick: a network taught on `fired` scores **0.571** under the
+> 5 ms window and 0.755 under `fired`, while one taught on the 5 ms window
+> scores 0.533 and 0.623. The window-taught network is worse **under the
+> window's own read**. Its weights show the §6.9 signature again — mean $|w|$
+> 0.551 with 25 at the rails against 0.363 and 18, firing fewer spikes an
+> epoch (20.7 against 28.3).
+>
+> So the bit was right and the narrowing was not. Both alternatives to
+> `fired` tried so far — the rate read of §4.3 and this 5 ms window — make a
+> worse network by their own measures, and both inflate the weights while
+> reducing the firing. READ_WINDOW's width has not itself been swept, and
+> `window` at 20 ms is `fired`, so that is one axis rather than a dichotomy.
+
+> *Swept, September 14, 2026: READ_WINDOW over 5, 5.5, 7.5, 10, 12.5, 15 and
+> 20 ms, six seeds, 100,000 epochs, input ISI 10 ms.* **Wider is better,
+> monotonically, all the way to the epoch**, and every step wins in six seeds
+> of six bar the last:
+>
+> | window | 5 | 5.5 | 7.5 | 10 | 12.5 | 15 | 20 |
+> |---|---|---|---|---|---|---|---|
+> | score | 0.528 | 0.532 | 0.547 | 0.576 | 0.638 | 0.783 | **0.794** |
+>
+> The axis is calibrated at both ends: the 20 ms arm *is* `fired`, and it
+> scores 0.7935 — the rate-drive sweep's figure for `fired` at this input
+> rate, to four decimals. So there is no useful width between the two, and
+> narrowing the window only ever costs: 0.27 of score from 20 ms down to 5.
+>
+> The shape is not a learning curve but a ceiling. Every width is flat from
+> its first ten thousand epochs onward — 12.5 ms reaches 0.639 by epoch
+> 20,000 and is still at 0.638 at 100,000 — so the narrow windows are not
+> learning slowly, they have converged to less. And what sets the ceiling is
+> plain: the output row's spikes are spread nearly uniformly across the
+> epoch (10–17% in each 2.5 ms slice), so a window of width $W$ can see only
+> $W/20$ of them. A 5 ms window catches 20% of the spikes the network
+> produces and scores 0.53; a 12.5 ms window catches 57% and scores 0.64.
+> The teacher is not measuring the network, it is measuring a sample of it,
+> and the sample size is the score.
+>
+> *So the September 12 objection was right and its remedy was too.* The
+> window read was abandoned then for reading a sustaining neuron as off; it
+> is abandoned again now, for the same reason measured at seven widths.
+> **The read stays `fired`.**
 
 **A noisy input (Byron, September 13, 2026).** A problem may corrupt what it
 presents: each bit of the coded, permuted pattern is **flipped independently
@@ -738,6 +922,38 @@ Thus the possible scores for any input on reading its sustain behaviour are
 $-1$, $-0.5$, $0$, $0.5$ and $1$ (four input neurons at TEACHER_CREDIT
 each; a wider zone widens the range in the same steps).
 
+**Scoring a rate (Byron, September 14, 2026): "the target rates will be 200
+Hz on and 0 Hz off. FOR NOW we drive the neurons toward saturation if they
+are firing correctly and silence if they are not."** The read of §4.3 becomes
+a **level** $\ell_j = \mathrm{clip}(r_j/\text{RATE\_ON}, 0, 1)$, with 0
+silence and 1 saturation, and every score in this section is computed from
+$\ell_j$ in place of the bit:
+
+$$S = \frac{1}{n}\sum_j \big(1 - 2\,|\ell_j - d_j|\big), \qquad
+R = \frac{1}{n}\sum_j \big(1 - |\ell_j - d_j|\big),$$
+
+with $d_j \in \{0, 1\}$ the target bit. When $\ell_j$ is 0 or 1 these are
+exactly the old $\pm$credit score and the old row critic, so every rule
+scored under a boolean read is scored as it always was, and $S = 2R - 1$
+still holds. ADALINE's per-neuron error becomes $d_j - \ell_j$, now
+continuous on $[-1, 1]$ rather than $\{-1, 0, +1\}$.
+
+> **⚠ A decision with a known risk, recorded at Byron's request (September
+> 14, 2026).** The target rates are the two **extremes** of what a neuron can
+> do: saturation for an output that should be on, silence for one that should
+> be off. There is no intermediate set point anywhere in this rule. A neuron
+> that is firing correctly is pushed to fire *faster* no matter how fast it
+> is already going, and the only thing that stops it is the absolute
+> refractory period — a cap on the spikes, not on the weights driving them,
+> which go on growing until they hit WEIGHT_RANGE. This could have drastic
+> consequences if neurons are driven into unstable regions, and it is adopted
+> FOR NOW with that understood rather than because the extremes are believed
+> to be the right targets. What to watch: weights at the rails, spikes per
+> epoch climbing without the score climbing, and the §5.4 bored-neuron
+> threshold interacting with a population that never falls silent. RATE_ON is
+> tunable (`--rate-on`), so a middling target is one flag away when it is
+> wanted.
+
 *Claude's reading, built:* the score is known only at the read, so the
 epoch's credit is carried by an **eligibility trace**. Everything in
 §6.2–6.5 stands except who supplies the global signal and when the weights
@@ -1012,7 +1228,76 @@ consistent with the head of §6, and is not yet decided.
    (HEBB_RATE), not a value of RULE. ELIGIBILITY = hebb inside the reinforce
    rule (§6.7) is something else, $\pm 1$ by whether $j$ fired.
 
-### 6.13 What is reported
+### 6.13 The kinder teacher — decided, built
+
+*Byron, September 14, 2026.* "Let's make a new teacher for this task. This
+teacher is kinder: if two of the three neurons fired, that is a 1. If one of
+the three fired, that is a 0. Three is a 1, and none is a 0. Output patterns
+will be scored against the desired input as follows: for each bit, award 0.25
+points if the output bit matches the desired input."
+
+So the output row is read as the population code it is (§4.3), not as twelve
+independent neurons. Each group of POPULATION neurons votes, the majority
+carries the raw bit, and the score is the fraction of raw bits the vote gets
+right — a quarter each, because there are four of them:
+
+$$b_g = \Big[\textstyle\sum_{j \in g} \text{fired}_j > \tfrac{\text{POPULATION}}{2}\Big],
+\qquad R = \frac{1}{k}\sum_{g} \big[\,b_g = d_g\,\big].$$
+
+CRITIC = population selects it. **Where the kindness is:** under the row
+critic every one of the twelve neurons must be right, so one wrong neuron in
+a group of three costs a twelfth of the score; under this one the majority
+still carries the bit and it costs nothing. A group can be wrong by a third
+and still be read correctly. What it cannot do is disagree two to one.
+
+*Claude's reading, built.* The read and the target are decoded by the same
+vote, so a corrupted input (§4.3) is scored against the clean code and any
+target arrangement works. The trivial floor is unchanged at 0.5: a silent
+row votes every bit 0 and a saturated row votes every bit 1, and half the
+raw bits are 1 on average, so both score two quarters — the same floor every
+other critic has, which keeps the numbers comparable.
+
+**And this fixes a wart rather than adding one.** The teacher's signal is now
+$S = 2R - 1$ through whichever critic is running, where before it was
+computed neuron by neuron regardless of the critic, so the rule of §6.9 could
+pay a signal the critic did not agree with. For the row critic the two are
+identically equal — $\frac{1}{n}\sum(1 - 2|\ell_j - d_j|)$ *is*
+$2 \cdot \frac{1}{n}\sum(1 - |\ell_j - d_j|) - 1$ — so nothing measured
+before changes, and TEACHER_CREDIT set by hand still takes the old per-neuron
+path, which is the only place it means anything.
+
+*Measured, September 14, 2026: six seeds, 100,000 epochs, shallow_copy at
+five rows under rate drive with reward-modulated Hebb.* On its own trace the
+kinder teacher reads **0.814** against the row critic's 0.794 — but a kinder
+yardstick reads higher on the same behaviour, so that number settles nothing.
+Freezing both networks and scoring each under both critics does:
+
+| network | population critic | row critic |
+|---|---|---|
+| taught by the kinder | 0.757 | 0.713 |
+| taught by the row | **0.762** | **0.755** |
+
+Under the **population critic the two are a tie** — 0.005 apart, the
+row-taught network ahead in three seeds of six. Under the row critic the
+row-taught network wins in five of six. So the kindness buys nothing by its
+own measure and costs under the stricter one.
+
+Where it goes is visible. Counting the output groups that disagree with
+themselves — one or two of three fired, rather than none or all — the
+kind-taught networks split **30.3%** of their groups against the row-taught
+networks' **12.0%**. Forgiving a wrong neuron in a group produces wrong
+neurons in groups: the network learns exactly what it is graded on, and the
+margin the tolerance creates is spent on sloppiness rather than banked as
+robustness.
+
+One thing it does buy, and it is the §6.9 signature running the right way for
+once: the kind-taught networks carry **no weights at the rails** against 18,
+at a lower mean $|w|$ (0.320 against 0.363). A teacher that stops asking once
+the majority is safe stops pushing the weights, which is exactly what the
+extremes of §6.9 do not do. CRITIC stays `row` for every problem; the kinder
+teacher is available with `--critic population`.
+
+### 6.14 What is reported
 
 Spikes to date, the neurons fired this epoch, the dopamine value and its
 expectation, releases and updates to date; the score of every epoch, its
@@ -1101,7 +1386,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   (row 3, places 3 to 6 counted from 0: the middle four of the middle row).
   The reach is 3: every neuron is wired to every cell within three hex
   steps (§3.1). No permutation, the bits land where they are. Everything
-  else as sustain_inputs: raw coding, 20 ms epochs, the same four neurons
+  else as sustain_inputs: raw coding, the same four neurons
   read back as spiked again, the row critic, learning by dopamine, nothing
   outside the network training it. A problem may name any input zone, a
   list of (place, row) cells (`Network.set_input_cells`), in place of the

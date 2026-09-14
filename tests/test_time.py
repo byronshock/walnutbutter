@@ -6,6 +6,7 @@ import pytest
 
 from walnutbutter.cli import cli_main
 from walnutbutter.columns import HexColumns
+from walnutbutter import constants as C
 from walnutbutter.grid import GridOfNeurons
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import run_epoch
@@ -32,7 +33,9 @@ HOP = 5.0 / 3.0
 def test_the_defaults_and_the_horizon(clock):
     assert Neuron.refractory == 5.0 and Neuron.refractory_hops == 3.0 and Neuron.hop() == pytest.approx(HOP)
     grid = GridOfNeurons(across=4, rows=3, omega=0)
-    assert grid.interval == 10.0 and grid.time == 0.0 and grid.next_time() == 0.0 and grid.horizon == 0.0
+    assert grid.interval == C.INTERVAL == 35.0  # the swept default (§4.2)
+    grid.interval = 10.0  # this test is about the horizon's arithmetic, so pin a round number
+    assert grid.time == 0.0 and grid.next_time() == 0.0 and grid.horizon == 0.0
     run_epoch(grid, verbose=False)
     assert grid.time == 0.0 and grid.horizon == 10.0 and grid.next_time() == 10.0
     run_epoch(grid, verbose=False)
@@ -187,6 +190,7 @@ def test_a_bored_neuron_fires_on_its_own_after_its_silence(clock, monkeypatch):
     monkeypatch.setattr(Neuron, "bored_after", 200.0)
     # a neuron nobody talks to, in a network: it fires at the first wave after 200 ms, the next input
     grid = GridOfNeurons(across=4, rows=3, weight=0.0, omega=0)  # weight 0: nothing propagates
+    grid.interval = 10.0  # this test is about the boredom clock, not the epoch's length
     lonely = grid.get_neuron_at(1, 1)
     for _ in range(21):
         run_epoch(grid, bits=[False, False], verbose=False)  # inputs 10 ms apart: the 21st lands at 200 ms
