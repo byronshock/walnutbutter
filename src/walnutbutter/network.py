@@ -248,13 +248,23 @@ class Network:
 
         Under `drive = "forced"` every place whose bit is 1 is stimulated once
         at the epoch's moment: the behaviour this has always had. Under
-        `drive = "rate"` each place is an independent Poisson process across
-        the epoch, at `input_rate` where its bit is 1 and `input_rate_off`
-        where it is 0, so a bit is a firing rate rather than a mandated spike
-        and a bit-1 neuron may produce no spike at all. The draws come from
-        the network's own seeded stream, in place order, so a seed reproduces
-        them and both engines draw the same train. The refractory period drops
-        whatever it drops when a stimulus arrives, exactly as before.
+        `drive = "rate"` an independent Poisson process **drives** each place
+        across the epoch, at `input_rate` where its bit is 1 and
+        `input_rate_off` where it is 0.
+
+        These are arrivals, not spikes. An arrival that lands while the neuron
+        is refractory is dropped by the schedule, so the neuron fires at the
+        first arrival after its refractory period ends, and its spike train is
+        a renewal process with dead time rather than a Poisson one: mean ISI =
+        REFRACTORY + 1/rate, and a coefficient of variation below 1 where a
+        Poisson train's is exactly 1. The refractory period that matters is
+        the neuron's own, so a spike the mesh drove also silences the drive,
+        which is why the arrivals are emitted in full rather than thinned here
+        (Byron, September 14, 2026: real neural signalling is not a Poisson
+        process).
+
+        The draws come from the network's own seeded stream, in place order,
+        so a seed reproduces them and both engines draw the same train.
         """
         pattern = self.input_pattern
         if pattern is None:

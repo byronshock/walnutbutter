@@ -35,10 +35,13 @@ BORED_AFTER = 200.0  # ms of silence after which a neuron's threshold has fallen
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "forced"  # "forced": every bit-1 neuron is made to spike once at the epoch's moment, as it has been;
-# "rate": each input neuron is a Poisson process over the epoch instead, so a bit is a firing rate and not a
-# mandated spike (Byron, September 13, 2026)
-INPUT_RATE = 0.1  # per ms: the rate a bit-1 neuron fires at under rate drive (one spike per 10 ms, 3.5 per 35 ms epoch)
-INPUT_RATE_OFF = 0.0  # per ms: the rate a bit-0 neuron fires at; 0 makes a zero bit mean silence, as forced drive does
+# "rate": a Poisson process DRIVES each input neuron across the epoch instead (Byron, September 13-14, 2026)
+INPUT_RATE = 1.0  # per ms: the rate of that driving process, not the rate the neuron fires at. Arrivals inside the
+# refractory period are dropped, so the neuron fires at the first arrival after it ends and the spike train is a
+# renewal process with dead time, not a Poisson one: mean ISI = REFRACTORY + 1/rate, so 6 ms and 167 Hz here, at a
+# coefficient of variation of 0.17 against a Poisson train's 1.0. Byron, September 14, 2026: real neural signalling is
+# not a Poisson process, so the driving process gets its own, much higher rate and the refractory period does the rest.
+INPUT_RATE_OFF = 0.0  # per ms: the driving rate for a bit-0 neuron; 0 makes a zero bit mean silence, as forced drive does
 
 # --- reading a rate rather than a bit (AUTHORITY.md §4.3, §6.9) --------------------
 RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate over (Byron, September 14, 2026). Each

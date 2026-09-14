@@ -72,7 +72,7 @@ literal of its own.
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
 | INPUT_DRIVE | forced | how a bit becomes spikes (§4.3): one mandated spike at $t_e$, or `rate`, a Poisson process across the epoch |
-| INPUT_RATE, INPUT_RATE_OFF | 0.1, 0 /ms | the rates a bit-1 and a bit-0 neuron fire at under rate drive |
+| INPUT_RATE, INPUT_RATE_OFF | 1, 0 /ms | the rates of the Poisson processes that *drive* a bit-1 and a bit-0 neuron; the neuron fires at the first arrival after its refractory period, at 167 Hz and CV 0.17 (§4.3) |
 | RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
@@ -294,22 +294,40 @@ presenting them all at once and seeing what happens."** INPUT_DRIVE names it.
 
 - `forced`, the default and everything above: every neuron whose bit is 1 is
   made to spike once, at $t_e$, all of them in one wave.
-- `rate`: each input neuron is an independent **Poisson process** across the
-  epoch, at INPUT_RATE where its bit is 1 and INPUT_RATE_OFF where it is 0.
-  A bit is then a firing rate rather than a mandated spike. Inter-spike
-  intervals are drawn $\mathrm{Exp}(\lambda)$ from the network's own seeded
-  stream, in place order, so a seed reproduces the train and both engines
-  draw the same one; the stimuli land wherever they land in $[t_e, t_e +
-  \text{interval})$ and the refractory period drops what it drops, exactly as
-  a forced stimulus is dropped today.
+- `rate`: an independent **Poisson process drives** each input neuron across
+  the epoch, at INPUT_RATE where its bit is 1 and INPUT_RATE_OFF where it is
+  0. Arrivals are drawn $\mathrm{Exp}(\lambda)$ apart from the network's own
+  seeded stream, in place order, so a seed reproduces them and both engines
+  draw the same ones.
 
-At the default rate a bit-1 neuron expects 3.5 spikes across a 35 ms epoch
-and produces none at all $e^{-3.5} = 3\%$ of the time, so the drive is
-genuinely probabilistic: the pattern is what the rates are, not what the
-spikes were. `Network.input_events` holds the (place, time) train an epoch
-actually used, because `input_schedule()` draws afresh each time it is
-called. An off-rate above zero makes a zero bit a *low* rate rather than
-silence; at zero it means silence, as forced drive does.
+**These are arrivals, not spikes** *(Byron, September 14, 2026: "actual neural
+signalling is NOT a Poisson process. If we want to use a Poisson process to
+drive the input neuron, it should have its own, much higher rate. The effect
+should be to ensure the input neuron fires at the first Poisson arrival after
+the refractory period ends.")* An arrival landing while the neuron is
+refractory is dropped, exactly as a forced stimulus is, so the neuron fires at
+the first arrival after its refractory period ends and its spike train is a
+**renewal process with dead time**:
+
+$$\text{ISI} = \text{REFRACTORY} + \mathrm{Exp}(\lambda), \qquad
+\bar r = \frac{1}{\text{REFRACTORY} + 1/\lambda}, \qquad
+\text{CV} = \frac{1/\lambda}{\text{REFRACTORY} + 1/\lambda}.$$
+
+At INPUT_RATE = 1/ms that is a mean interval of 6 ms, 167 Hz — 83% of
+saturation — at a coefficient of variation of **0.17**, where a Poisson train's
+is exactly 1 and a real cortical train's is nearer 0.5–1.0. Four fifths of the
+arrivals are discarded, which is the point: the rate sets how soon after the
+dead time the neuron goes, and the refractory period sets everything else. A
+low $\lambda$ recovers the old behaviour, where the refractory period rarely
+binds and the train is nearly Poisson (CV 0.61 at 0.1/ms).
+
+The refractory period that matters is the **neuron's own**, so a spike the
+mesh drove silences the drive too; this is why the arrivals are emitted in
+full rather than thinned in advance, and why the process cannot be
+precomputed. `Network.input_events` holds the (place, time) **arrivals** an
+epoch used — not its spikes — because `input_schedule()` draws afresh each
+time it is called. An off-rate above zero makes a zero bit a *low* rate rather
+than silence; at zero it means silence, as forced drive does.
 
 This is also the only change that lets §0's "the inputs are the outputs"
 be tested rather than worked around. Under forced drive a stimulus overwrites

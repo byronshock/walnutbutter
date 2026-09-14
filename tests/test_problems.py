@@ -561,3 +561,38 @@ def test_a_problem_and_the_command_line_choose_the_drive():
     args = build_parser().parse_args(["--problem", "shallow_copy", "--drive", "rate", "--input-rate", "0.2"])
     apply_problem(args)
     assert args.drive == "rate" and args.input_rate == 0.2
+
+
+def test_the_driving_process_is_not_the_spike_train():
+    """AUTHORITY.md §4.3: the Poisson process drives, and the refractory period makes the spike train a renewal one."""
+    import statistics
+    from walnutbutter.constants import INPUT_RATE, REFRACTORY
+
+    assert INPUT_RATE == 1.0  # a driving rate, ten times the spike rate it replaced
+
+    def train(rate, epochs=400):
+        grid = GridOfNeurons(across=12, rows=5, weight=0.0, seed=1, permute=False, omega=0)  # weight 0: no mesh drive
+        grid.coding, grid.drive, grid.input_rate = "population", "rate", rate
+        row, times, arrivals = grid.input_row(), {p: [] for p in range(12)}, 0
+        for _ in range(epochs):
+            run_epoch(grid, [True] * 4, verbose=False)
+            arrivals += len(grid.input_events)
+            for wave in grid.waves:
+                for neuron in wave.fired:
+                    if neuron in row:
+                        times[row.index(neuron)].append(wave.time)
+        isis = [b - a for v in times.values() for a, b in zip(v, v[1:])]
+        spikes = sum(len(v) for v in times.values())
+        return arrivals, spikes, isis
+
+    arrivals, spikes, isis = train(INPUT_RATE)
+    assert spikes < arrivals * 0.25  # most arrivals land inside a refractory period and are dropped
+    assert all(gap >= REFRACTORY - 1e-9 for gap in isis)  # nothing fires sooner than the refractory period allows
+    mean = statistics.fmean(isis)
+    assert mean == pytest.approx(REFRACTORY + 1.0 / INPUT_RATE, rel=0.05)  # dead time plus an exponential wait
+    cv = statistics.stdev(isis) / mean
+    assert cv == pytest.approx((1.0 / INPUT_RATE) / mean, rel=0.1)
+    assert cv < 0.25  # far below a Poisson train's 1.0: this is what "not a Poisson process" buys
+
+    slow_cv = (lambda i: statistics.stdev(i) / statistics.fmean(i))(train(0.1)[2])
+    assert slow_cv > cv * 2  # a low driving rate is the old behaviour: the refractory period rarely binds

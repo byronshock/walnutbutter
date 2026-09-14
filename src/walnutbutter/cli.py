@@ -338,14 +338,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=INPUT_RATE,
         metavar="PER_MS",
-        help=f"the rate a bit-1 neuron fires at under rate drive (default: {INPUT_RATE:g}/ms)",
+        help=f"the rate of the Poisson process that DRIVES a bit-1 neuron -- not the rate it fires at, since arrivals "
+        f"inside the refractory period are dropped and it fires at the first one after, giving a mean interspike "
+        f"interval of REFRACTORY + 1/rate (default: {INPUT_RATE:g}/ms)",
     )
     parser.add_argument(
         "--input-rate-off",
         type=float,
         default=INPUT_RATE_OFF,
         metavar="PER_MS",
-        help=f"the rate a bit-0 neuron fires at under rate drive (default: {INPUT_RATE_OFF:g}/ms, silence)",
+        help=f"the driving rate for a bit-0 neuron (default: {INPUT_RATE_OFF:g}/ms, silence)",
     )
     parser.add_argument(
         "--flip",
@@ -760,11 +762,12 @@ def _run(args: argparse.Namespace) -> int:
             grid.explore, grid.rate_on = args.explore, args.rate_on
             Neuron.rate_tau = args.rate_tau
             if args.drive == "rate":
-                print(f"input drive: rate (AUTHORITY.md §4.3) -- each input neuron a Poisson process across the "
-                      f"{args.interval:g} ms epoch, {args.input_rate:g}/ms where its bit is 1 and "
-                      f"{args.input_rate_off:g}/ms where it is 0, so {args.input_rate * args.interval:.2g} spikes "
-                      f"expected on a bit-1 neuron and no spike at all with probability "
-                      f"{pow(2.718281828459045, -args.input_rate * args.interval):.2g}", file=sys.stderr)
+                isi = args.refractory + 1.0 / args.input_rate if args.input_rate else float("inf")
+                print(f"input drive: rate (AUTHORITY.md §4.3) -- a Poisson process DRIVES each input neuron across the "
+                      f"{args.interval:g} ms epoch at {args.input_rate:g}/ms of arrivals where its bit is 1 and "
+                      f"{args.input_rate_off:g}/ms where it is 0. Arrivals inside the refractory period are dropped, so "
+                      f"a bit-1 neuron fires every {isi:.2f} ms on average ({1000.0 / isi:.0f} Hz), at a coefficient of "
+                      f"variation of {(1.0 / args.input_rate) / isi:.2f} against a Poisson train's 1", file=sys.stderr)
             grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
