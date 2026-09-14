@@ -1526,6 +1526,54 @@ the layout, the inputs, and whether anything outside the network trains it.
   the epoch's own length — which is how cortex computes absence, and which no
   problem here has ever asked for.
 
+  *Swept across depth, September 14, 2026: rows 2 to 8, six seeds, 20,000
+  epochs, with shallow_copy run identically as the control.* The complement
+  never leaves the floor at any depth, and depth makes it worse:
+
+  | rows | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+  |---|---|---|---|---|---|---|---|
+  | shallow_not | 0.559 | 0.566 | 0.537 | 0.537 | 0.508 | 0.512 | 0.506 |
+  | shallow_copy | 0.896 | **0.904** | 0.850 | 0.838 | 0.787 | 0.782 | 0.707 |
+
+  Splitting the complement's errors shows the predicted mechanism exactly. On
+  the half with no causal path — fire where the input group was silent —
+  accuracy falls from 48.9% at two rows to 31.3% at eight, while the other
+  half rises to 68%, and the output row's firing falls from 44.6% to 31.5%
+  against a target wanting 49% on. **The network is not failing to learn the
+  complement; it is learning to shut up**, which is the closest thing to an
+  answer that excitation can express, and deeper meshes are quieter.
+
+  *And the control earned its keep twice over.* Copy also declines with depth
+  under these defaults, 0.904 at three rows to 0.707 at eight, which reverses
+  the September 13 finding that five rows beat two. Depth used to help and now
+  hurts; what changed is forced drive giving way to rate (§4.3). So the
+  narrowing gap between the two rows of the table is copy falling, not the
+  complement rising — and the two-hop solve of §6.7 looks increasingly like a
+  property of the synchronous lattice rather than of the task.
+
+  *The boredom clock is not the lever (Byron, September 14, 2026, asking for
+  it against copy first, which was the right order).* BORED_AFTER swept at 10,
+  15, 20, 25 and 30 ms — every value below the 35 ms epoch, so a silent neuron
+  goes on its own within one — **destroys copy at every value**, scoring 0.542
+  to 0.557 against 0.838 at the default 200 ms and losing in 6 seeds of 6
+  throughout. The reason is that it floods:
+
+  | BORED_AFTER | spikes/epoch | row fires | on target-1 | on target-0 | mean $\|w\|$ |
+  |---|---|---|---|---|---|
+  | 10 ms | 131 | 96.5% | 100.0% | 7.3% | 0.72 |
+  | 20 ms | 91 | 94.6% | 100.0% | 11.2% | 0.98 |
+  | 30 ms | 75 | 88.3% | 92.8% | 16.5% | 0.95 |
+  | 200 ms | 55 | 40.0% | 71.9% | 93.8% | 0.37 |
+
+  Which is the complement's failure mode in a mirror. shallow_not fails by
+  going silent and gets the target-0 half; a fast boredom clock fails by never
+  going silent and gets the target-1 half. Neither carries information,
+  because the clock is an **untargeted** background: it fires every neuron
+  alike, and nothing about it depends on the input. A background that
+  inhibition could sculpt has to be one the active input groups can suppress.
+  Whether that is reachable is untested — the same sweep against shallow_not
+  would say, and is the obvious next measurement rather than another rule.
+
 - **population_denoise** (Byron, September 13, 2026), the same network
   inspected somewhere else. *Byron:* "I want to know whether this is doing
   something useful, and it's not at the output zone that I want to look. I
