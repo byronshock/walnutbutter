@@ -18,7 +18,8 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, LEAKY_ELIGIBILITY,
+    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF,
+    LEAKY_ELIGIBILITY,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
@@ -284,6 +285,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"leaky Hebb (AUTHORITY.md §6.12): a firing neuron potentiates each synapse that still had charge in it by "
         f"this much times its leaky trace. Composes with whatever else runs (default: the problem's, {HEBB_RATE:g} where "
         f"it runs it; 0 = off)",
+    )
+    parser.add_argument(
+        "--explore",
+        choices=("wave", "epoch"),
+        default=EXPLORE,
+        help=f"when the exploration draw is taken (AUTHORITY.md §6.1): wave, afresh before every firing decision so a "
+        f"neuron's noise is what it decided under, or epoch, once at the input's moment, which is the pre-alpha's "
+        f"(default: {EXPLORE})",
     )
     parser.add_argument(
         "--drive",
@@ -699,6 +708,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
+            grid.explore = args.explore
             if args.drive == "rate":
                 print(f"input drive: rate (AUTHORITY.md §4.3) -- each input neuron a Poisson process across the "
                       f"{args.interval:g} ms epoch, {args.input_rate:g}/ms where its bit is 1 and "
@@ -753,9 +763,13 @@ def _run(args: argparse.Namespace) -> int:
                       f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             else:
                 grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
+                # the Teacher zeroes sigma for the hebb eligibility, so the network is deterministic: report what runs
+                effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
                 print(f"rule: reinforce ({args.eligibility} eligibility"
                       f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
-                      f"sigma {args.sigma:g}, no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
+                      f"sigma {effective_sigma:g} ({args.explore})"
+                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma else ''}"
+                      f", no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
                       f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
@@ -945,6 +959,7 @@ def _seed_worker(job: dict) -> dict:
     grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
+    grid.explore = job.get("explore", EXPLORE)
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -1031,7 +1046,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,
-                     "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off})
+                     "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
+                     "explore": args.explore})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

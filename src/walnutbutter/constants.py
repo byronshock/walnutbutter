@@ -66,7 +66,10 @@ HEBB_RATE = 0.01  # the rate a problem that runs leaky_hebb uses: a firing neuro
 # had charge in it by this much times the synapse's leaky trace (Byron, September 13, 2026). A starting value, to be
 # swept. Like the quash it composes with whatever else runs, and a network built in the library leaves it off; 0 = off.
 LR = 0.03  # learning rate, both rules
-SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential at every input; 0 switches it off
+SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential; 0 switches it off
+EXPLORE = "wave"  # when that draw is taken (AUTHORITY.md §6.1): "wave", afresh before every firing decision, so a
+# neuron's xi is the perturbation it actually decided under (Byron, September 13, 2026), or "epoch", once at the
+# input's moment, which is the pre-alpha's and what §6.7's baseline was measured with
 DOPAMINE_RELEASE_ALPHA = 2.0  # shape of the gamma density of the amount a refire releases against its delay past the refractory period (Byron, September 12, 2026)
 DOPAMINE_RELEASE_THETA = 1.0  # ms: its scale; the release peaks at (alpha - 1) * theta past the end of the refractory period
 DOPAMINE_TAU = 20.0  # ms: decay of the global dopamine value

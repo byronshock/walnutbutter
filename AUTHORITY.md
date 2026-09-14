@@ -89,7 +89,8 @@ literal of its own.
 | SYNAPSE_TAU | 10 ms | the leak of the eligibility trace on a synapse (§6.12), the synapse's own and no longer the neuron's; it governs leaky Hebb and the reinforce rule's leaky eligibility alike |
 | HEBB_RATE | 0.01 | leaky Hebb (§6.12): a firing neuron potentiates each gated synapse by this much times its leaky trace; a starting value, to be swept; 0 = off |
 | LR | 0.03 | learning rate |
-| SIGMA | 0.1 | exploration noise: standard deviation added to each neuron's potential at every input |
+| SIGMA | 0.1 | exploration noise: standard deviation added to each neuron's potential |
+| EXPLORE | wave | when that draw is taken (§6.1): afresh before every firing decision, or `epoch`, once at the input's moment (the pre-alpha's) |
 | DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA | 2, 1 ms | shape and scale of the gamma density that gives the amount released against the refire delay past the refractory period |
 | DOPAMINE_TAU | 20 ms | decay of the global dopamine value |
 | DOPAMINE_EXPECTATION_TAU | 10 min | exponential window of the expected dopamine trace |
@@ -417,13 +418,66 @@ for all of a neuron's weights. For now, dopamine is released and then all
 weights move together. *Open question:* whether the dopamine release or the
 weight update should happen first.
 
-### 6.1 Exploration
+### 6.1 Exploration — revised, per wave
 
-At every input, every neuron $j$ (inputs included) draws
-$\xi_j \sim \mathcal{N}(0, \sigma^2)$ with $\sigma$ = SIGMA and adds it to
-its potential, floored. Tunable; 0 switches it off. Both engines draw from
-the same Box-Muller stream, so a seed gives the same noise whichever engine
-runs.
+*Revised by Byron, September 13, 2026, on the diagnosis below.* Every neuron
+$j$ (inputs included) draws $\xi_j \sim \mathcal{N}(0, \sigma^2)$ with
+$\sigma$ = SIGMA and adds it to its potential, floored. The draw is taken
+**afresh before every wave's firing decision**, after that wave's signals
+have been integrated and settled and before any neuron fires, so a neuron's
+$\xi_j$ is the perturbation it actually decided under. EXPLORE = epoch
+restores the pre-alpha's single draw at the input's moment. Both engines draw
+from the same Box-Muller stream, so a seed gives the same noise whichever
+engine runs; 0 switches it off.
+
+A neuron that has already fired this epoch **keeps** the $\xi_j$ it decided
+under rather than taking the new draw, because §6.7 credits one $e_j$ per
+epoch and it must refer to the perturbation that produced the spike, not to a
+later one that explains nothing. Its potential still takes the new draw: the
+hold is on the record, not on the dynamics.
+
+*Why (Claude, September 13, 2026, and it is a diagnosis rather than a
+result).* §6.7's score function $e_j = \xi_j/\sigma$ is what makes that rule
+a gradient estimator, and under a single draw at $t_e$ it was formally
+correct about the wrong event: a neuron firing 12 ms later has spiked and
+reset in between, so its $\xi_j$ carries no information about the decision
+being credited. That rule stayed at chance under both input drives — 0.568
+forced, 0.543 rate — while the deterministic reward-modulated Hebb of the
+same section reached 0.978 and 0.80. Drawing per wave is the change that
+follows: it does not touch §6.7, only what $\xi_j$ refers to.
+
+Note what the leak does to the scale. A draw lands every hop and decays with
+TAU, so the accumulated perturbation reaches a standard deviation of
+$\sigma/\sqrt{1 - e^{-2\,\text{hop}/\text{TAU}}} = 1.11\,\sigma$ at the
+default constants — the noise is refreshed at each decision without
+accumulating, and SIGMA keeps very nearly the meaning it had.
+
+*Measured, September 13, 2026, and the diagnosis did not survive it.* The
+same thirty arms — perturb at $\sigma$ 0.1 under rate drive on shallow_copy
+at five rows, five input rates by six seeds, 100,000 epochs — score **0.533
+± 0.023** drawing per wave against **0.543 ± 0.017** drawing per epoch, and
+beat the per-epoch arms in 11 of 30 paired runs. The change is a wash, and if
+anything slightly worse. Reward-modulated Hebb on the identical arms scores
+0.799 and beats wave exploration in 30 of 30.
+
+So the gradient form's difficulty is not *when* $\xi_j$ is drawn. Three
+things have now been tried against it — the timing here, the missing
+presynaptic factor (§6.12's trace, which also made it worse), and the
+baseline (§6.7, whose variance reduction measures at nothing on this problem)
+— and none moves it off chance, while the rule that abandons the gradient
+entirely reaches 0.80 under rate drive and 0.978 under forced. That is
+evidence about the estimator's variance rather than about a missing factor in
+it, and it is the reason §6.1 keeps EXPLORE as a switch rather than a
+decision.
+
+One thing the per-wave draw does show: it is the only arm of the three that
+**moves**. Its mean rises 0.514 → 0.530 over the hundred thousand epochs
+while the per-epoch arms sit flat at 0.53–0.54 throughout. Slow, small, and
+not yet worth anything.
+
+Nothing measured before this revision is affected by it. The hook is off
+whenever $\sigma$ is 0, which is what the hebb eligibility runs at, so every
+result in §6.7 and §8 obtained with that eligibility stands unchanged.
 
 ### 6.2 Release
 

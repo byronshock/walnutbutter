@@ -407,3 +407,15 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
         assert a.epoch(verbose=False) == b.epoch(verbose=False)
         assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
     assert [c.weight for c in mesh.connections.values()] != [0.0] * len(mesh.connections)
+
+
+def test_the_reinforce_banner_reports_the_sigma_that_actually_runs(capsys):
+    """The Teacher zeroes sigma for the hebb eligibility; the banner used to print the asked-for value."""
+    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "hebb",
+                     "--sigma", "0.1", "--epochs", "3", "--no-save"]) == 0
+    err = capsys.readouterr().err
+    assert "sigma 0" in err and "not a policy gradient" in err
+    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "perturb",
+                     "--sigma", "0.1", "--epochs", "3", "--no-save"]) == 0
+    err = capsys.readouterr().err
+    assert "sigma 0.1" in err and "not a policy gradient" not in err

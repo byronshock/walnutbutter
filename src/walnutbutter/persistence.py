@@ -50,6 +50,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "hebb": grid.hebb_rate,  # leaky Hebb (§6.12)
         "synapse_tau": grid.synapse_tau,  # the leak of the trace on a synapse (§6.12)
         "drive": grid.drive,  # how a bit becomes spikes (§4.3)
+        "explore": grid.explore,  # when the exploration draw is taken (§6.1)
         "input_rate": [grid.input_rate, grid.input_rate_off],  # per ms, under rate drive
         "input_cells": grid.input_cells,  # an input zone, or None for the bottom row
         "grid_reach": getattr(grid, "reach", None) if not lattice else None,  # hex steps the grid's local wiring covers
@@ -291,6 +292,7 @@ def _restore_clock(grid, data: dict) -> None:
     grid.hebb_rate = data.get("hebb", grid.hebb_rate)
     grid.synapse_tau = data.get("synapse_tau", grid.synapse_tau)
     grid.drive = data.get("drive", grid.drive)
+    grid.explore = data.get("explore", grid.explore)
     if data.get("input_rate"):
         grid.input_rate, grid.input_rate_off = data["input_rate"]
 

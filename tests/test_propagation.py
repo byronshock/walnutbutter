@@ -133,3 +133,66 @@ def test_large_grid_has_no_recursion_limit(capsys):
     grid.activate_origin(until=60.0)  # the corners are twenty-odd hops out: several intervals
     assert len(grid.fired_neurons()) == len(grid.neurons)
     assert len(grid.waves) > 20  # two cells per wave; recursion would still have died
+
+
+# --- wave exploration (AUTHORITY.md §6.1) --------------------------------------------
+
+def test_the_exploration_draw_comes_once_a_wave_and_is_held_at_the_spike():
+    import random
+    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.monitor import run_epoch
+
+    def build(mode):
+        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=1, permute=False, omega=0)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.explore = mode
+        return grid
+
+    drawn = {}
+    for mode in ("epoch", "wave"):
+        grid, used = build(mode), []
+        source = random.Random(7)
+
+        class Counting(random.Random):
+            def random(self):
+                used.append(1)
+                return source.random()
+
+        run_epoch(grid, [True, False, False, True], verbose=False, noise=0.1, rng=Counting())
+        drawn[mode] = (len(used), len(grid.waves))
+    epoch_draws, waves = drawn["epoch"]
+    wave_draws, _ = drawn["wave"]
+    assert epoch_draws == 60  # one draw per neuron, once
+    assert wave_draws == 60 * waves > epoch_draws  # one per neuron per wave: the draw explains the decision it precedes
+
+    grid = build("wave")
+    run_epoch(grid, [True, False, False, True], verbose=False, noise=0.1, rng=random.Random(7))
+    assert all(n.noise != 0.0 for n in grid.all_neurons() if n.has_fired)  # every spike kept the draw it decided under
+
+    quiet = build("wave")  # sigma 0: nothing is drawn and nothing is perturbed
+    run_epoch(quiet, [True, False, False, True], verbose=False, noise=0.0)
+    assert quiet.explorer() is None and all(n.noise == 0.0 for n in quiet.all_neurons())
+
+
+def test_wave_exploration_is_bit_identical_across_the_engines():
+    import random
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.monitor import run_epoch
+
+    def make():
+        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=5, permute=False, omega=0)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.quash_rate, grid.explore = 0.02, "wave"
+        return grid
+
+    mesh, net = make(), ArrayNetwork(make())
+    a, b = random.Random(3), random.Random(3)
+    for _ in range(40):
+        run_epoch(mesh, verbose=False, noise=0.1, rng=a)
+        run_epoch(net, verbose=False, noise=0.1, rng=b)
+        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+        assert [n.noise for n in mesh.all_neurons()] == net.noise.tolist()  # exactly, not approximately
+        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)

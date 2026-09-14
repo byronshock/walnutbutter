@@ -40,7 +40,8 @@ def run_epoch(
         grid.new_random_input(time)
     else:
         grid.set_input_bits(bits, time)
-    if noise > 0:
+    grid.sigma, grid.explore_rng = noise, rng or random  # §6.1: wave exploration draws inside the schedule
+    if noise > 0 and getattr(grid, "explore", "wave") == "epoch":
         grid.perturb(noise, rng or random)
     if verbose:
         stages = f"input {format_bits(grid.input_bits)}"

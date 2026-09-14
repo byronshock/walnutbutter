@@ -84,6 +84,7 @@ class ArrayNetwork(Network):
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
+        self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -231,6 +232,8 @@ class ArrayNetwork(Network):
                 if self.rule == "adaline":
                     # presynaptic activity, as this target saw it: a source that fired twice into the same moment delivers twice
                     self.eligibility[integrated] += firing[self.source[integrated]]
+            if self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None:
+                self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)  # §6.1, before the decision
             fire_forced = (stimulus & ~refractory) if stimulus is not None else np.zeros(n, dtype=bool)
             if Neuron.bored_after > 0.0:  # threshold homeostasis: the threshold falls with the silence since the last spike
                 since = np.where(self.fired_at == -np.inf, 0.0, self.fired_at)
@@ -321,7 +324,7 @@ class ArrayNetwork(Network):
             return self.potential
         return self.potential * np.exp(-elapsed / Neuron.tau)
 
-    def perturb(self, sigma: float, rng, now: float | None = None) -> None:
+    def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
         """Exploration: the same Box-Muller draws as the object engine (see exploration.py), done as a vector."""
         now = self.input_time if now is None else now
         if now is not None:
@@ -333,8 +336,10 @@ class ArrayNetwork(Network):
         noise = np.empty(len(draws))
         noise[0::2] = np.cos(angle) * radius
         noise[1::2] = np.sin(angle) * radius
-        self.noise = noise[:n]
-        np.maximum(self.potential + self.noise, self.floor, out=self.potential)
+        draw = noise[:n]
+        # hold_fired: a neuron that already fired this epoch keeps the noise it decided under (§6.1)
+        self.noise = np.where(self.fired_wave >= 0, self.noise, draw) if hold_fired else draw
+        np.maximum(self.potential + draw, self.floor, out=self.potential)
 
     def set_input(self, pattern, time: float | None = None) -> None:
         super().set_input(pattern, time)

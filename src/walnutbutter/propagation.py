@@ -130,6 +130,7 @@ class Schedule:
         on_wave: Callable[[Wave], None] | None = None,
         everyone: list[Neuron] | None = None,
         trace: bool = False,
+        explore: Callable[[float], None] | None = None,
     ) -> list[Wave]:
         """Process every wave due before `until`, appending to and returning `waves`.
 
@@ -182,6 +183,8 @@ class Schedule:
                         touched.append(neuron)
             for neuron in touched:
                 neuron.settle()  # the floor applies to the wave's total, whatever order it arrived in
+            if explore is not None:
+                explore(time)  # §6.1: the exploration draw comes before the decision it is meant to explain
             for neuron in forced:
                 if not neuron.refractory_at(time):  # a stimulus listed twice fires once: the first spike makes it refractory
                     self._fire(neuron, wave, hop)

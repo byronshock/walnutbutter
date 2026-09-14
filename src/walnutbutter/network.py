@@ -13,7 +13,8 @@ from __future__ import annotations
 from typing import Iterable
 
 from .constants import (
-    HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE, SYNAPSE_TAU,
+    EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
+    SYNAPSE_TAU,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
@@ -53,6 +54,9 @@ class Network:
         self.hebb_rate = 0.0  # leaky Hebb (§6.12): a firing neuron potentiates its gated synapses by this much times
         # their leaky trace. Like the quash it composes with whatever rule pays the read; off until asked.
         self.synapse_tau = SYNAPSE_TAU  # the leak of that trace, the synapse's own and no longer the neuron's (§6.12)
+        self.explore = EXPLORE  # when the exploration draw is taken (§6.1): every wave, or once per epoch
+        self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
+        self.explore_rng = None  # the stream it comes from
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
@@ -269,7 +273,8 @@ class Network:
         for place, when in self.input_events:
             self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
-        waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(), trace=self.rule == "adaline")
+        waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
+                                  trace=self.rule == "adaline", explore=self.explorer())
         self.forget()
         return waves
 
@@ -324,7 +329,8 @@ class Network:
         for neuron, amount in (inputs or {}).items():
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
-        return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(), trace=self.rule == "adaline")
+        return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
+                                 trace=self.rule == "adaline", explore=self.explorer())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -339,21 +345,35 @@ class Network:
                 connection.eligibility = 0.0  # a new epoch earns its own credit
         self.waves = []
 
-    def perturb(self, sigma: float, rng, now: float | None = None) -> None:
+    def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
         """Exploration: add Gaussian noise of standard deviation `sigma` to every potential, floored.
 
         The potential is first leaked to `now` (default: the pending input's
         time), so the noise sits on top of what survived the gap. Each neuron
         remembers its draw as `noise` (the reinforce rule's eligibility). The
         draws come from `exploration.gaussians`, shared with the array engine.
+
+        With `hold_fired` a neuron that has already fired this epoch keeps the
+        `noise` it decided under instead of taking the new draw: under wave
+        exploration (§6.1) the eligibility must refer to the perturbation that
+        produced the spike, not to a later one that explains nothing.
         """
         now = self.input_time if now is None else now
         neurons = self.all_neurons() if isinstance(self.all_neurons(), list) else list(self.all_neurons())
         for neuron, draw in zip(neurons, gaussians(rng, len(neurons), sigma)):
             if now is not None:
                 neuron.leak(now)
-            neuron.noise = draw
+            if not (hold_fired and neuron.has_fired):
+                neuron.noise = draw
             neuron.potential = max(neuron.minimum_potential, neuron.potential + draw)
+
+    def _explore(self, time: float) -> None:
+        """The per-wave exploration draw (§6.1), called before each wave's firing decision."""
+        self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
+
+    def explorer(self):
+        """The hook Schedule.run calls before each wave fires, or None when nothing is exploring."""
+        return self._explore if (self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None) else None
 
     def fired_neurons(self) -> list[Neuron]:
         """Return the neurons that have fired since the last reset."""

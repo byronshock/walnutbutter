@@ -68,6 +68,12 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--engine", default="arrays")
     parser.add_argument("--problem", default="sustain_inputs", help="the problem every arm runs (default: sustain_inputs)")
     parser.add_argument("--order", default=None, help="release-first or update-first (fixed for the sweep)")
+    for flag, help_text in (("rows", "row count, overriding the problem's"), ("omega", "small-world shortcut fraction"),
+                            ("drive", "how a bit becomes spikes: forced or rate"),
+                            ("explore", "when the exploration draw is taken: wave or epoch"), ("rule", "which rule pays at the read"),
+                            ("eligibility", "perturb or hebb, for the reinforce rule")):
+        parser.add_argument(f"--{flag}", default=None, help=f"{help_text} (fixed for the sweep)")
+    parser.add_argument("--leaky", action="store_true", help="pass --leaky to every arm")
     parser.add_argument("--no-punish", action="store_true", help="pass --no-punish to every arm")
     parser.add_argument("--summary", action="store_true", help="summarise what is on disk; run nothing")
     return parser.parse_args()
@@ -106,6 +112,11 @@ def run_arm(job: tuple) -> dict:
         command += [KNOBS[knob][0], f"{value:g}"]
     if args.order:
         command += ["--order", args.order]
+    for flag in ("rows", "omega", "drive", "rule", "eligibility"):
+        if getattr(args, flag) is not None:
+            command += [f"--{flag}", str(getattr(args, flag))]
+    if args.leaky:
+        command += ["--leaky"]
     if args.no_punish:
         command += ["--no-punish"]
     started = time.perf_counter()
@@ -141,13 +152,13 @@ def summarise(args) -> None:
         t = read_trace(trace)
         n = len(t["score"])
         tenth = max(1, n // 10)
-        weights, pool = data["weights"], data["dopamine"]
+        weights, pool = data["weights"], data["dopamine"] or {}  # the reinforce rule keeps no pool
         rows.append({
             "arm": arm, "label": label, "epochs": data["epoch"],
             "score_to_date": sum(t["score"]) / n, "score_last_tenth": sum(t["score"][-tenth:]) / tenth, "score_max": max(t["score"]),
             "expected_final": t["expected"][-1], "expected_last_tenth": sum(t["expected"][-tenth:]) / tenth,
             "expected_peak": max(t["expected"]), "dopamine_last_tenth": sum(t["dopamine"][-tenth:]) / tenth,
-            "releases": pool["releases"], "total_released": pool["total"],
+            "releases": pool.get("releases", 0), "total_released": pool.get("total", 0.0),
             "spikes": sum(data["spikes"]), "neurons_spiked": sum(1 for s in data["spikes"] if s),
             "weights_plus": sum(1 for w in weights if w >= 0.999), "weights_minus": sum(1 for w in weights if w <= -0.999),
         })
