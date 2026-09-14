@@ -139,3 +139,65 @@ def benchmark(grid, epochs=200, bits=None):
             engine.run(grid.time + grid.interval)
         timings["rust"] = time.perf_counter() - started
     return timings
+
+
+def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None):
+    """Run `epochs` of the §6.7 rule with the hebb eligibility, the whole wave loop in Rust.
+
+    Python keeps what must stay reproducible — the input bits and the Poisson drive come
+    from the grid's own seeded stream, in the same order the other engines draw them — and
+    Rust does the epoch and the weight update. Returns (mean score, trace), where the trace
+    is every `trace_every` epochs' score, or empty when that is 0.
+
+    `patterns` is a run's inputs, drawn up front by `network.input_stream` and attached
+    here (§4.5), so two arms that differ in anything see the same epochs in the same
+    order. Without it the bits come from the grid's own stream, which a differently built
+    network consumes differently.
+
+    The row critic and sigma 0 only: this is the configuration every recent result was
+    measured on, and the one the engine supports (see rust/README.md).
+    """
+    from .learning import TARGETS
+
+    if patterns is not None:
+        if len(patterns) < epochs:
+            raise ValueError(f"the input stream holds {len(patterns)} patterns for a run of {epochs} epochs")
+        grid.use_input_stream(patterns)
+
+    engine, neurons, index = build(
+        grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
+        hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau, weight_range=grid.weight_range,
+    )
+    row = grid.output_row()
+    out = [index[neuron] for neuron in row]
+    places = grid.input_row()
+    at = [index[neuron] for neuron in places]
+    want_of = TARGETS[target]
+
+    baseline = None
+    total = 0.0
+    trace = []
+    for epoch in range(epochs):
+        grid.reset()
+        grid.new_random_input()
+        grid.time = grid.input_time
+        grid.epoch += 1
+        events = grid.input_schedule()
+        grid.horizon = grid.time + grid.interval
+        engine.reset(False, False)
+        if events:
+            engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
+        engine.run(grid.horizon)
+
+        fired = engine.fired_this_epoch()
+        want = want_of(grid.target_pattern)
+        reward = sum(1 for i, w in zip(out, want) if fired[i] == w) / len(want)
+        if baseline is None:
+            baseline = reward
+        engine.reinforce_hebb(reward - baseline, lr)
+        baseline += baseline_rate * (reward - baseline)
+        total += reward
+        if trace_every and (epoch + 1) % trace_every == 0:
+            trace.append(reward)
+    engine.set_weights(engine.weights())  # no-op, but leaves the engine addressable by the caller
+    return total / epochs, trace, engine

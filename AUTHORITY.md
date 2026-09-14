@@ -282,7 +282,11 @@ coding.
 (A problem may instead lay the raw bits down as they are, `coding = raw`,
 which sustain_inputs does, or repeat each bit over POPULATION neurons,
 `coding = population`, which population_copy does: 1001 becomes
-111000000111 on a twelve-wide row (Byron, September 13, 2026). §8. A problem also says what "on" means at the read:
+111000000111 on a twelve-wide row (Byron, September 13, 2026). Or both in
+order, `coding = population-complement` (Byron, September 14, 2026): repeat
+each bit, then complement-code the whole run, so with POPULATION 2 the four
+bits 1001 become 11000011 and then 1100001100111100 over sixteen neurons,
+which doubled_copy does. §8. A problem also says what "on" means at the read:
 fired this epoch, spiked again after the input's moment, or fired within a
 window before the horizon.) The neurons whose bit is 1 are **forced** to fire
 at $t_e$, refractory period permitting. A neuron forced this epoch is marked as such, which only
@@ -555,6 +559,35 @@ back to refire it. A refractory neuron ignores every signal, forced
 stimulus included; the delivery is still recorded as such. Each connection
 stamps the time of the last signal its target actually integrated: that is
 the only trace of activity the target has (§6.4).
+
+### 4.5 The input stream — decided (Byron, September 14, 2026)
+
+A run's inputs are **drawn up front**, one raw-bit pattern per epoch, from a
+stream of their own: `random.Random(f"walnutbutter inputs {seed}")`, which is
+not the network's stream and is consumed by nothing else. Ask for a million
+epochs and a million patterns are generated before the first one runs.
+
+*Why it is not the same as drawing them as you go.* Every run before this date
+drew its input bits from the network's own `_rng` — the same stream that placed
+the small-world shortcuts, drew the random weights and shuffled the
+permutation. That stream is therefore consumed differently by every network
+that is built differently. Two arms of a sweep that differ in reach, in rows,
+in omega, or in anything that changes how much randomness the build eats,
+**saw different input sequences at the same seed**. They were comparable on
+average, over enough epochs, and not comparable epoch by epoch; and a paired
+seed comparison between two such arms was pairing the seed, not the inputs.
+
+With an input stream, seed $s$ means the same million patterns in the same
+order whatever the network is, so two arms differ only in what is under test.
+The Poisson arrival times of §4.3 are *not* part of the stream: they depend on
+INTERVAL and on $\lambda$, which are themselves things a sweep varies, so they
+stay drawn per epoch from the network's stream.
+
+`network.input_stream(count, raw_bits, seed)` makes one and
+`Network.use_input_stream(patterns)` attaches it; `--input-seed` does both from
+the command line, and the drivers pass a stream to every arm. A run longer than
+its stream cycles it. Without a stream a network draws as it always did, so
+nothing that does not ask for one changes.
 
 ## 5. Activation rule — open
 
@@ -1498,6 +1531,97 @@ the layout, the inputs, and whether anything outside the network trains it.
   §6.9's score with the credit normalised to the zone. No permutation, a
   20 ms epoch, reach 2, and each output read as fired this epoch. Cycles
   are quashed; the teacher also pays, and `--lr 0` isolates the quash.
+
+- **doubled_copy** (Byron, September 14, 2026). The four raw bits are
+  **doubled** (POPULATION 2, so 1001 becomes 11000011), then
+  **complement-coded** (11000011 becomes 1100001100111100), then spread over a
+  sixteen-wide input row by the **consistent random permutation** of §4.3. The
+  top row of an eight-row grid should show the same code: the target is copy,
+  the row critic scores it, and cycles are quashed as elsewhere.
+
+  *What the coding takes away.* Complement coding means **exactly half the row
+  fires whatever the bits** — verified over all sixteen inputs — so total
+  activity is constant and carries nothing. The permutation means **adjacency
+  carries nothing** either: a bit and its double, and a bit and its negation,
+  land wherever the permutation put them rather than side by side. So neither
+  of the two shortcuts the earlier population problems left open is available.
+  In population_copy a bit's three neurons were contiguous and a row's total
+  firing tracked the number of ones; here both are gone by construction, and
+  what is left to learn is the mapping itself.
+
+  A first run over 3,000 epochs on 128 neurons reaches 0.518.
+
+- **reaching_copy** (Byron, September 14, 2026). doubled_copy's inputs
+  exactly — the four raw bits doubled, complement-coded, and spread by the
+  consistent random permutation over a sixteen-wide input row — copied to the
+  top of a **five-row** grid wired to **reach 5**. Target copy, row critic,
+  quash on, everything else as doubled_copy.
+
+  *What the two changes do.* They pull in opposite directions on the same
+  quantity, the number of hops between a bit and its answer. Five rows instead
+  of eight shortens the path; reach 5 on a five-row grid abolishes it. The
+  bottom row and the top row are four hex steps apart, inside the reach, so
+  **every input neuron synapses directly onto the output row**: 100 of the 256
+  input-output pairs are one hop, every horizontal offset from -3 to +3. The
+  mesh is no longer a depth through which a signal must be relayed; it is a
+  near-complete bipartite map with a body of interneurons attached.
+
+  The cost is density. 80 neurons carry 3,122 local connections, a mean
+  out-degree of 39 — half the network — against 13.1 at reach 2 on the same
+  grid and doubled_copy's 1,856 on 128 neurons. At the default OMEGA of 0.2 the
+  small-world shortcuts bring the built network to 3,903 connections against
+  doubled_copy's 2,320. So this is half again as many synapses on two thirds as
+  many neurons, and the quash of §6.11 has correspondingly more cycles to find.
+
+  *What the permutation does and does not do (Byron, September 14, 2026,
+  correcting this entry).* **The task is a copy, not an unscrambling.** What is
+  permuted is the input: the coded bits are spread over the input row by $\pi$,
+  and the pattern that lands there is the pattern the top row must show. Output
+  place $i$ is scored against input place $i$. The permutation destroys the
+  adjacency the coding would otherwise leave — a bit and its double, a bit and
+  its negation, no longer neighbours — and that is all it is for; the network is
+  never asked to invert it.
+
+  So **every one of the sixteen routes is one hop**: place $i$ at the bottom is
+  four hex steps from place $i$ at the top, inside the reach, directly wired.
+  Which is the whole point of reach 5, and what separates this problem from
+  doubled_copy, where the same copy has eight rows to cross and no direct
+  synapse anywhere.
+
+  (The first draft of this entry said the network had to undo the permutation
+  and counted 6.25 of the sixteen routes as one hop. That was wrong about the
+  specification, not about the code: `set_input` has always stored the permuted
+  pattern as the target, so the code was already doing the copy. The arithmetic
+  about $\pi^{-1}$ described a problem nobody had posed.)
+
+  *A first run, September 14, 2026: 20,000 epochs, six seeds, the Rust loop, one
+  shared input stream per seed (§4.5), everything else at the defaults.* A
+  reach-2 arm at the same five rows is run alongside, so that depth and reach
+  come apart:
+
+  | arm | score | sd |
+  |---|---|---|
+  | shallow_copy (12 wide, 2 rows, no complement, no permutation) | 0.880 | 0.038 |
+  | **reaching_copy** (5 rows, reach 5) | **0.667** | 0.036 |
+  | the same at reach 2 | 0.618 | 0.017 |
+  | doubled_copy (8 rows, reach 2) | 0.596 | 0.034 |
+
+  Paired on the seed, reaching_copy beats doubled_copy by **+0.070 in 6 of 6**
+  and its own reach-2 control by **+0.049 in 5 of 6**. So the gain splits about
+  one part depth to two parts reach: going from eight rows to five is worth
+  +0.022, and wiring those five rows through is worth twice as much again. The
+  direct synapse is doing the work, which is what the problem was posed to ask.
+
+  It still leaves 0.21 to shallow_copy, so **the coding costs more than the
+  topology can win back**. Nothing here is converged at 20,000 epochs;
+  doubled_copy's own million-epoch value at these settings is 0.599, which this
+  run reaches at 20,000 with the shared stream.
+
+  (The first version of this run, before the stream, put reaching_copy at 0.633
+  and doubled_copy at 0.575 — the same ordering, the same conclusion, every
+  level shifted by about the size of one seed's spread. That is the measure of
+  what the input lottery was worth: about as much as the effects being
+  measured.)
 
 - **shallow_not** (Byron, September 14, 2026): "It's the same as the old
   problem, only it's not." shallow_copy in every respect — the same 12-wide

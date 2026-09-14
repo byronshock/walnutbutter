@@ -27,7 +27,8 @@ class Problem:
     read_window: float | None = None  # the window for read == "window"
     target: str | None = None  # what the output should show (None: --target)
     critic: str | None = None  # how the read is scored (None: --critic)
-    coding: str = "complement"  # how raw bits reach the input row: "complement" (bits then their negations) or "raw"
+    coding: str = "complement"  # how raw bits reach the input row (§4.3): complement, raw, population, population-complement
+    population: int | None = None  # neurons per raw bit where the coding repeats it (None: constants.POPULATION)
     reach: int = 2  # hex steps the grid's local wiring covers
     input_cells: tuple | None = None  # an input zone, (place, row) cells counted from 0, in place of the bottom row
     permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
@@ -91,6 +92,28 @@ PROBLEMS: dict[str, Problem] = {
         "(AUTHORITY.md §8)",
         12, 2, trained=False, readout="top", read="fired", target="complement", critic="row",
         coding="population", permute=False, rule="teacher", quash=True,
+    ),
+    "doubled_copy": Problem(
+        "doubled_copy",
+        "the four raw bits doubled, complement-coded and scrambled (Byron, September 14, 2026): 1001 becomes 11000011, "
+        "then 1100001100111100, then a consistent random permutation spreads those 16 bits over a 16-wide input row, and "
+        "the top row of an 8-row grid should show the same code. Every input fires exactly half the row whatever the "
+        "bits, and the permutation leaves adjacency carrying nothing, so neither total activity nor position is a clue "
+        "(AUTHORITY.md §8)",
+        16, 8, trained=False, readout="top", read="fired", target="copy", critic="row",
+        coding="population-complement", population=2, permute=True, rule="teacher", quash=True,
+    ),
+    "reaching_copy": Problem(
+        "reaching_copy",
+        "doubled_copy's inputs on a shallower, denser grid (Byron, September 14, 2026): the same sixteen coded and "
+        "permuted bits, copied to the top of a FIVE-row grid wired to REACH 5. The task is a copy — output place i "
+        "against input place i, the permutation scrambling what the input row is shown rather than what the top row "
+        "must answer. Four hex steps separate the bottom row from the top, which is inside the reach, so every input "
+        "neuron synapses directly onto the neuron above it and all sixteen routes are one hop: the mesh stops being a "
+        "depth to relay through. What it costs is density (80 neurons, 3,122 local connections, mean out-degree 39 "
+        "against 13.1 at reach 2) (AUTHORITY.md §8)",
+        16, 5, trained=False, readout="top", read="fired", target="copy", critic="row",
+        coding="population-complement", population=2, reach=5, permute=True, rule="teacher", quash=True,
     ),
     "population_denoise": Problem(
         "population_denoise",

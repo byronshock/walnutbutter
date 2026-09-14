@@ -92,6 +92,7 @@ pub struct Engine {
     rate_at: Vec<f64>,
     forced: Vec<bool>,
     fired_wave: Vec<i64>, // -1 when it has not fired this epoch
+    delivered_wave: Vec<i64>, // per edge: the wave it delivered in this epoch, landed or not; -1 when it did not
 
     // --- the clock and the rules ------------------------------------------------------
     tau: f64,
@@ -170,6 +171,7 @@ impl Engine {
             rate_at: vec![0.0; neurons],
             forced: vec![false; neurons],
             fired_wave: vec![-1; neurons],
+            delivered_wave: vec![-1; edges],
             tau,
             refractory,
             hop,
@@ -225,6 +227,7 @@ impl Engine {
             self.potential.iter_mut().for_each(|p| *p = 0.0);
         }
         self.fired_wave.iter_mut().for_each(|w| *w = -1);
+        self.delivered_wave.iter_mut().for_each(|w| *w = -1);
         self.forced.iter_mut().for_each(|f| *f = false);
         if clear_eligibility {
             self.eligibility.iter_mut().for_each(|e| *e = 0.0);
@@ -235,6 +238,41 @@ impl Engine {
     /// `neuron` is forced to fire at `time`, refractory period permitting.
     fn stimulus(&mut self, neuron: u32, time: f64) {
         self.push(time, STIMULUS, neuron);
+    }
+
+    /// A whole epoch's drive in one crossing: `neurons[k]` forced at `times[k]`, in the order given.
+    fn stimulate_many(&mut self, neurons: Vec<u32>, times: Vec<f64>) -> PyResult<()> {
+        if neurons.len() != times.len() {
+            return Err(PyValueError::new_err("neurons and times must be the same length"));
+        }
+        for (&neuron, &time) in neurons.iter().zip(times.iter()) {
+            self.push(time, STIMULUS, neuron);
+        }
+        Ok(())
+    }
+
+    /// §6.7 with the hebb eligibility: every connection that delivered into an unforced neuron moves by
+    /// `lr * advantage * (+1 if that neuron fired, else -1)`. Returns connections changed.
+    fn reinforce_hebb(&mut self, advantage: f64, lr: f64) -> usize {
+        if advantage == 0.0 {
+            return 0;
+        }
+        let step = lr * advantage;
+        let mut changed = 0;
+        for edge in 0..self.weight.len() {
+            if self.delivered_wave[edge] < 0 {
+                continue;
+            }
+            let target = self.edge_target[edge] as usize;
+            if self.forced[target] {
+                continue; // a forced input: its firing was not the network's doing
+            }
+            let e = if self.fired_wave[target] >= 0 { 1.0 } else { -1.0 };
+            let w = self.weight[edge] + step * e;
+            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
+            changed += 1;
+        }
+        changed
     }
 
     /// An external input of `amount` is not supported yet; stimuli and signals are.
@@ -282,6 +320,8 @@ impl Engine {
                     SIGNAL => {
                         let edge = event.payload as usize;
                         let target = self.edge_target[edge] as usize;
+                        // recorded whether or not it lands: §6.7 judges a connection by its last delivery
+                        self.delivered_wave[edge] = self.wave_no as i64;
                         if self.receive(target, self.weight[edge], time) {
                             self.last_signal[edge] = time;
                             if self.earn {

@@ -18,7 +18,7 @@ from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF,
+    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
@@ -28,6 +28,7 @@ from .constants import (
 from .dopamine import ORDERS, Dopamine
 from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
 from .monitor import main, run_epoch
+from .network import input_stream
 from .neuron import Neuron
 from .persistence import across_of, checkpoint, restore, resume_teacher
 from .problems import PROBLEMS
@@ -326,6 +327,14 @@ def build_parser() -> argparse.ArgumentParser:
         f"(default: {EXPLORE})",
     )
     parser.add_argument(
+        "--population",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"neurons per raw bit where the coding repeats it (AUTHORITY.md §4.3): population coding uses this many, and "
+        f"population-complement uses this many and then complement-codes the lot (default: the problem's, else {POPULATION})",
+    )
+    parser.add_argument(
         "--drive",
         choices=("forced", "rate"),
         default=None,
@@ -523,6 +532,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --headless: how many epochs to run, printing accuracy along the way (default: 1)",
     )
     parser.add_argument(
+        "--input-seed",
+        type=int,
+        default=None,
+        help="draw the run's inputs up front from a stream of their own, keyed to this seed (AUTHORITY.md §4.5), so "
+             "two runs that differ in anything else still see the same epochs in the same order; without it the bits "
+             "come from the network's own stream, which a differently built network consumes differently",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -635,6 +652,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.hebb = HEBB_RATE if problem.hebb else 0.0
     if args.drive is None:
         args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
+    if args.population is None:
+        args.population = problem.population if problem.population is not None else POPULATION
     if args.flip is None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
@@ -760,7 +779,12 @@ def _run(args: argparse.Namespace) -> int:
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
             grid.explore, grid.rate_on = args.explore, args.rate_on
+            grid.population = args.population
             Neuron.rate_tau = args.rate_tau
+            if args.input_seed is not None:
+                grid.use_input_stream(input_stream(max(1, args.epochs), grid.raw_bit_count(), args.input_seed))
+                print(f"inputs: {max(1, args.epochs):,} patterns drawn up front from input seed {args.input_seed} "
+                      f"(§4.5), the same for any network run at this input seed", file=sys.stderr)
             if args.drive == "rate":
                 isi = args.refractory + 1.0 / args.input_rate if args.input_rate else float("inf")
                 print(f"input drive: rate (AUTHORITY.md §4.3) -- a Poisson process DRIVES each input neuron across the "
@@ -1014,6 +1038,8 @@ def _seed_worker(job: dict) -> dict:
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
+    if job.get("input_seed") is not None:
+        grid.use_input_stream(input_stream(epochs, grid.raw_bit_count(), job["input_seed"]))
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
@@ -1101,7 +1127,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
-                     "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau})
+                     "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
+                     "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

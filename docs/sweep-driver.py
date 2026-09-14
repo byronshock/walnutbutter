@@ -113,7 +113,8 @@ def run_arm(job: tuple) -> dict:
         if stale.exists():
             stale.unlink()  # an incomplete arm starts over: the trace is appended, so it must not carry old rows
     command = [PYTHON, "-m", "walnutbutter", "--problem", args.problem, "--headless", "--engine", args.engine,
-               "--epochs", str(args.epochs), "--save-weights", str(save), "--report", "60"]
+               "--epochs", str(args.epochs), "--save-weights", str(save), "--report", "60",
+               "--input-seed", str(int(arm["seed"]))]  # §4.5: every arm at this seed sees the same epochs
     for knob, value in arm.items():
         command += [KNOBS[knob][0], f"{value:g}"]
     if args.order:

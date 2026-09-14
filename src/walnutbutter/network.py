@@ -10,6 +10,7 @@ build on this; the learning code works on either.
 
 from __future__ import annotations
 
+import random
 from typing import Iterable
 
 from .constants import (
@@ -22,6 +23,21 @@ from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
 from .clock import before, slack
 from .propagation import Schedule, Wave
+
+
+def input_stream(count: int, raw_bits: int, seed: int) -> list[list[bool]]:
+    """`count` epochs' worth of raw input bits, from a stream of their own (AUTHORITY.md §4.5).
+
+    Drawn from `random.Random(f"walnutbutter inputs {seed}")`, which is not the
+    network's stream and is touched by nothing else, so the same seed gives the
+    same inputs whatever the network's size, reach, omega, weights or rule. That
+    is what makes two arms of a sweep comparable epoch by epoch rather than only
+    on average; drawing from the network's own stream, as every run before
+    September 14, 2026 did, gave different arms different inputs at the same
+    seed, because building a different network consumes the stream differently.
+    """
+    rng = random.Random(f"walnutbutter inputs {seed}")
+    return [[rng.random() < 0.5 for _ in range(raw_bits)] for _ in range(count)]
 
 
 class Network:
@@ -42,6 +58,9 @@ class Network:
         self.input_bits: list[bool] | None = None  # the raw bits before complement coding
         self.input_coded: list[bool] | None = None  # the complement-coded bits before permutation
         self.permutation: list[int] = list(range(across))  # place i along the bottom row shows coded bit permutation[i]
+        self.input_stream: list[list[bool]] | None = None  # raw-bit patterns to present in order, in place of fresh
+        # draws (§4.5); None draws from the network's own stream, as it always did
+        self.input_at = 0  # how far through that stream the run has got
         self.epoch = 0  # how many inputs have been presented
         self.time = 0.0  # the clock, nominal milliseconds: the time of the last input
         self.interval = INTERVAL  # default spacing of inputs when no time is given
@@ -60,8 +79,9 @@ class Network:
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
-        self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw" (as they
-        # are) or "population" (each bit repeated `population` times)
+        self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
+        # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
+        # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
         self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
@@ -177,11 +197,20 @@ class Network:
     def raw_bit_count(self) -> int:
         """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits."""
         width = self.input_width()
-        if self.coding in ("raw", "population"):
+        if self.coding in ("raw", "population", "population-complement"):
             if self.code:
                 raise ValueError(f"an error-correcting code needs complement coding, not {self.coding}")
             if self.coding == "raw":
                 return width
+            if self.coding == "population-complement":
+                if width % 2:
+                    raise ValueError(f"complement coding needs an even number of input neurons, got {width}")
+                half = width // 2
+                if half % self.population:
+                    raise ValueError(
+                        f"doubling into complement coding needs {2 * self.population} input neurons per raw bit, got {width}"
+                    )
+                return half // self.population
             if width % self.population:
                 raise ValueError(f"population coding needs a multiple of {self.population} input neurons, got {width}")
             return width // self.population
@@ -220,6 +249,9 @@ class Network:
             coded = list(word)
         elif self.coding == "population":
             coded = [bit for bit in word for _ in range(self.population)]  # each bit fills its own patch of the row
+        elif self.coding == "population-complement":
+            # repeated first, then the whole run followed by its negation (§4.3): 1001 -> 11000011 -> 1100001100111100
+            coded = complement_code([bit for bit in word for _ in range(self.population)])
         else:
             coded = complement_code(word)
         self.set_input([coded[i] for i in self.permutation], time)
@@ -228,14 +260,39 @@ class Network:
         self.input_coded = coded
 
     def new_random_input(self, time: float | None = None) -> list[bool]:
-        """Draw fresh raw bits from the network's seeded stream and set them as the input.
+        """Set the next input: the next pattern of an attached stream, or fresh raw bits.
 
-        Because the stream is the same one used to build the network, a seed
-        reproduces the whole sequence of inputs, not just the first.
+        Without a stream the bits come from the network's own seeded stream,
+        which is also the one used to build it, so a seed reproduces the whole
+        sequence of inputs but only for a network built exactly the same way.
+        With a stream attached by `use_input_stream` the patterns are the ones
+        given, in order, so two networks that differ in anything at all still
+        see the same inputs (§4.5). A run longer than the stream cycles it.
         """
-        bits = [self._rng.random() < 0.5 for _ in range(self.raw_bit_count())]
+        if self.input_stream:
+            bits = self.input_stream[self.input_at % len(self.input_stream)]
+            self.input_at += 1
+        else:
+            bits = [self._rng.random() < 0.5 for _ in range(self.raw_bit_count())]
         self.set_input_bits(bits, time)
-        return bits
+        return list(bits)
+
+    def use_input_stream(self, patterns) -> None:
+        """Present these raw-bit patterns in order, instead of drawing fresh ones (AUTHORITY.md §4.5).
+
+        Each pattern is one epoch's raw bits, `raw_bit_count()` of them. Pass
+        None to go back to drawing. The stream is checked here rather than at
+        the epoch that trips over it.
+        """
+        if patterns is None:
+            self.input_stream, self.input_at = None, 0
+            return
+        wanted = self.raw_bit_count()
+        patterns = [[bool(b) for b in pattern] for pattern in patterns]
+        wrong = next((k for k, pattern in enumerate(patterns) if len(pattern) != wanted), None)
+        if wrong is not None:
+            raise ValueError(f"input stream pattern {wrong} has {len(patterns[wrong])} bits, expected {wanted}")
+        self.input_stream, self.input_at = patterns, 0
 
     def input_neurons(self) -> list[Neuron]:
         """The bottom-row neurons whose input bit is 1 (empty if no pattern is set)."""

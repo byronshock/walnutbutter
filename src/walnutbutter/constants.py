@@ -31,7 +31,9 @@ REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal take
 INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
 # shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms
 # the problems had inherited and never chosen (Byron, same day, defaulting it here and removing every override)
-BORED_AFTER = 200.0  # ms of silence after which a neuron's threshold has fallen to zero and it fires on its own (Byron, September 12, 2026); 0 = off
+BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms of silence after which a neuron's
+# threshold has fallen to zero and it fires on its own (§5.4, Byron, September 12, 2026). Swept below the epoch it
+# floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own

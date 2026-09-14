@@ -60,7 +60,9 @@ def test_run_epoch_noise_gives_every_neuron_a_remembered_starting_potential():
     grid = GridOfNeurons(across=6, rows=4, weight=None, seed=1)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(1))
     noises = [n.noise for n in grid.neurons.values()]
-    assert len(set(noises)) > 1 and abs(statistics.mean(noises)) < 0.05
+    # 24 draws of standard deviation 0.1 have a standard error of 0.02 on their mean, so the bound has to be
+    # several of those or it fails whenever an unrelated change shifts which draws are taken
+    assert len(set(noises)) > 1 and abs(statistics.mean(noises)) < 0.10
     assert 0.05 < statistics.pstdev(noises) < 0.15
     forced = grid.input_neurons()[0]
     assert forced.has_fired and forced.forced

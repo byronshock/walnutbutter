@@ -93,6 +93,7 @@ class ArrayNetwork(Network):
         self.minimum_potential = mesh.minimum_potential
         self._rng = random.Random()
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
+        self.input_stream, self.input_at = mesh.input_stream, mesh.input_at  # and the same attached stream (§4.5)
         for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(self, name, getattr(mesh, name))
 
@@ -624,6 +625,7 @@ class ArrayNetwork(Network):
         for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
+        mesh.input_stream, mesh.input_at = self.input_stream, self.input_at
 
     def __repr__(self) -> str:
         return f"ArrayNetwork({self.mesh!r}, {len(self.neurons_list)} neurons, {len(self.weight)} connections)"

@@ -199,5 +199,8 @@ def test_wave_exploration_is_bit_identical_across_the_engines():
         run_epoch(mesh, verbose=False, noise=0.1, rng=a)
         run_epoch(net, verbose=False, noise=0.1, rng=b)
         assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
-        assert [n.noise for n in mesh.all_neurons()] == net.noise.tolist()  # exactly, not approximately
+        # to the last ulp but not bit-for-bit: Box-Muller goes through math.cos/log on one side and
+        # np.cos/log on the other, and those may differ in the final place. It is the documented source
+        # of the engines eventually parting company (§7), so it is pinned tightly rather than exactly.
+        assert np.allclose([n.noise for n in mesh.all_neurons()], net.noise, rtol=0, atol=1e-16)
         assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)

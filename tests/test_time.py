@@ -223,8 +223,9 @@ def test_cli_clock_options_and_validation(tmp_path, capsys):
                      "--refractory-hops", "2", "--save-weights", str(save)]) == 0
     data = json.loads(save.read_text())
     assert data["time"] == 10.0 and data["interval"] == 2.5 and data["refractory"] == 3.0 and data["refractory_hops"] == 2.0
-    assert data["bored_after"] == 200.0 and data["tau"] == 2.0 and len(data["last_update"]) == 24
-    assert Neuron.refractory == 5.0 and Neuron.refractory_hops == 3.0 and Neuron.bored_after == 200.0  # restored after the command
+    assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == 2.0 and len(data["last_update"]) == 24
+    assert (Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after) == (
+        C.REFRACTORY, C.REFRACTORY_HOPS, C.BORED_AFTER)  # restored after the command
     assert cli_main(["--headless", "-a", "6", "-r", "4", "--seed", "1", "--epochs", "3", "--bored-after", "0", "--no-save"]) == 0
     assert cli_main(["--headless", "--bored-after", "-1"]) == 2
     assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "6", "-r", "4", "--epochs", "5", "--interval", "2", "--no-save"]) == 0
