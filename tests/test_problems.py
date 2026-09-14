@@ -20,7 +20,7 @@ def quiet(monkeypatch):
 
 def test_the_problems_and_the_default():
     assert set(PROBLEMS) == {"reversal", "sustain_inputs", "improved_sustain", "population_copy",
-                             "population_denoise", "shallow_copy"}
+                             "population_denoise", "shallow_copy", "shallow_not"}
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"
     assert PROBLEMS["reversal"].trained and not PROBLEMS["sustain_inputs"].trained
     sustain = PROBLEMS["sustain_inputs"]
@@ -555,12 +555,38 @@ def test_rate_drive_runs_and_both_engines_draw_the_same_train():
 
 
 def test_a_problem_and_the_command_line_choose_the_drive():
+    """The real default, deliberately not under conftest's forced_input: no problem overrides it."""
     args = build_parser().parse_args(["--problem", "shallow_copy"])
     apply_problem(args)
-    assert args.drive == C.INPUT_DRIVE == "forced"  # every problem today presents its input as it always has
-    args = build_parser().parse_args(["--problem", "shallow_copy", "--drive", "rate", "--input-rate", "0.2"])
+    assert args.drive == C.INPUT_DRIVE == "rate"  # no unified wave front at time zero (§4.3)
+    assert all(p.drive is None for p in PROBLEMS.values())
+    args = build_parser().parse_args(["--problem", "shallow_copy", "--drive", "forced", "--input-rate", "0.2"])
     apply_problem(args)
-    assert args.drive == "rate" and args.input_rate == 0.2
+    assert args.drive == "forced" and args.input_rate == 0.2
+
+
+def test_the_default_drive_leaves_no_wave_front_at_time_zero():
+    """§4.3: forced drive locks every spike onto a hop grid anchored at t_e; rate drive has no such anchor."""
+    def spikes_on_the_grid(drive):
+        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=1, permute=False, omega=0)
+        grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", drive
+        hop, on_grid, total, at_zero = Neuron.hop(), 0, 0, 0
+        row = set(grid.input_row())
+        for _ in range(40):
+            run_epoch(grid, [True, False, True, False], verbose=False)
+            for wave in grid.waves:
+                phase = (wave.time - grid.time) % hop
+                aligned = min(phase, hop - phase) < 1e-9
+                for neuron in wave.fired:
+                    total += 1
+                    on_grid += aligned
+                    at_zero += (abs(wave.time - grid.time) < 1e-9 and neuron in row)
+        return on_grid / total, at_zero
+
+    aligned, at_zero = spikes_on_the_grid("forced")
+    assert aligned == 1.0 and at_zero > 0  # every spike on the lattice, and the input row starts it together
+    aligned, at_zero = spikes_on_the_grid("rate")
+    assert aligned == 0.0 and at_zero == 0  # no common lattice, and nothing fires at the epoch's moment
 
 
 def test_the_driving_process_is_not_the_spike_train():
@@ -568,7 +594,7 @@ def test_the_driving_process_is_not_the_spike_train():
     import statistics
     from walnutbutter.constants import INPUT_RATE, REFRACTORY
 
-    assert INPUT_RATE == 1.0  # a driving rate, ten times the spike rate it replaced
+    assert INPUT_RATE == 0.5  # a driving rate, five times the spike rate it replaced
 
     def train(rate, epochs=400):
         grid = GridOfNeurons(across=12, rows=5, weight=0.0, seed=1, permute=False, omega=0)  # weight 0: no mesh drive
@@ -586,13 +612,62 @@ def test_the_driving_process_is_not_the_spike_train():
         return arrivals, spikes, isis
 
     arrivals, spikes, isis = train(INPUT_RATE)
-    assert spikes < arrivals * 0.25  # most arrivals land inside a refractory period and are dropped
+    assert spikes < arrivals * 0.35  # five sevenths of the arrivals land inside a refractory period and are dropped
     assert all(gap >= REFRACTORY - 1e-9 for gap in isis)  # nothing fires sooner than the refractory period allows
     mean = statistics.fmean(isis)
     assert mean == pytest.approx(REFRACTORY + 1.0 / INPUT_RATE, rel=0.05)  # dead time plus an exponential wait
     cv = statistics.stdev(isis) / mean
     assert cv == pytest.approx((1.0 / INPUT_RATE) / mean, rel=0.1)
-    assert cv < 0.25  # far below a Poisson train's 1.0: this is what "not a Poisson process" buys
+    assert cv < 0.35  # far below a Poisson train's 1.0: this is what "not a Poisson process" buys
 
     slow_cv = (lambda i: statistics.stdev(i) / statistics.fmean(i))(train(0.1)[2])
     assert slow_cv > cv * 2  # a low driving rate is the old behaviour: the refractory period rarely binds
+
+
+# --- the same problem, only NOT (AUTHORITY.md §8) ------------------------------------
+
+def test_shallow_not_is_shallow_copy_with_the_target_complemented():
+    from walnutbutter.learning import TARGETS, accuracy, teacher_score
+
+    assert TARGETS["complement"]([True, False, True]) == [False, True, False]
+    a, b = PROBLEMS["shallow_not"], PROBLEMS["shallow_copy"]
+    for same in ("across", "rows", "interval", "coding", "critic", "rule", "quash", "permute",
+                 "reach", "readout", "read", "trained", "flip", "drive", "hebb"):
+        assert getattr(a, same) == getattr(b, same), same
+    assert (a.target, b.target) == ("complement", "copy")
+
+    grid = GridOfNeurons(across=12, rows=3, weight=1.0, omega=0, permute=False)
+    grid.coding, grid.readout, grid.read = "population", "top", "fired"
+    grid.set_input_bits([True, False, False, True])  # 1001 -> 111000000111
+    for neuron, on in zip(grid.output_row(), grid.input_pattern):
+        neuron.has_fired = on  # a perfect copy
+    assert accuracy(grid, "copy") == pytest.approx(1.0)
+    assert accuracy(grid, "complement") == pytest.approx(0.0)  # ...is exactly the wrong answer here
+    assert teacher_score(grid, "complement", "row") == pytest.approx(-1.0)
+    for neuron in grid.output_row():
+        neuron.has_fired = not neuron.has_fired
+    assert accuracy(grid, "complement") == pytest.approx(1.0)
+    assert teacher_score(grid, "complement", "row") == pytest.approx(1.0)
+
+    for neuron in grid.output_row():  # silence: right on the six the complement wants off, wrong on the six it wants on
+        neuron.has_fired = False
+    assert accuracy(grid, "complement") == pytest.approx(0.5)  # the same trivial floor every other problem has
+
+
+def test_the_complement_is_what_excitation_alone_cannot_reach():
+    """§8: an output whose whole input group is silent receives no signal, so no weight can drive it."""
+    from walnutbutter.learning import accuracy
+
+    grid = GridOfNeurons(across=12, rows=2, weight=None, seed=4, permute=False, omega=0)
+    grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", "rate"
+    quiet_but_wanted = quiet_and_wanted_quiet = 0
+    for _ in range(60):
+        run_epoch(grid, [True, False, True, False], verbose=False)
+        want = [not b for b in grid.input_pattern]
+        for fired, w in zip(grid.output_fired(), want):
+            if w and not fired:
+                quiet_but_wanted += 1
+            elif not w and not fired:
+                quiet_and_wanted_quiet += 1
+    assert quiet_but_wanted > 0  # the half the task cannot reach by excitation
+    assert accuracy(grid, "complement") <= 1.0

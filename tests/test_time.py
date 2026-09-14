@@ -16,6 +16,11 @@ from walnutbutter.propagation import propagate
 
 
 @pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
+@pytest.fixture(autouse=True)
 def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 

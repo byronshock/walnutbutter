@@ -11,6 +11,11 @@ from walnutbutter.neuron import Neuron
 from walnutbutter import visualizer as viz
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 def test_origin_maps_to_zero():
     assert viz.axial_to_pixel(0, 0, 10) == (0, 0)
 

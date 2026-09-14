@@ -8,6 +8,11 @@ from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 def test_main_fires_the_bottom_row_and_returns_the_grid(capsys):
     grid = main(across=4, rows=3, weight=1.0, seed=1)
     out = capsys.readouterr().out

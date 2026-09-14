@@ -82,6 +82,7 @@ Target = Callable[[Sequence[bool]], list[bool]]
 TARGETS: dict[str, Target] = {
     "reversed": lambda pattern: list(pattern)[::-1],
     "copy": lambda pattern: list(pattern),
+    "complement": lambda pattern: [not b for b in pattern],  # the same problem, only NOT (§8, Byron, September 14, 2026)
     "all-off": lambda pattern: [False] * len(pattern),
     "all-on": lambda pattern: [True] * len(pattern),
 }

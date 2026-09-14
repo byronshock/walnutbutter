@@ -4,6 +4,11 @@ from walnutbutter.grid import DIRECTIONS, DIRECTIONS2, GridOfNeurons, axial_to_o
 from walnutbutter.neuron import Neuron
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 @pytest.fixture
 def grid():
     return GridOfNeurons(across=7, rows=5, omega=0)  # a plain mesh, no shortcuts

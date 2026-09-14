@@ -137,7 +137,7 @@ class ArrayNetwork(Network):
         # the schedule: distinct times, each with the sources whose signals arrive then and the neurons forced then
         self._times: list[float] = []
         self._arrivals: dict[float, np.ndarray] = {}
-        self._stimuli: dict[float, np.ndarray] = {}
+        self._stimuli: dict[float, list[int]] = {}  # indices, not a mask: rate drive lands one arrival per moment
         for time, connection in mesh.schedule.pending():
             self._arrive(self.index[connection.source], time)
 
@@ -188,10 +188,23 @@ class ArrayNetwork(Network):
         self._arrivals[time] += firing
 
     def _stimulate(self, forced: np.ndarray, time: float) -> None:
+        """Force every neuron the mask names, at `time`."""
+        self._stimulate_at(np.flatnonzero(forced).tolist(), time)
+
+    def _stimulate_at(self, indices, time: float) -> None:
+        """Force the neurons at `indices`, at `time`.
+
+        The stimuli are kept as index lists rather than masks because rate drive (§4.3)
+        delivers each arrival at its own continuous moment, so a mask per arrival was one
+        60-wide allocation per stimulus -- over a thousand an epoch, and the largest
+        single line in the profile after the wave loop itself.
+        """
         time = self._key(time)
-        if time not in self._stimuli:
-            self._stimuli[time] = np.zeros(len(self.neurons_list), dtype=bool)
-        self._stimuli[time] |= forced
+        at = self._stimuli.get(time)
+        if at is None:
+            self._stimuli[time] = list(indices)
+        else:
+            at.extend(indices)
 
     def pending(self) -> list[tuple[float, int]]:
         """Signals in flight as (time, source index), by time: what sync_to_mesh puts back on the mesh's schedule."""
@@ -209,7 +222,7 @@ class ArrayNetwork(Network):
             limit = first + slack(first)
             firing = self._arrivals.pop(first, None)
             stimulus = self._stimuli.pop(first, None)
-            time = first if stimulus is None else first
+            time = first
             while self._times and self._times[0] <= limit:  # the same moment, within the clock's slack
                 other = heapq.heappop(self._times)
                 more = self._arrivals.pop(other, None)
@@ -217,7 +230,7 @@ class ArrayNetwork(Network):
                     firing = more if firing is None else firing + more
                 forced_too = self._stimuli.pop(other, None)
                 if forced_too is not None:
-                    stimulus = forced_too if stimulus is None else stimulus | forced_too
+                    stimulus = forced_too if stimulus is None else stimulus + forced_too
                     time = other  # an input's exact time anchors the wave
             number = len(self.waves)
             refractory = self.fired_at + Neuron.refractory > time + slack(time)  # fired within the refractory period before now
@@ -237,13 +250,19 @@ class ArrayNetwork(Network):
                     self.eligibility[integrated] += firing[self.source[integrated]]
             if self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None:
                 self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)  # §6.1, before the decision
-            fire_forced = (stimulus & ~refractory) if stimulus is not None else np.zeros(n, dtype=bool)
+            if stimulus is None:
+                fire_forced = None
+            else:
+                fire_forced = np.zeros(n, dtype=bool)
+                fire_forced[stimulus] = True
+                fire_forced &= ~refractory
             if Neuron.bored_after > 0.0:  # threshold homeostasis: the threshold falls with the silence since the last spike
                 since = np.where(self.fired_at == -np.inf, 0.0, self.fired_at)
                 facing = threshold - threshold * (time - since) / Neuron.bored_after
             else:
                 facing = threshold
-            fired = fire_forced | (~refractory & (self.potential_at(time) >= facing))  # everyone, touched or not, like the object engine
+            ready = ~refractory & (self.potential_at(time) >= facing)  # everyone, touched or not, like the object engine
+            fired = ready if fire_forced is None else (fire_forced | ready)
             idx = np.flatnonzero(fired)
             if len(idx):
                 self.previous_fired_at[idx] = self.fired_at[idx]
@@ -258,7 +277,8 @@ class ArrayNetwork(Network):
                 potential[idx] = 0.0  # the spike resets the potential
                 fired_wave[idx] = number
                 self.spikes[idx] += 1
-                self.forced |= fire_forced
+                if fire_forced is not None:
+                    self.forced |= fire_forced
                 if out_degree @ fired > 0:  # someone has active connections out: signals in flight
                     self._arrive_all(fired.astype(float), time + hop)
             self.waves.append(ArrayWave(number, time, idx))
@@ -360,12 +380,9 @@ class ArrayNetwork(Network):
             raise ValueError("no input pattern set; call set_input() first")
         self.time = self.input_time if self.input_time is not None else self.next_time()
         self.epoch += 1
-        n = len(self.neurons_list)
         self.input_events = self.input_schedule()  # the same draws as the mesh, from the same stream (§4.3)
         for place, when in self.input_events:
-            forced = np.zeros(n, dtype=bool)
-            forced[self.input_index[place]] = True
-            self._stimulate(forced, when)
+            self._stimulate_at((int(self.input_index[place]),), when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self._run(self.horizon)
         self.forget()

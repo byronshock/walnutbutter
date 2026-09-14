@@ -71,8 +71,8 @@ literal of its own.
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
-| INPUT_DRIVE | forced | how a bit becomes spikes (§4.3): one mandated spike at $t_e$, or `rate`, a Poisson process across the epoch |
-| INPUT_RATE, INPUT_RATE_OFF | 1, 0 /ms | the rates of the Poisson processes that *drive* a bit-1 and a bit-0 neuron; the neuron fires at the first arrival after its refractory period, at 167 Hz and CV 0.17 (§4.3) |
+| INPUT_DRIVE | rate | how a bit becomes spikes (§4.3): a Poisson process drives each input neuron across the epoch. `forced`, one mandated spike at $t_e$, locks every spike onto a hop lattice and is retired as the default |
+| INPUT_RATE, INPUT_RATE_OFF | 0.5, 0 /ms | the rates of the Poisson processes that *drive* a bit-1 and a bit-0 neuron; the neuron fires at the first arrival after its refractory period, at 143 Hz and CV 0.29 (§4.3) |
 | RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
@@ -292,7 +292,7 @@ the reinforce rule (§6.7) consults.
 option to present the inputs as a probabilistic firing rate rather than
 presenting them all at once and seeing what happens."** INPUT_DRIVE names it.
 
-- `forced`, the default and everything above: every neuron whose bit is 1 is
+- `forced`, and everything above this section: every neuron whose bit is 1 is
   made to spike once, at $t_e$, all of them in one wave.
 - `rate`: an independent **Poisson process drives** each input neuron across
   the epoch, at INPUT_RATE where its bit is 1 and INPUT_RATE_OFF where it is
@@ -313,13 +313,53 @@ $$\text{ISI} = \text{REFRACTORY} + \mathrm{Exp}(\lambda), \qquad
 \bar r = \frac{1}{\text{REFRACTORY} + 1/\lambda}, \qquad
 \text{CV} = \frac{1/\lambda}{\text{REFRACTORY} + 1/\lambda}.$$
 
-At INPUT_RATE = 1/ms that is a mean interval of 6 ms, 167 Hz — 83% of
-saturation — at a coefficient of variation of **0.17**, where a Poisson train's
-is exactly 1 and a real cortical train's is nearer 0.5–1.0. Four fifths of the
-arrivals are discarded, which is the point: the rate sets how soon after the
-dead time the neuron goes, and the refractory period sets everything else. A
-low $\lambda$ recovers the old behaviour, where the refractory period rarely
-binds and the train is nearly Poisson (CV 0.61 at 0.1/ms).
+At INPUT_RATE = 0.5/ms that is a mean interval of 7 ms, 143 Hz — 71% of
+saturation, 5 spikes across a 35 ms epoch — at a coefficient of variation of
+**0.29**, where a Poisson train's is exactly 1 and a real cortical train's is
+nearer 0.5–1.0. Five sevenths of the arrivals are discarded, which is the
+point: the rate sets how soon after the dead time the neuron goes, and the
+refractory period sets everything else. A low $\lambda$ recovers the old
+behaviour, where the refractory period rarely binds and the train is nearly
+Poisson (CV 0.61 at 0.1/ms); a high one drives it toward clockwork (CV 0.05 at
+4/ms).
+
+*Chosen (Byron, September 14, 2026):* $\lambda = 0.5$/ms, five times the rate
+it replaced. It is the second-best cell of the rate × interval grid at the
+35 ms epoch we run (0.838 against 0.858 for the near-Poisson 0.1/ms, and above
+every faster drive), and its CV of 0.29 is the closest of the values swept to
+what real trains do — the faster drives buy regularity the task does not
+reward and biology does not display.
+
+**`rate` is the default from September 14, 2026, and `forced` is what it
+replaces.** *Byron, asking what the epoch resets and what it does not: "The
+question I am getting at is whether there is a unified wave front in the input
+process at time zero. I don't want any such thing."* There was one, and it was
+total. Under forced drive every bit-1 neuron spikes at exactly $t_e$, and
+because the hop is a fixed 1.667 ms the whole network is then locked to the
+lattice $t_e + k\,\text{hop}$: **100% of every spike in the network**, in every
+row, for the whole epoch, measured. It is not a wave front so much as a
+metronome that $t_e$ starts. Under rate drive nothing fires at $t_e$ — the
+first arrival is $t_e + \mathrm{Exp}(\lambda)$ — each arrival starts its own
+cascade off its own phase, and **0.0%** of spikes share any lattice. No
+problem overrides the drive, so this is the default throughout.
+
+*Everything measured before this date under forced drive was measured on a
+synchronous lattice*, the 0.978 two-hop solve of §6.7 included, and that
+result may be about the lattice rather than about the task.
+
+*And there is no seam at the epoch boundary, contrary to what Claude claimed
+when first raising this.* `input_schedule` regenerates the process from $t_e$
+each epoch rather than carrying a pending arrival across, but a Poisson
+process has **independent increments**, so arrivals in $[T, T+I)$ do not
+depend on anything before $T$ and restarting at $T$ *is* a continuation.
+Simulated against a single unbroken process over 40,000 epochs the two agree
+on everything: rate 1.0000 against 1.0004, mean gap within an epoch 0.9704
+against 0.9701, mean gap straddling a boundary 2.0072 against 2.0009, and
+arrival density in the first millisecond of an epoch 0.0286 against a
+mid-epoch 0.0286. (The straddling gap being twice the mean is the inspection
+paradox, not a seam: the interval containing any fixed instant is
+length-biased. Measuring it and reading it as evidence of a seam was the
+second error in the same place.)
 
 The refractory period that matters is the **neuron's own**, so a spike the
 mesh drove silences the drive too; this is why the arrivals are emitted in
@@ -1327,6 +1367,45 @@ pauses the free run at the end of an epoch to show its trace, a raster of
 every spike. The network runs forever: these are read as health, not
 convergence, and drift is normal.
 
+### 6.15 A third engine — written, not yet built
+
+*Byron, September 14, 2026, asking whether another language would make the
+scheduling significantly faster, and then: "please build and test the rust
+scheduler module."*
+
+Profiling the array engine settled the first question. The arithmetic is
+**1.3% of the runtime**: the sparse matrix-vector product that performs every
+signal delivery costs 42 ms out of 3,271, and the rest is Python interpreter
+overhead. The network is small — 60 neurons, 766 connections — so a numpy call
+touches sixty doubles, about 50 ns of work behind 1–5 µs of call overhead.
+Vectorising cannot pay at this scale; it was worth doing for the second
+opinion it gave, not for the speed. A compiled loop that owns the state across
+a run avoids both the interpreter and the per-call overhead, and 30–100× is
+the expected order.
+
+`rust/` holds that loop: the wave batching of §4.4, the neuron dynamics of §5,
+the quash of §6.11 and leaky Hebb of §6.12, behind PyO3, with `fast.py` to
+build it from a grid and `compare()` to check it lands on the same bits as the
+object engine. It refuses exploration noise rather than approximating it,
+because the draws would have to come from Python's stream in the same order
+for the engines to agree.
+
+**It has not been compiled or run.** This machine has no Rust toolchain, and
+installing one needs a password. Everything in `rust/` is therefore unverified
+code, and `tests/test_fast.py` skips every test that needs the extension. The
+two that do not — that the module refuses clearly when absent, and that the
+edge order matches the object engine's push order — pass. That second one is
+not cosmetic: signals due at one moment are summed in push order, so an engine
+that flattens the topology differently sums a wave differently and lands on
+different bits.
+
+The profile also named an algorithmic win that needs no new language: **the hop
+delay is constant**, so every signal from a wave arrives at exactly
+$t + \text{hop}$ and a ring buffer indexed by hop count would replace the
+general priority queue, O(1) where the heap is O(log n). Only the Poisson
+stimuli land at arbitrary times. That is available in Python today and may be
+worth more than the rewrite.
+
 ## 7. Invariants the scaffolding guarantees — kept
 
 - **Two engines, one network.** The object engine (neurons and a queue of
@@ -1419,6 +1498,33 @@ the layout, the inputs, and whether anything outside the network trains it.
   §6.9's score with the credit normalised to the zone. No permutation, a
   20 ms epoch, reach 2, and each output read as fired this epoch. Cycles
   are quashed; the teacher also pays, and `--lr 0` isolates the quash.
+
+- **shallow_not** (Byron, September 14, 2026): "It's the same as the old
+  problem, only it's not." shallow_copy in every respect — the same 12-wide
+  population-coded input on the same grid, read the same way, scored the same
+  way — except that the target is the **complement** of the code.
+
+  *Why it is not a small variation.* Copy can be had by excitation alone:
+  something fires, something downstream fires. The complement asks an output
+  neuron to fire **because nothing told it to**. Silence propagates no signal,
+  sends nothing along any synapse, and arrives nowhere, so no weight on any
+  incoming connection can drive an output whose whole input group is quiet —
+  there is no signal there to weight. The half of the task that says "be off
+  where the input was on" is easy; the half that says "be on where the input
+  was silent" has no causal path to it.
+
+  The only mechanism in the system that turns silence into a spike is the
+  bored-neuron threshold of §5.4, and it is calibrated at BORED_AFTER = 200 ms
+  against a 35 ms epoch: six epochs of silence before a neuron goes on its
+  own, by which time the input has changed six times. So the expectation,
+  stated in advance, is a score near the 0.5 floor for a structural reason
+  rather than a tuning one. A first run at five rows reaches 0.537 over 3,000
+  epochs.
+
+  What would change it is not a learning rate. It is a standing background of
+  activity that inhibition can sculpt — a tonic drive, or a boredom clock near
+  the epoch's own length — which is how cortex computes absence, and which no
+  problem here has ever asked for.
 
 - **population_denoise** (Byron, September 13, 2026), the same network
   inspected somewhere else. *Byron:* "I want to know whether this is doing

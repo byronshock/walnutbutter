@@ -81,6 +81,17 @@ PROBLEMS: dict[str, Problem] = {
         12, 2, trained=False, readout="top", read="fired", target="copy", critic="row",
         coding="population", permute=False, rule="teacher", quash=True,
     ),
+    "shallow_not": Problem(
+        "shallow_not",
+        "shallow_copy, only NOT (Byron, September 14, 2026): the same 12-wide population-coded input on the same grid, "
+        "read the same way, but the top row should show the COMPLEMENT of the code. Where copy can be had by excitation "
+        "alone, this asks a neuron to fire because nothing told it to: silence propagates no signal, so no weight on any "
+        "incoming connection can drive an output whose whole input group is quiet. The only thing in the system that "
+        "turns silence into a spike is the bored-neuron threshold of §5.4, calibrated at 200 ms against a 35 ms epoch "
+        "(AUTHORITY.md §8)",
+        12, 2, trained=False, readout="top", read="fired", target="complement", critic="row",
+        coding="population", permute=False, rule="teacher", quash=True,
+    ),
     "population_denoise": Problem(
         "population_denoise",
         "population_copy's network read somewhere else (Byron, September 13, 2026): the same 12-wide, 10-row grid, the "

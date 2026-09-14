@@ -15,6 +15,11 @@ from walnutbutter.persistence import checkpoint, restore
 
 
 @pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the columns and the plumbing, not the input process (see conftest.forced_input)."""
+
+
+@pytest.fixture(autouse=True)
 def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 

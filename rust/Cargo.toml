@@ -1,0 +1,17 @@
+[package]
+name = "walnutbutter-schedule"
+version = "0.1.0"
+edition = "2021"
+description = "The wave loop of walnutbutter's schedule (AUTHORITY.md §4.4), in Rust"
+
+[lib]
+name = "walnutbutter_schedule"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

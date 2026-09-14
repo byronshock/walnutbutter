@@ -34,13 +34,17 @@ INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is
 BORED_AFTER = 200.0  # ms of silence after which a neuron's threshold has fallen to zero and it fires on its own (Byron, September 12, 2026); 0 = off
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
-INPUT_DRIVE = "forced"  # "forced": every bit-1 neuron is made to spike once at the epoch's moment, as it has been;
-# "rate": a Poisson process DRIVES each input neuron across the epoch instead (Byron, September 13-14, 2026)
-INPUT_RATE = 1.0  # per ms: the rate of that driving process, not the rate the neuron fires at. Arrivals inside the
+INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own
+# continuous time. "forced": every bit-1 neuron is made to spike at once at the epoch's moment, which locks every
+# spike in the network onto a hop grid anchored there -- a unified wave front at time zero, which Byron ruled out on
+# September 14, 2026: "I don't want any such thing."
+INPUT_RATE = 0.5  # per ms: the rate of that driving process, not the rate the neuron fires at. Arrivals inside the
 # refractory period are dropped, so the neuron fires at the first arrival after it ends and the spike train is a
-# renewal process with dead time, not a Poisson one: mean ISI = REFRACTORY + 1/rate, so 6 ms and 167 Hz here, at a
-# coefficient of variation of 0.17 against a Poisson train's 1.0. Byron, September 14, 2026: real neural signalling is
-# not a Poisson process, so the driving process gets its own, much higher rate and the refractory period does the rest.
+# renewal process with dead time, not a Poisson one: mean ISI = REFRACTORY + 1/rate, so 7 ms and 143 Hz here (71% of
+# saturation, 5 spikes an epoch), at a coefficient of variation of 0.29 against a Poisson train's 1.0 -- sub-Poisson
+# and refractory-dominated, but not as near-clockwork as a faster drive makes it. Byron, September 14, 2026: real
+# neural signalling is not a Poisson process, so the driving process gets its own, much higher rate (this is five
+# times the 0.1 it replaced) and the refractory period does the rest.
 INPUT_RATE_OFF = 0.0  # per ms: the driving rate for a bit-0 neuron; 0 makes a zero bit mean silence, as forced drive does
 
 # --- reading a rate rather than a bit (AUTHORITY.md §4.3, §6.9) --------------------

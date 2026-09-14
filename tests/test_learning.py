@@ -175,8 +175,9 @@ def test_teacher_with_seed_is_reproducible():
     assert run(5) != run(6)
 
 
-def test_targets_registry_has_the_four_builtin_targets():
-    assert set(learning.TARGETS) == {"reversed", "copy", "all-off", "all-on"}
+def test_targets_registry_has_the_builtin_targets():
+    assert set(learning.TARGETS) == {"reversed", "copy", "complement", "all-off", "all-on"}
+    assert learning.TARGETS["complement"]([True, False]) == [False, True]  # shallow_not (§8)
 
 
 def test_accuracy_to_date_is_the_mean_over_all_epochs():

@@ -5,6 +5,11 @@ from walnutbutter.neuron import Neuron
 from walnutbutter.propagation import Signal, Wave, propagate
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 def chain(n, weight=1.0, threshold=1.0):
     """a0 -> a1 -> ... -> a(n-1), one-way."""
     neurons = [Neuron(f"n{i}", threshold=threshold) for i in range(n)]
