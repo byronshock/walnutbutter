@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .cartesian import CartesianNodes
 from .columns import HexColumns
+from .goo import Goo
 from .grid import GridOfNeurons
 from .dopamine import Dopamine
 from .neuron import Neuron
@@ -29,9 +30,10 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         grid = grid.mesh
     lattice = isinstance(grid, CartesianNodes)
     columns = isinstance(grid, HexColumns)
+    goo = isinstance(grid, Goo)
     data = {
         "format": FORMAT,
-        "container": "lattice" if lattice else "columns" if columns else "grid",
+        "container": "goo" if goo else "lattice" if lattice else "columns" if columns else "grid",
         "layers": getattr(grid, "layers", 1),
         "across": grid.across,
         "rows": grid.rows,
@@ -84,6 +86,8 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "dopamine": None if grid.dopamine is None else grid.dopamine.state(),
         "rule": grid.rule,  # which rule the schedule's hook serves: dopamine, or teacher (eligibility for the read)
     }
+    if goo:
+        data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -138,6 +142,8 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
     Returns the grid and the checkpoint data (so a Teacher can be resumed).
     """
     data = read_checkpoint(path)
+    if data.get("container") == "goo":
+        return _restore_goo(data), data
     if data.get("container") == "lattice":
         return _restore_lattice(data), data
     if data.get("container") == "columns":
@@ -164,6 +170,32 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
     load_weights(grid, data)
     grid.epoch = data["epoch"]
     return grid, data
+
+
+def _restore_goo(data: dict) -> Goo:
+    """Rebuild goo from its count, then load its weights.
+
+    No seed is needed. Nothing about goo's topology was drawn -- the count
+    alone fixes which pairs connect and in what id order -- so a goo built
+    without one restores exactly, unlike a grid whose shortcuts cannot be
+    rebuilt without the stream that chose them.
+    """
+    goo = Goo(
+        count=data["count"],
+        across=across_of(data),
+        weight=None if data["random_weights"] else data["weight"],
+        threshold=data["threshold"],
+        seed=data["seed"],
+        permute=False,
+        weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
+        minimum_potential=data.get("minimum_potential", -1.0),
+    )
+    goo.permutation = list(data["permutation"])
+    goo.ecc = _ecc_name(data)
+    goo.coding = data.get("coding", "complement")
+    load_weights(goo, data)
+    goo.epoch = data["epoch"]
+    return goo
 
 
 def _restore_columns(data: dict) -> HexColumns:

@@ -7,6 +7,7 @@ from walnutbutter.cartesian import CartesianNodes
 from walnutbutter.cli import build_parser
 from walnutbutter.columns import HexColumns
 from walnutbutter.dopamine import Dopamine
+from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.grid import GridOfNeurons
 from walnutbutter.learning import Teacher, reinforce
 from walnutbutter.monitor import main
@@ -49,6 +50,16 @@ def test_every_container_builds_the_default_network_from_the_constants():
             C.ACROSS, C.ROWS, C.THRESHOLD, C.MINIMUM_POTENTIAL, C.WEIGHT_RANGE), build.__name__
     assert defaults_of(GridOfNeurons)["omega"] == defaults_of(HexColumns)["omega"] == C.OMEGA
     assert defaults_of(CartesianNodes.connect_within)["reach"] == C.REACH
+
+
+def test_goo_reads_across_as_its_zone_width_and_across_times_rows_as_its_count():
+    """Goo has no cells to count, so §1.1's two shape constants mean something else in it -- but still mean it."""
+    d = defaults_of(Goo)
+    assert (d["across"], d["threshold"], d["minimum_potential"], d["weight_range"]) == (
+        C.ACROSS, C.THRESHOLD, C.MINIMUM_POTENTIAL, C.WEIGHT_RANGE)
+    assert d["count"] == DEFAULT_COUNT == C.ACROSS * C.ROWS  # the default network's count, so the two compare
+    assert build_parser().parse_args(["--goo"]).goo == C.ACROSS * C.ROWS
+    assert build_parser().parse_args([]).goo is None  # no goo unless asked for
 
 
 def test_the_teacher_and_the_rule_read_the_constants():

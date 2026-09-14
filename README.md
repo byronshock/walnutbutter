@@ -27,7 +27,10 @@ rings of neighbours plus a few random small-world shortcuts. **Walnut butter**
 is the substance the neurons are made of: spread it on the plane in smears of
 a given density and neurons appear at that density, and butter spread near
 other butter connects, so where you put it and how thick decides the whole
-architecture. The default of each is an 8 x 10 field of 80 neurons.
+architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
+(`--goo`) is the control: the same eighty neurons with no positions at all
+and every ordered pair connected, so whatever the geometry is worth is what
+goo is missing.
 
 ## Setup (once)
 
@@ -398,6 +401,45 @@ with `--load-weights`), and shows in the window or runs headless with
 no rows, so it is shown, not trained. The earlier Gaussian receptive-field
 wiring (`connect_by_distance`) remains in the library for reference.
 
+## Goo
+
+The plane taken away (AUTHORITY.md §3.4). Every container above has to say
+what "near" means before it can say what connects; goo has no positions, so
+there is no distance to measure and nothing to be near, and what is left is
+the only wiring that needs no ruler: **every ordered pair**. `--goo` makes
+80 neurons, the default network's count, and 80 x 79 = 6,320 one-way
+connections against the grid's 1,395 -- the same neurons, four and a half
+times the wiring.
+
+With no rows there is no bottom row to be the input, so the zones go by
+index: the first `--across` neurons are the input zone and the last
+`--across` the output. They are addressed the way every other container's
+rows are (`get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out), so
+learning, the teacher, the checkpoints and the array engine need to know
+nothing about it. Goo smaller than twice the zone width overlaps them on
+purpose, and `--goo 8` reads the eight neurons it writes.
+
+```bash
+walnutbutter --goo --headless --epochs 1000        # 80 neurons, fully connected
+walnutbutter --goo 200 --engine arrays --headless  # bigger goo, on the array engine
+walnutbutter --goo --seeds 8 --epochs 50000        # a batch, like any other container
+```
+
+Nothing is drawn to decide the topology -- the count alone fixes which pairs
+connect and in what id order -- so the seed reaches only the weights, the
+permutation and the inputs, and a checkpoint rebuilds goo from its count
+even when it was built without a seed. `--omega`, `--reach` and `--rows` do
+not reach it, and it has no geometry, so it runs headless and cannot be
+shown.
+
+**It saturates at the grid's constants, and that is the point of building
+it.** Each neuron gets 79 incoming synapses on [-1, 1] against a threshold
+of 0.25, where the grid gives it about 18: 97% of neurons fire every epoch
+and the output zone is stuck on, so the read carries nothing. Goo has not
+been given a threshold of its own yet, and comparing it with the grid before
+it has one would compare a tuned network with an untuned one. AUTHORITY.md
+§3.4 sets out the choice and leaves it open.
+
 ## Learning
 
 **Dopamine** (AUTHORITY.md §6, the default, `--rule dopamine`). A neuron
@@ -582,6 +624,7 @@ src/walnutbutter/
   exploration.py the Box-Muller noise draws both engines share
   constants.py every global constant: the default network, the neuron's clock, the learning rule's knobs
   grid.py      GridOfNeurons: builds the rectangle of hexagons and wires up both rings of neighbours
+  goo.py       Goo: no positions, every ordered pair connected, zones by index (--goo); the control
   columns.py   HexColumns: the cells extruded into layers in R3 (--layers); bottom layer in, top layer out
   butter.py    WalnutButter: smears of neuron density (per unit cell) on the plane; shapes Rect and Disc
   cartesian.py CartesianNodes: the lattice, a scatter, or a placed recipe; reach wiring

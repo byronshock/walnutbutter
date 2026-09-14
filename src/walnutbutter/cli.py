@@ -15,6 +15,7 @@ from pathlib import Path
 from .butter import CELL_AREA
 from .cartesian import CartesianNodes
 from .columns import HexColumns
+from .goo import DEFAULT_COUNT as GOO_COUNT, Goo
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
@@ -86,6 +87,19 @@ def build_parser() -> argparse.ArgumentParser:
         "horizontally always connects, at any "
         "height; the rest is --omega shortcuts. The bottom layer is the input and the top layer the output "
         "(with one layer: bottom row in, top row out, and the stack is the hex grid exactly)",
+    )
+    parser.add_argument(
+        "--goo",
+        type=int,
+        nargs="?",
+        const=GOO_COUNT,
+        default=None,
+        metavar="N",
+        help=f"goo: N neurons with no positions at all, every ordered pair connected, no neighbourhood and no "
+        f"shortcuts (default: {GOO_COUNT}, the default network's count, so goo and the grid compare at equal "
+        f"size). The first --across neurons are the input zone and the last --across the output, because with "
+        f"no rows there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is "
+        f"no geometry to draw, so it cannot be shown",
     )
     parser.add_argument(
         "--engine",
@@ -602,8 +616,16 @@ def cli_main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code (0 = success)."""
     args = build_parser().parse_args(argv)
     args.given_rule = args.rule  # what --rule said, if anything: it outlives a checkpoint's problem
-    args.show = not args.headless and args.seeds is None  # a seed batch is headless by definition
+    # a seed batch is headless by definition, and so is goo: it has no positions, so there is nothing to draw
+    args.show = not args.headless and args.seeds is None and args.goo is None
     args.fast = args.show and not args.step
+    if args.goo is not None and args.save:
+        print("error: goo has no geometry to draw, so --save has no picture to write", file=sys.stderr)
+        return 2
+    if args.goo is not None and (args.nodes is not None or args.layers is not None):
+        other = "--nodes" if args.nodes is not None else "--layers"
+        print(f"error: --goo is a container of its own; it cannot be combined with {other}", file=sys.stderr)
+        return 2
     try:
         apply_problem(args)
     except ValueError as exc:
@@ -769,6 +791,22 @@ def _run(args: argparse.Namespace) -> int:
             input_bits = parse_bits(args.input) if args.input is not None else None
             if loaded:
                 grid, data = loaded
+            elif args.goo is not None:
+                if args.goo < args.across:
+                    print(
+                        f"error: --goo needs at least as many neurons as the zones are wide, got {args.goo} "
+                        f"for {args.across} across",
+                        file=sys.stderr,
+                    )
+                    return 2
+                grid = Goo(
+                    count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
+                    permute=not args.no_permute, weight_range=settings["weight_range"],
+                    minimum_potential=args.minimum_potential,
+                )
+                print(f"{grid!r}: {grid.mean_out_degree():.0f} outgoing per neuron, every one of them", file=sys.stderr)
+                if grid.zones_overlap():
+                    print("goo: the input and output zones overlap -- it is reading what it writes", file=sys.stderr)
             elif args.layers is not None:
                 if args.layers < 1:
                     print(f"error: --layers needs at least 1, got {args.layers}", file=sys.stderr)
@@ -840,7 +878,8 @@ def _run(args: argparse.Namespace) -> int:
                 )
             if not args.no_permute or loaded:
                 laid = "coded" if grid.coding == "complement" else "raw"
-                print(f"input permutation: place i along the bottom row shows {laid} bit {grid.permutation}", file=sys.stderr)
+                where = "the input zone" if isinstance(getattr(grid, "mesh", grid), Goo) else "the bottom row"
+                print(f"input permutation: place i along {where} shows {laid} bit {grid.permutation}", file=sys.stderr)
             if args.rule != "reinforce":
                 grid.rule = args.rule
                 if grid.dopamine is None:  # a loaded checkpoint brings its own pool
@@ -941,7 +980,7 @@ def _run(args: argparse.Namespace) -> int:
             return 2
 
         mesh = getattr(grid, "mesh", grid)
-        if args.omega > 0 and not isinstance(mesh, CartesianNodes):
+        if args.omega > 0 and not isinstance(mesh, (CartesianNodes, Goo)):
             print(
                 f"omega {args.omega:g}: {len(mesh.small_world_connections())} small-world "
                 f"connections among {len(mesh.connections)}",
@@ -1024,7 +1063,14 @@ def _seed_worker(job: dict) -> dict:
     """One seed's headless run, in its own process. Returns a summary row."""
     Neuron.verbose = False
     seed, epochs = job["seed"], job["epochs"]
-    if job.get("lattice"):
+    if job.get("goo") is not None:
+        settings = job["settings"]
+        grid = Goo(
+            count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
+            seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
+            minimum_potential=settings["minimum_potential"],
+        )
+    elif job.get("lattice"):
         settings = job["settings"]
         grid = CartesianNodes(
             across=settings["across"], rows=settings["rows"], seed=seed, threshold=settings["threshold"],
@@ -1036,7 +1082,7 @@ def _seed_worker(job: dict) -> dict:
         grid = GridOfNeurons(**job["settings"], seed=seed, reach=job.get("grid_reach", 2))
         if job.get("input_cells"):
             grid.set_input_cells(job["input_cells"])
-    if job.get("layers"):
+    if job.get("layers") and job.get("goo") is None:
         grid = HexColumns(layers=job["layers"], **job["settings"], seed=seed)
     if job.get("ecc"):
         grid.use_ecc(job["ecc"])
@@ -1137,7 +1183,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
             Path(save).parent.mkdir(parents=True, exist_ok=True)
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
-                     "save": save, "lattice": lattice, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
@@ -1157,9 +1203,11 @@ def _run_seeds(args: argparse.Namespace) -> int:
     wiring = (f"lattice, reach {args.reach:g}" if args.nodes is not None
               else f"{args.layers} layers of hexagonal columns, omega {args.omega:g}" if args.layers
               else f"hex grid, omega {args.omega:g}")
+    shape = f"{args.across}x{args.rows} {wiring}"
+    if args.goo is not None:
+        shape = f"{args.goo} neurons of fully connected goo, {args.across} in and {args.across} out"
     print(
-        f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, "
-        f"{args.across}x{args.rows} {wiring}",
+        f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,
     )
     started = time.perf_counter()

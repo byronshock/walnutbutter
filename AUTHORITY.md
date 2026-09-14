@@ -61,6 +61,12 @@ literal of its own.
 | WEIGHT_RANGE | [−1, 1] | random weights are drawn uniformly from this range, and learning clips to it |
 | WEIGHT_EPSILON | 0.001 | under `--positive-weights` the range becomes [ε, 1]: no inhibition |
 
+Goo (§3.4) has no cells to count, so it reads these two differently: ACROSS
+is the width of its input and output zones, and ACROSS × ROWS is how many
+neurons `--goo` makes when it is given no number — the default network's
+eighty, so that a goo run and a grid run compare at equal size. OMEGA and
+REACH do not reach it at all.
+
 ### 1.2 The neuron and its clock
 
 | constant | value | meaning |
@@ -130,7 +136,7 @@ hexagonal lattice. Butter spread near other butter connects (§3). The goal
 is to create walnut butter, not to solve a particular task: a task is a way
 of watching whether the substance is alive and learning.
 
-Three containers build a network from it, all sharing the same neurons,
+Four containers build a network from it, all sharing the same neurons,
 connections, signalling and learning:
 
 - **The hex grid.** A rectangle of ACROSS × ROWS hexagonal cells, one neuron
@@ -143,6 +149,11 @@ connections, signalling and learning:
 - **The lattice / a spread** (`--nodes`). Neurons at $(x, y)$ positions in
   unit distances: a hexagonal lattice, a random scatter, or the positions a
   butter recipe describes.
+- **Goo** (`--goo N`). The plane taken away: $N$ neurons with no positions
+  at all, every ordered pair connected, no neighbourhood and no shortcuts
+  (§3.4). Its input and output zones are picked by index, because there are
+  no places to pick them by. It is the control the other three are measured
+  against — whatever the geometry is worth is what goo is missing.
 
 A neuron may sit in several input and output zones at once; structures are
 permissive, never artificially restricted.
@@ -183,6 +194,84 @@ The lattice and a spread have no shortcuts.
 Every weight is drawn independently and uniformly from WEIGHT_RANGE, in
 connection-id order from the seeded stream, unless a fixed weight is given
 to all. Learning (§6) keeps every weight inside WEIGHT_RANGE.
+
+### 3.4 Goo — the container decided (Byron, September 14, 2026), the rest written for revising
+
+*Byron asked for a fourth container and said what it was: fully connected
+goo. Everything below it — the zones, the id order, the refusals — is
+Claude's reading of what that has to mean to be buildable, written down here
+so that changing it is editing a working system. §2's ownership stands: the
+substance is Byron and Cedric's, and any line of this is theirs to overturn.*
+
+Goo is butter with the plane taken away. Its neurons have no positions, so
+no distance between two of them is defined, and neither §3.1's guaranteed
+neighbourhood nor §3.2's shortcuts has anything to measure. What is left is
+the only wiring that needs no ruler: **every ordered pair connects**. $N$
+neurons give $N(N-1)$ one-way connections, each of kind `goo`, and at the
+default $N = \text{ACROSS} \times \text{ROWS} = 80$ that is 6,320 against
+the 8 × 10 hex grid's 1,395 — the same eighty neurons, four and a half
+times the wiring.
+
+Everything else in §3 holds unchanged: one way, an independent weight each
+direction, no self-connection, ids from 1. The id order is source index
+then target index, so $N$ alone fixes the topology — nothing is drawn to
+decide it, and the seed's stream is spent only on the weights (§3.3) and
+the permutation. A checkpoint therefore rebuilds goo from its count, with
+no shortcut list to verify.
+
+**Zones by index.** With no rows there is no bottom row to be the input.
+The **first** ACROSS neurons in index order are the input zone and the
+**last** ACROSS are the output zone. Both are addressed the way every other
+container's rows are, so nothing above §3 has to know: `get_neuron_at(place,
+1)` is the input zone and `get_neuron_at(place, 0)` the output, and `rows`
+is 2 because it is counting those two zones and not any depth. The coded
+bits are permuted across the input zone exactly as they are across a row
+(§4.3). Where $N < 2\,\text{ACROSS}$ the zones overlap, and at
+$N = \text{ACROSS}$ they are the same neurons reading and being read:
+permitted per §2, not prevented. $N < \text{ACROSS}$ is the one refusal —
+there would be nowhere to put a bit.
+
+**What it is for.** Every other container spends its structure on putting
+the output away from the input: on the 8 × 10 grid the bottom row is nine
+hex steps from the top, five hops of the guaranteed neighbourhood, and the
+OMEGA shortcuts are the only thing that shortens the trip. Goo has no far.
+The output zone is one hop from the input zone and from everything else,
+and every neuron sees every other. So goo and the grid at the same neuron
+count differ in exactly two things — locality and depth — and whatever the
+grid scores above goo is what those two are worth. If it scores nothing
+above goo, the lattice has been decoration.
+
+**Goo saturates at the grid's constants, and the first thing to sweep is
+not goo** *(measured on building it, September 14, 2026: 50 epochs at the
+defaults, seed 7, one run each — a check on the container, not a result).*
+Each neuron now has 79 incoming synapses drawn uniformly from [−1, 1]
+against a THRESHOLD of 0.25, where the grid gives it about 18. The
+arithmetic is not subtle and neither is the outcome:
+
+| | fires per epoch | output zone on |
+|---|---|---|
+| hex grid, 8 × 10 | 73.4% of neurons | 51.7% |
+| goo, 80 neurons | 97.2% of neurons | **100%** |
+
+The output zone is stuck on every epoch whatever the input, so the read
+carries no information and accuracy sits at chance. That is not goo failing
+the comparison — it is goo never having been given a threshold. Every
+constant in §1.2 was chosen against the grid's fan-in, and the one goo
+changes most is fan-in: comparing the two as they stand compares a tuned
+network with an untuned one, and would say nothing about locality or depth.
+
+So the honest comparison needs the drive matched before it is run. The two
+obvious ways are a threshold that scales with fan-in and a weight range that
+scales as $1/\sqrt{N}$, and there is a third reading — that goo is telling
+us THRESHOLD was never a constant of the substance but a constant of the
+grid, and belongs to the container. **Left open on purpose**: it is a change
+to §1.2 and §5.2, which is substance, and substance is not Claude's to
+settle.
+
+*Also not decided here:* whether the pairs should connect with a probability
+less than 1, which would make "fully connected" one end of a density axis
+rather than the whole of goo, and whether the two zones should default to
+disjoint at all. Both are sweeps, and neither has been run.
 
 ## 4. Signalling — kept, on a schedule
 
