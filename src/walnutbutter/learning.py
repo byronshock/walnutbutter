@@ -1,4 +1,9 @@
-"""Teaching the network by global reinforcement: a scalar reward broadcast to every connection.
+"""The Teacher: scores a trained problem's output every epoch, and runs the reinforce rule when asked.
+
+Two rules exist (AUTHORITY.md §6). The default, **dopamine**, lives in
+dopamine.py and runs inside the schedule as neurons refire; under it the
+Teacher only scores and reports. The **reinforce** rule of the pre-alpha,
+factored out behind `rule="reinforce"`, is the rest of this module.
 
 The top row is the network's output. For each epoch a target pattern is
 derived from the input pattern (by default its reverse) and the reward is
@@ -58,11 +63,17 @@ effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thre
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Callable, Sequence
 
 from .grid import GridOfNeurons
-from .learning_rules import RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, THRESHOLD_RANGE
+from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
+from .constants import (
+    BASELINE_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
+    TARGET, TARGET_RATE, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WINDOW,
+)
+from .dopamine import Dopamine, apply_teacher
 from .monitor import run_epoch
 from .neuron import Neuron
 
@@ -71,12 +82,16 @@ Target = Callable[[Sequence[bool]], list[bool]]
 TARGETS: dict[str, Target] = {
     "reversed": lambda pattern: list(pattern)[::-1],
     "copy": lambda pattern: list(pattern),
+    "complement": lambda pattern: [not b for b in pattern],  # the same problem, only NOT (§8, Byron, September 14, 2026)
     "all-off": lambda pattern: [False] * len(pattern),
     "all-on": lambda pattern: [True] * len(pattern),
 }
 
+RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
+# means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
+# are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
 ELIGIBILITIES = ("perturb", "hebb")
-LATE = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
+LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 
 
 def arrays(grid) -> bool:
@@ -90,32 +105,43 @@ def output_row(grid: GridOfNeurons) -> list[Neuron]:
 
 
 def expected_outputs(grid: GridOfNeurons, target: str = "reversed") -> list[bool]:
-    """What the top row should show for the grid's current input pattern."""
-    if grid.input_pattern is None:
+    """What the read should show for the grid's current input: the clean pattern, which flips (§4.3) may differ from."""
+    pattern = getattr(grid, "target_pattern", None)
+    if pattern is None:
+        pattern = grid.input_pattern
+    if pattern is None:
         raise ValueError("no input pattern set")
-    return TARGETS[target](grid.input_pattern)
+    return TARGETS[target](pattern)
 
 
 def output_fired(grid: GridOfNeurons) -> list[bool]:
-    """Whether each output neuron fired this epoch, left to right, whichever engine runs the grid."""
-    if arrays(grid):
-        return grid.output_fired()
-    return [neuron.has_fired for neuron in output_row(grid)]
+    """Whether each output neuron is on, left to right, whichever engine runs the grid (see Network.output_fired)."""
+    return grid.output_fired()
+
+
+def output_levels(grid: GridOfNeurons) -> list[float]:
+    """What the teacher reads: one number in [0, 1] per output neuron (see Network.output_levels, AUTHORITY.md §6.9).
+
+    Under a boolean read these are 0.0 and 1.0 and every score below is what
+    it always was; under `read = "rate"` they are the measured firing rate
+    over RATE_ON, so silence reads 0 and saturation reads 1.
+    """
+    return grid.output_levels()
 
 
 def output_errors(grid: GridOfNeurons, target: str = "reversed") -> dict[Neuron, int]:
     """Error per output neuron: +1 should have fired, -1 should not have, 0 correct."""
     return {
-        neuron: int(want) - int(fired)
-        for neuron, fired, want in zip(output_row(grid), output_fired(grid), expected_outputs(grid, target))
+        neuron: float(want) - level
+        for neuron, level, want in zip(output_row(grid), output_levels(grid), expected_outputs(grid, target))
     }
 
 
 def accuracy(grid: GridOfNeurons, target: str = "reversed") -> float:
     """Fraction of the output row that matches the target, 0 to 1. This is the reward."""
-    fired = output_fired(grid)
+    levels = output_levels(grid)
     want = expected_outputs(grid, target)
-    return sum(1 for f, w in zip(fired, want) if f == w) / len(want)
+    return sum(1.0 - abs(level - float(w)) for level, w in zip(levels, want)) / len(want)
 
 
 # --- reading the output row as a receiver would ------------------------------------
@@ -180,10 +206,110 @@ def decoded_exact(grid: GridOfNeurons, target: str = "reversed") -> float:
     return 1.0 if decoded_output(grid, target) == expected_data(grid) else 0.0
 
 
+def population_vote(fired: Sequence[bool], population: int) -> list[bool]:
+    """Majority vote within each group of `population` neurons: a raw bit is 1 if most of its group fired.
+
+    Byron, September 14, 2026: "If two of the three neurons fired, that is a
+    1. If one of the three fired, that is a 0. Three is a 1, and none is a 0."
+    """
+    groups = [fired[i:i + population] for i in range(0, len(fired), population)]
+    return [sum(1 for f in group if f) * 2 > population for group in groups]
+
+
+def population_output(grid: GridOfNeurons, target: str = "copy") -> list[bool]:
+    """The raw bits a receiver would decode from the output row by majority vote (AUTHORITY.md §6.13)."""
+    return population_vote(output_fired(grid), grid.population)
+
+
+def population_accuracy(grid: GridOfNeurons, target: str = "copy") -> float:
+    """The kinder teacher: a quarter of a point per raw bit the majority vote gets right (AUTHORITY.md §6.13).
+
+    Byron, September 14, 2026: "Output patterns will be scored against the
+    desired input as follows: for each bit, award 0.25 points if the output
+    bit matches the desired input." With four raw bits a quarter each, that
+    is the fraction of raw bits right, in [0, 1] like every other critic, and
+    0.25 a bit falls out of there being four of them. Both the read and the
+    target are decoded the same way, so a flipped input (§4.3) is scored
+    against the clean code and any target arrangement works.
+    """
+    want = population_vote(expected_outputs(grid, target), grid.population)
+    got = population_output(grid, target)
+    return sum(1 for a, b in zip(got, want) if a == b) / len(want)
+
+
+def teacher_score(grid: GridOfNeurons, target: str = "copy", critic: str = "row") -> float:
+    """The external teacher's score for the read (AUTHORITY.md §6.10), in [-1, 1] for a four-neuron input zone.
+
+    Byron, September 12, 2026: +0.25 for a forced-input neuron that
+    sustains, +0.25 for an input neuron whose input is zero and does not
+    fire, and -0.25 for each of those read wrongly, so four inputs give
+    -1, -0.5, 0, 0.5 or 1. That 0.25 is 1/4, so the credit is TEACHER_CREDIT
+    when one is set and 1/n otherwise: the score spans [-1, 1] for a zone of
+    any size, and twelve outputs score 0 when six are right (Byron,
+    September 13, 2026).
+    """
+    if TEACHER_CREDIT is None:
+        return 2.0 * CRITICS[critic](grid, target) - 1.0
+    levels = output_levels(grid)  # a credit fixed by hand only makes sense neuron by neuron, so the row form stands
+    want = expected_outputs(grid, target)
+    return TEACHER_CREDIT * sum(1.0 - 2.0 * abs(level - float(w)) for level, w in zip(levels, want))
+
+
+def adaline_errors(grid: GridOfNeurons, target: str = "copy") -> list[float]:
+    """The error at each output neuron, desired minus actual (AUTHORITY.md §6.10).
+
+    +1 for a neuron that should have been on and was not, -1 for one that
+    was on and should not have been, 0 for one read correctly. A correct
+    epoch therefore moves nothing: ADALINE corrects mistakes only.
+    """
+    levels = output_levels(grid)
+    want = expected_outputs(grid, target)
+    return [float(w) - level for level, w in zip(levels, want)]
+
+
+def apply_adaline(grid: GridOfNeurons, errors, lr: float) -> int:
+    """Widrow-Hoff at the read: every synapse into output neuron j moves by lr * error_j * what it delivered. Returns synapses moved.
+
+    The eligibility trace is the presynaptic activity the target integrated
+    this epoch (propagation.Schedule.run with `trace`), so a synapse that
+    delivered nothing moves by nothing. Only the scored neurons' incoming
+    weights learn; the rest of the mesh is an untrained reservoir. The trace
+    is cleared either way, so an epoch's activity never counts twice.
+    """
+    if arrays(grid):
+        return grid.apply_adaline(errors, lr)
+    error = {neuron: e for neuron, e in zip(output_row(grid), errors)}
+    low, high = grid.weight_range
+    moved = 0
+    for connection in grid.connections.values():
+        if connection.eligibility:
+            step = lr * error.get(connection.target, 0.0) * connection.eligibility
+            if step:
+                weight = connection.weight + step
+                connection.weight = low if weight < low else high if weight > high else weight
+                moved += 1
+            connection.eligibility = 0.0
+    return moved
+
+
+def sustained(grid: GridOfNeurons, target: str = "copy") -> float:
+    """Of the output neurons the target says should be on, the fraction that are on: did the forced neurons sustain?
+
+    Byron, September 12, 2026: the neurons that were not forced are not
+    scored at all. With no neuron to sustain the score is 0.
+    """
+    levels = output_levels(grid)
+    want = expected_outputs(grid, target)
+    on = [level for level, w in zip(levels, want) if w]
+    return sum(on) / len(on) if on else 0.0
+
+
 CRITICS = {
     "row": accuracy,  # fraction of the output row matching the target, neuron by neuron
+    "sustained": sustained,  # of the neurons the target says should be on, the fraction on: the forced neurons that sustained
     "decoded": decoded_accuracy,  # fraction of data bits right after reading and error-correcting the row
     "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
+    "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
 }
 
 
@@ -193,8 +319,8 @@ def reward(grid: GridOfNeurons, target: str = "reversed", critic: str = "row") -
 
 
 def forced(neuron: Neuron) -> bool:
-    """True if the neuron was forced to fire in wave 0 this epoch (an external stimulus)."""
-    return neuron.fired_in_wave == 0
+    """True if the neuron was forced to fire by the stimulus this epoch."""
+    return neuron.forced
 
 
 def update_rates(grid: GridOfNeurons) -> None:
@@ -219,7 +345,7 @@ def stuck_neurons(grid: GridOfNeurons) -> tuple[list[Neuron], list[Neuron]]:
 
 
 def homeostasis(
-    grid: GridOfNeurons, rate: float, target: float = 0.5, threshold_range: tuple[float, float] = THRESHOLD_RANGE
+    grid: GridOfNeurons, rate: float, target: float = TARGET_RATE, threshold_range: tuple[float, float] = THRESHOLD_RANGE
 ) -> int:
     """Nudge each neuron's threshold toward its target firing rate, except those forced this epoch.
 
@@ -297,36 +423,52 @@ def delivered_connections(grid: GridOfNeurons) -> list:
 def reinforce(
     grid: GridOfNeurons,
     advantage: float,
-    lr: float = 0.03,
-    sigma: float = 0.1,
-    eligibility: str = "perturb",
-    late: str = "count",
+    lr: float = LR,
+    sigma: float = SIGMA,
+    eligibility: str = ELIGIBILITY,
+    late: str = LATE,
+    leaky: bool = LEAKY_ELIGIBILITY,
 ) -> int:
     """Apply the global-reward update for the epoch that has just run. Returns connections changed.
 
     `late` says what a signal that arrived after its target fired (see `landed`)
     earns: "count" the same update as one that landed, "ignore" none, or
     "depress" the opposite.
+
+    `leaky` appends the trace of §6.12 to the chain, so the update becomes
+
+        w_ij <- clip(w_ij + LR * A * e_j * exp(-(t_read_j - t_fired_i) / TAU)),
+
+    with t_read_j the moment j's answer was fixed: its spike if it fired, and
+    the arrival of the signal itself if it did not, since a target that never
+    fired offers no moment at which its synapses can be told apart. Without the
+    trace every synapse that delivered into j gets the same update whatever it
+    delivered; with it, each synapse of a firing neuron is weighted by the
+    charge it still had in it when it fired.
     """
     if eligibility not in ELIGIBILITIES:
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
-    if late not in LATE:
-        raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE)}")
+    if late not in LATE_RULES:
+        raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
     if arrays(grid):
-        return grid.reinforce(advantage, lr, sigma, eligibility, late)
+        return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
     if not advantage:
         return 0
     low, high = grid.weight_range
     step = lr * advantage
     perturb = eligibility == "perturb"
+    tau, hop = getattr(grid, "synapse_tau", SYNAPSE_TAU), Neuron.hop()  # the synapse's leak, not the neuron's (§6.12)
     changed = 0
+    last_delivery: dict = {}  # once per connection per epoch, by its last delivery (a source may fire more than once)
     for wave in grid.waves:
-        arrived = wave.number
         for connection in wave.delivered:
+            last_delivery[connection] = wave.number
+    for connection, arrived in last_delivery.items():
+        if True:
             target = connection.target
-            fired_in = target.fired_in_wave
-            if fired_in == 0:
+            if target.forced:
                 continue  # a forced input: its firing was not the network's doing
+            fired_in = target.fired_in_wave
             if perturb:
                 e = target.noise / sigma if sigma else 0.0
             else:
@@ -337,6 +479,15 @@ def reinforce(
                 e = -e  # arrived after the firing: weakened where an early one would be strengthened
             if not e:
                 continue
+            if leaky:
+                if connection.last_signal is None:
+                    continue  # nothing was ever integrated here, so it was contributing nothing
+                when = target.fired_at if target.has_fired else connection.last_signal
+                # A target that never fired has no moment at which its synapses can be told apart, so
+                # the trace is exp(-hop/TAU) for all of them: the scale changes, the resolution does not.
+                # Reading it at the horizon instead annihilates the whole non-firing half (5e-5 at TAU 2,
+                # a 35 ms epoch), which is the depressive half of the hebb eligibility.
+                e = e * math.exp(-(when - connection.last_signal + hop) / tau)
             weight = connection.weight + step * e
             if weight < low:
                 weight = low
@@ -348,41 +499,54 @@ def reinforce(
 
 
 class Teacher:
-    """Runs epochs with exploration noise, scores them, and reinforces every connection.
+    """Runs epochs with exploration noise and scores them; under the reinforce rule, also reinforces every connection.
 
     Use `teacher.epoch()` in place of `run_epoch(grid)`: it injects the
-    exploration noise before the epoch and applies the update after it.
+    exploration noise before the epoch and, with `rule="reinforce"`, applies
+    the update after it. With the default `rule="dopamine"` the network
+    learns by itself as it runs (a Dopamine is attached to the grid if it
+    has none) and the Teacher scores, keeps the firing rates, homeostasis
+    and un-sticking, and reports.
     """
 
     def __init__(
         self,
         grid: GridOfNeurons,
-        target: str = "reversed",
-        lr: float = 0.03,
-        sigma: float = 0.1,
-        eligibility: str = "perturb",
-        baseline_rate: float = 0.05,
-        window: int = 200,
+        target: str = TARGET,
+        lr: float = LR,
+        sigma: float = SIGMA,
+        eligibility: str = ELIGIBILITY,
+        baseline_rate: float = BASELINE_RATE,
+        window: int = WINDOW,
         seed: int | None = None,
-        homeostasis: float = 1e-6,
-        target_rate: float = 0.5,
+        homeostasis: float = HOMEOSTASIS,
+        target_rate: float = TARGET_RATE,
         threshold_range: tuple[float, float] = THRESHOLD_RANGE,
         discharge: bool = False,
-        unstick: float = 1e-3,
-        unstick_target: float = 0.5,
-        critic: str = "row",
-        late: str = "count",
+        unstick: float = UNSTICK,
+        unstick_target: float = UNSTICK_TARGET,
+        critic: str = CRITIC,
+        late: str = LATE,
+        rule: str = RULE,
+        leaky: bool = LEAKY_ELIGIBILITY,
     ):
+        if rule not in RULES:
+            raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
+        self.rule = rule
+        if rule != "reinforce" and getattr(grid, "dopamine", None) is None:
+            grid.dopamine = Dopamine(lr=lr)
+        grid.rule = rule if rule != "reinforce" else "dopamine"  # the reinforce rule leaves the schedule's hook alone
         if target not in TARGETS:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic != "row" and target not in ("reversed", "copy"):
+        if critic not in ("row", "population") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
         self.critic = critic
-        if late not in LATE:
-            raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE)}")
+        if late not in LATE_RULES:
+            raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
         self.late = late  # what a signal arriving after its target fired earns
+        self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
         if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
@@ -392,6 +556,9 @@ class Teacher:
         self.unstick = unstick
         self.unstick_target = unstick_target
         self.unstuck_count = 0  # how many epoch-nudges the output un-sticking has applied
+        self.moved = 0  # synapses the external teacher has moved
+        self.last_signal: float | None = None  # the teacher's score for the last epoch, in [-1, 1]
+        self.mistakes = 0.0  # output neurons read wrongly in the last epoch (the ADALINE rule)
         self.history: list[dict] = []  # one entry per progress report; saved in checkpoints
         if not 0.0 < target_rate < 1.0:
             raise ValueError(f"target firing rate must be between 0 and 1, got {target_rate}")
@@ -415,6 +582,20 @@ class Teacher:
         self.baseline: float | None = None  # running average reward: what "usual" looks like
         self.last_reward: float | None = None
         self.average: float | None = None  # exponential moving average over about `window` epochs
+        self._trace = None  # a text file the per-epoch trace is written to (see trace_to)
+
+    def trace_to(self, path) -> None:
+        """Write one line per epoch to `path` (CSV, appended): epoch, time, dopamine, expected, score."""
+        import os
+        new = not os.path.exists(path) or os.path.getsize(path) == 0
+        self._trace = open(path, "a", buffering=1)
+        if new:
+            self._trace.write("epoch,time_ms,dopamine,expected,score\n")
+
+    def close_trace(self) -> None:
+        if self._trace is not None:
+            self._trace.close()
+            self._trace = None
 
     def epoch(self, bits: Sequence[bool] | None = None, verbose: bool = True) -> float:
         """Run one epoch with exploration noise, then learn from it. Returns its reward."""
@@ -427,12 +608,28 @@ class Teacher:
         if self.baseline is None:
             self.baseline = reward
         advantage = reward - self.baseline
-        reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late)
+        self.last_signal = teacher_score(self.grid, self.target, self.critic) if self.rule == "teacher" else None
+        if self.rule == "teacher":
+            self.moved += apply_teacher(self.grid, self.last_signal, self.lr)  # the teacher pays the epoch's eligibility
+        elif self.rule == "adaline":
+            errors = adaline_errors(self.grid, self.target)
+            self.mistakes = sum(abs(e) for e in errors)  # how many output neurons were read wrongly this epoch
+            self.moved += apply_adaline(self.grid, errors, self.lr)
+        elif self.rule == "reinforce":
+            reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.grid)
         homeostasis(self.grid, self.homeostasis, self.target_rate, self.threshold_range)
         self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target, self.threshold_range))
         self.baseline += self.baseline_rate * (reward - self.baseline)
         self.epochs += 1
+        if self._trace is not None:
+            pool = self.grid.dopamine
+            level, expected = ("", "") if pool is None else (f"{pool.peek(self.grid.horizon):.6g}", f"{pool.expected():.6g}")
+            if self.rule == "teacher":
+                level, expected = f"{self.last_signal:+g}", f"{self.moved}"  # the teacher's signal, and synapses moved to date
+            elif self.rule == "adaline":
+                level, expected = f"{self.mistakes:g}", f"{self.moved}"  # output neurons read wrongly, and synapses moved to date
+            self._trace.write(f"{self.grid.epoch},{self.grid.time:g},{level},{expected},{reward:.6g}\n")
         self.total_reward += reward
         self.last_reward = reward
         if self.average is None:
@@ -463,9 +660,18 @@ class Teacher:
         return entry
 
     def status(self) -> str:
+        verb = {"dopamine": "scoring", "teacher": "teaching", "adaline": "correcting"}.get(self.rule, "learning")
         if self.average is None:
-            return f"learning {self.target}: no epochs yet"
-        settings = f"{self.eligibility}, lr {self.lr:g}, sigma {self.sigma:g}"
+            return f"{verb} {self.target}: no epochs yet"
+        if self.rule == "teacher":
+            signal = "none yet" if self.last_signal is None else f"{self.last_signal:+g}"
+            settings = f"signal {signal}, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
+        elif self.rule == "adaline":
+            settings = f"{self.mistakes:g} wrong, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
+        elif self.rule == "dopamine":
+            settings = f"{self.grid.dopamine.status()}, sigma {self.sigma:g}"
+        else:
+            settings = f"{self.eligibility}{' + leaky trace' if self.leaky else ''}, lr {self.lr:g}, sigma {self.sigma:g}"
         if self.critic != "row":
             settings += f", critic {self.critic}"
         if self.late != "count":
@@ -478,7 +684,7 @@ class Teacher:
         if self.discharge:
             settings += ", discharge"
         return (
-            f"learning {self.target} ({settings}): "
+            f"{verb} {self.target} ({settings}): "
             f"accuracy {self.accuracy_to_date:.1%} to date over {self.epochs:,} epochs, "
             f"{self.average:.0%} recent"
         )

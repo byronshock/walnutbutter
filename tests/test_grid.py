@@ -4,6 +4,11 @@ from walnutbutter.grid import DIRECTIONS, DIRECTIONS2, GridOfNeurons, axial_to_o
 from walnutbutter.neuron import Neuron
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 @pytest.fixture
 def grid():
     return GridOfNeurons(across=7, rows=5, omega=0)  # a plain mesh, no shortcuts
@@ -286,11 +291,15 @@ def test_shortcuts_get_random_weights_too():
 
 def test_shortcuts_never_lengthen_the_epoch_and_usually_shorten_it(capsys):
     plain = GridOfNeurons(across=24, rows=20, weight=1.0, omega=0)
-    plain.activate_origin()
+    plain.activate_origin(until=40.0)  # the corners are more than one interval of hops away
     shortcut = GridOfNeurons(across=24, rows=20, weight=1.0, omega=0.1, seed=5)
-    shortcut.activate_origin()
+    shortcut.activate_origin(until=40.0)
     assert len(shortcut.fired_neurons()) == len(shortcut.neurons)
-    assert len(shortcut.waves) < len(plain.waves)
+
+    def reach(grid):  # the wave in which the last neuron first fired
+        return max(next(w.number for w in grid.waves if n in w.fired) for n in grid.all_neurons())
+
+    assert reach(shortcut) < reach(plain)
 
 
 @pytest.mark.parametrize("omega", [-0.1, 1.0, 1.5])

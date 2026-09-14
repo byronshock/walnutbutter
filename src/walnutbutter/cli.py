@@ -17,10 +17,22 @@ from .cartesian import CartesianNodes
 from .columns import HexColumns
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
-from .learning import CRITICS, ELIGIBILITIES, LATE, TARGETS, Teacher
+from .constants import (
+    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
+    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
+    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
+    MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
+    THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
+    cv_for_rate, rate_for_cv,
+)
+from .dopamine import ORDERS, Dopamine
+from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
 from .monitor import main, run_epoch
+from .network import input_stream
 from .neuron import Neuron
 from .persistence import across_of, checkpoint, restore, resume_teacher
+from .problems import PROBLEMS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,18 +44,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--problem",
+        choices=sorted(PROBLEMS),
+        default=PROBLEM,
+        help="what the network is asked to do: "
+        + "; ".join(f"{p.name} ({p.description})" for p in PROBLEMS.values())
+        + f". Default: {PROBLEM}",
+    )
+    parser.add_argument(
         "-a",
         "--across",
         type=int,
         default=None,
-        help="number of hexagons across (default: 8, or twice the code length with --ecc)",
+        help=f"number of hexagons across (default: the problem's, {ACROSS} for {PROBLEM}; or twice the code length with --ecc)",
     )
     parser.add_argument(
         "-r",
         "--rows",
         type=int,
-        default=10,
-        help="number of hexagon rows (default: 10)",
+        default=ROWS,
+        help=f"number of hexagon rows (default: {ROWS})",
     )
     parser.add_argument(
         "--nodes",
@@ -78,10 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reach",
         type=float,
-        default=2.0,
+        default=REACH,
         metavar="UNITS",
-        help="with --nodes: a neuron connects to every neuron within this many unit distances "
-        "(default: 2, the two hex rings at unit density)",
+        help=f"with --nodes: a neuron connects to every neuron within this many unit distances "
+        f"(default: {REACH:g}, the two hex rings at unit density)",
     )
     parser.add_argument(
         "--window",
@@ -96,14 +116,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--weight",
         type=float,
         default=None,
-        help="fixed weight for every connection (default: random, uniform between -1 and 1)",
+        help=f"fixed weight for every connection (default: random, uniform between {WEIGHT_RANGE[0]:g} and {WEIGHT_RANGE[1]:g})",
     )
     parser.add_argument(
         "-o",
         "--omega",
         type=float,
-        default=0.2,
-        help="proportion of connections that are small-world shortcuts, 0 to <1 (default: 0.2)",
+        default=OMEGA,
+        help=f"proportion of connections that are small-world shortcuts, 0 to <1 (default: {OMEGA:g})",
     )
     parser.add_argument(
         "-i",
@@ -137,8 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--epsilon",
         type=float,
-        default=0.001,
-        help="the smallest weight allowed under --positive-weights (default: 0.001)",
+        default=WEIGHT_EPSILON,
+        help=f"the smallest weight allowed under --positive-weights (default: {WEIGHT_EPSILON:g})",
     )
     parser.add_argument(
         "--seeds",
@@ -158,8 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-t",
         "--threshold",
         type=float,
-        default=0.25,
-        help="input a neuron needs before it fires (default: 0.25)",
+        default=THRESHOLD,
+        help=f"input a neuron needs before it fires (default: {THRESHOLD:g})",
     )
     parser.add_argument(
         "--step",
@@ -184,120 +204,352 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not teach the network (learning is on by default)",
     )
     parser.add_argument(
+        "--rule",
+        choices=RULES,
+        default=None,
+        help=f"the learning rule (AUTHORITY.md §6): teacher (an external teacher scores the read and pays the epoch's "
+        f"eligibility), adaline (Widrow-Hoff: each scored neuron's own error times what each synapse delivered), "
+        f"dopamine (the neurons pay themselves as they refire), or reinforce (the pre-alpha's rule). "
+        f"Default: the problem's, else {RULE}",
+    )
+    parser.add_argument(
+        "--dopamine-tau",
+        type=float,
+        default=DOPAMINE_TAU,
+        metavar="MS",
+        help=f"decay time constant of the global dopamine value (default: {DOPAMINE_TAU:g})",
+    )
+    parser.add_argument(
+        "--expectation-tau",
+        type=float,
+        default=DOPAMINE_EXPECTATION_TAU,
+        metavar="MS",
+        help=f"exponential window of the expected dopamine trace, which starts at 0 (default: {DOPAMINE_EXPECTATION_TAU:g} ms, 10 minutes)",
+    )
+    parser.add_argument(
+        "--expectation-start",
+        type=float,
+        default=DOPAMINE_EXPECTATION_START,
+        metavar="UNITS",
+        help=f"where the expected dopamine trace starts (default: {DOPAMINE_EXPECTATION_START:g}); a high start holds early learning back",
+    )
+    parser.add_argument(
+        "--release-alpha",
+        type=float,
+        default=DOPAMINE_RELEASE_ALPHA,
+        metavar="SHAPE",
+        help=f"shape of the gamma density that gives the amount a refire releases against its delay past the refractory "
+        f"period (default: {DOPAMINE_RELEASE_ALPHA:g})",
+    )
+    parser.add_argument(
+        "--release-theta",
+        type=float,
+        default=DOPAMINE_RELEASE_THETA,
+        metavar="MS",
+        help=f"scale of that gamma; the release peaks (alpha - 1) * theta past the end of the refractory period "
+        f"(default: {DOPAMINE_RELEASE_THETA:g})",
+    )
+    parser.add_argument(
+        "--order",
+        choices=ORDERS,
+        default=DOPAMINE_ORDER,
+        help=f"at a refire, release the dopamine before the weight update or after it (default: {DOPAMINE_ORDER})",
+    )
+    parser.add_argument(
+        "--quash",
+        type=float,
+        default=None,
+        metavar="RATE",
+        help=f"cycles are quashed (AUTHORITY.md §6.11): a refire weakens each contributing synapse by this fraction of "
+        f"its weight, falling off with the delay since its previous spike (default: the problem's, {QUASH_RATE:g} where "
+        f"it quashes; 0 = off)",
+    )
+    parser.add_argument(
+        "--leaky",
+        action="store_true",
+        default=LEAKY_ELIGIBILITY,
+        help="append the leaky trace of AUTHORITY.md §6.12 to the reinforce rule's chain, so the global reward reaches "
+        "each synapse in proportion to the charge it still had in its target when that target's state was read",
+    )
+    parser.add_argument(
+        "--synapse-tau",
+        type=float,
+        default=SYNAPSE_TAU,
+        metavar="MS",
+        help=f"the leak of the eligibility trace on a synapse (AUTHORITY.md §6.12), the synapse's own and no longer the "
+        f"neuron's: it governs leaky Hebb and the reinforce rule's leaky eligibility alike (default: {SYNAPSE_TAU:g} ms)"
+    )
+    parser.add_argument(
+        "--hebb",
+        type=float,
+        default=None,
+        metavar="RATE",
+        help=f"leaky Hebb (AUTHORITY.md §6.12): a firing neuron potentiates each synapse that still had charge in it by "
+        f"this much times its leaky trace. Composes with whatever else runs (default: the problem's, {HEBB_RATE:g} where "
+        f"it runs it; 0 = off)",
+    )
+    parser.add_argument(
+        "--read",
+        choices=("fired", "again", "window", "rate"),
+        default=None,
+        help="what the teacher reads at the end of an epoch (AUTHORITY.md §4.3): fired this epoch, spiked again after "
+        "the input's moment, fired within the read window, or rate, the exponential-window firing-rate estimate scored "
+        "against RATE_ON and RATE_OFF (default: the problem's)",
+    )
+    parser.add_argument(
+        "--read-window",
+        type=float,
+        default=None,
+        metavar="MS",
+        help=f"the window of the window read: a neuron is on if it spiked this recently before the epoch's end "
+        f"(default: the problem's, else {READ_WINDOW:g} ms)",
+    )
+    parser.add_argument(
+        "--rate-tau",
+        type=float,
+        default=RATE_TAU,
+        metavar="MS",
+        help=f"the exponential window the rate read estimates over (default: {RATE_TAU:g} ms)",
+    )
+    parser.add_argument(
+        "--rate-on",
+        type=float,
+        default=RATE_ON,
+        metavar="HZ",
+        help=f"the rate an output the target says should be on is driven to; off is silence (default: {RATE_ON:g} Hz, "
+        f"which is 1/REFRACTORY: saturation)",
+    )
+    parser.add_argument(
+        "--explore",
+        choices=("wave", "epoch"),
+        default=EXPLORE,
+        help=f"when the exploration draw is taken (AUTHORITY.md §6.1): wave, afresh before every firing decision so a "
+        f"neuron's noise is what it decided under, or epoch, once at the input's moment, which is the pre-alpha's "
+        f"(default: {EXPLORE})",
+    )
+    parser.add_argument(
+        "--population",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"neurons per raw bit where the coding repeats it (AUTHORITY.md §4.3): population coding uses this many, and "
+        f"population-complement uses this many and then complement-codes the lot (default: the problem's, else {POPULATION})",
+    )
+    parser.add_argument(
+        "--drive",
+        choices=("forced", "rate"),
+        default=None,
+        help=f"how a bit becomes spikes (AUTHORITY.md §4.3): forced, one spike at the epoch's moment, or rate, an "
+        f"independent Poisson process across the epoch so a bit is a firing rate and a bit-1 neuron may produce no "
+        f"spike at all (default: the problem's, else {INPUT_DRIVE})",
+    )
+    parser.add_argument(
+        "--cv",
+        type=float,
+        default=INPUT_CV,
+        metavar="CV",
+        help=f"the coefficient of variation of the input spike train, which is how the drive is specified "
+        f"(AUTHORITY.md §4.3): the rate follows as (1 - CV)/REFRACTORY, so {INPUT_CV:g} is "
+        f"{1000.0 * (1.0 - INPUT_CV) / REFRACTORY:.0f} Hz. 0 would need infinite drive and 1 none "
+        f"(default: {INPUT_CV:g})",
+    )
+    parser.add_argument(
+        "--input-rate",
+        type=float,
+        default=None,
+        metavar="PER_MS",
+        help=f"the drive in its other coordinate: the rate of the Poisson process that DRIVES a bit-1 neuron -- not "
+        f"the rate it fires at, since arrivals inside the refractory period are dropped and it fires at the first one "
+        f"after, giving a mean interspike interval of REFRACTORY + 1/rate. Overrides --cv "
+        f"(default: whatever --cv works out to, {INPUT_RATE:g}/ms)",
+    )
+    parser.add_argument(
+        "--input-rate-off",
+        type=float,
+        default=INPUT_RATE_OFF,
+        metavar="PER_MS",
+        help=f"the driving rate for a bit-0 neuron (default: {INPUT_RATE_OFF:g}/ms, silence)",
+    )
+    parser.add_argument(
+        "--flip",
+        type=float,
+        default=None,
+        metavar="P",
+        help=f"corrupt the input (AUTHORITY.md §4.3): flip each coded bit with this probability before the row is forced, "
+        f"and score the read against the clean pattern (default: the problem's, {FLIP:g} where it corrupts; 0 = off)",
+    )
+    parser.add_argument(
+        "--quash-k",
+        type=float,
+        default=QUASH_K,
+        metavar="PER_MS",
+        help=f"how fast the quash falls off with that delay, exp(-k * delay) (default: {QUASH_K:g})",
+    )
+    parser.add_argument(
+        "--punish",
+        action="store_true",
+        help="reverse a bit-0 input neuron's update even under the teacher rule, whose score already knows about them",
+    )
+    parser.add_argument(
+        "--no-punish",
+        action="store_true",
+        help="do not reverse the update of an input neuron that should not fire (by default, above-expected dopamine "
+        "punishes a bit-0 input neuron for refiring instead of rewarding it)",
+    )
+    parser.add_argument(
+        "--punish-gain",
+        type=float,
+        default=DOPAMINE_PUNISH_GAIN,
+        metavar="GAIN",
+        help=f"a should-not-fire refire is punished this many times as hard as a refire is rewarded (default: {DOPAMINE_PUNISH_GAIN:g})",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=WEIGHT_DECAY,
+        metavar="FRACTION",
+        help=f"every weight moves toward 0 by this fraction each epoch: synapses that forget (default: {WEIGHT_DECAY:g}; 0 = off)",
+    )
+    parser.add_argument(
         "--target",
         choices=sorted(TARGETS),
-        default="reversed",
-        help="what the top row should show, derived from the input row (default: reversed)",
+        default=TARGET,
+        help=f"what the top row should show, derived from the input row (default: {TARGET})",
     )
     parser.add_argument(
         "--late",
-        choices=LATE,
-        default="count",
-        help="what a signal arriving after its target has already fired earns: count (default: the same update "
+        choices=LATE_RULES,
+        default=LATE,
+        help=f"what a signal arriving after its target has already fired earns: count (the same update "
         "as one that landed, a local Hebbian term under the global reward), ignore (nothing: the "
         "node-perturbation estimator proper) or depress (the opposite update, the shape of spike-timing-dependent "
-        "plasticity)",
+        f"plasticity). Default: {LATE}",
     )
     parser.add_argument(
         "--critic",
         choices=sorted(CRITICS),
-        default="row",
-        help="how the reward is judged: row (fraction of output neurons matching the target), decoded "
-        "(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
-        "(all data bits right or nothing). Default: row",
+        default=None,
+        help=f"how the reward is judged: row (fraction of output neurons matching the target), sustained (of the "
+        f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), decoded "
+        f"(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
+        f"(all data bits right or nothing). Default: {CRITIC}, or the problem's",
     )
     parser.add_argument(
         "--lr",
         type=float,
-        default=0.03,
-        help="learning rate for --learn (default: 0.03)",
+        default=LR,
+        help=f"learning rate, either rule (default: {LR:g})",
     )
     parser.add_argument(
         "--sigma",
         type=float,
-        default=0.1,
-        help="exploration noise: std dev of each neuron's starting potential under --learn (default: 0.1)",
+        default=SIGMA,
+        help=f"exploration noise: std dev added to each neuron's potential at every input (default: {SIGMA:g}; 0 = off)",
     )
     parser.add_argument(
         "--eligibility",
         choices=ELIGIBILITIES,
-        default="perturb",
-        help="what the global reward acts on: the neuron's exploration noise (perturb) or plain Hebbian (default: perturb)",
+        default=ELIGIBILITY,
+        help=f"what the global reward acts on: the neuron's exploration noise (perturb) or plain Hebbian (default: {ELIGIBILITY})",
     )
     parser.add_argument(
         "--homeostasis",
         type=float,
-        default=1e-6,
+        default=HOMEOSTASIS,
         metavar="RATE",
-        help="per-epoch rate at which each neuron's threshold moves toward its target firing rate (default: 1e-6; 0 = off)",
+        help=f"per-epoch rate at which each neuron's threshold moves toward its target firing rate (default: {HOMEOSTASIS:g}; 0 = off)",
     )
     parser.add_argument(
         "--target-rate",
         type=float,
-        default=0.5,
-        help="firing rate homeostasis aims for, 0 to 1 (default: 0.5)",
+        default=TARGET_RATE,
+        help=f"firing rate homeostasis aims for, 0 to 1 (default: {TARGET_RATE:g})",
     )
     parser.add_argument(
         "--unstick",
         type=float,
-        default=1e-3,
+        default=UNSTICK,
         metavar="RATE",
-        help="per-epoch rate at which a stuck output neuron's threshold moves toward --unstick-target; only "
-        "output neurons firing >99%% or <1%% of the time are touched, only while stuck (default: 0.001; 0 = off)",
+        help=f"per-epoch rate at which a stuck output neuron's threshold moves toward --unstick-target; only "
+        f"output neurons firing >99%% or <1%% of the time are touched, only while stuck (default: {UNSTICK:g}; 0 = off)",
     )
     parser.add_argument(
         "--unstick-target",
         type=float,
-        default=0.5,
-        help="firing rate the output un-sticking aims for (default: 0.5)",
+        default=UNSTICK_TARGET,
+        help=f"firing rate the output un-sticking aims for (default: {UNSTICK_TARGET:g})",
     )
     parser.add_argument(
         "--threshold-range",
         type=float,
         nargs=2,
         metavar=("LOW", "HIGH"),
-        default=(-5.0, 5.0),
-        help="limits homeostasis may move a threshold to (default: -5 5)",
+        default=THRESHOLD_RANGE,
+        help=f"limits homeostasis may move a threshold to (default: {THRESHOLD_RANGE[0]:g} {THRESHOLD_RANGE[1]:g})",
     )
     parser.add_argument(
         "--minimum-potential",
         type=float,
-        default=-1.0,
-        help="floor on a neuron's potential: inhibition and carried-over charge can go no lower (default: -1)",
+        default=MINIMUM_POTENTIAL,
+        help=f"floor on a neuron's potential: inhibition and carried-over charge can go no lower (default: {MINIMUM_POTENTIAL:g})",
     )
     parser.add_argument(
         "--discharge",
         action="store_true",
-        help="zero every potential between inputs (the old epoch-by-epoch behaviour) instead of letting it leak",
+        help="zero every potential between inputs (the old epoch-by-epoch behaviour) instead of keeping it",
     )
     parser.add_argument(
         "--interval",
         type=float,
-        default=10.0,
+        default=None,
         metavar="MS",
-        help="nominal milliseconds between inputs (default: 10). Propagation is instantaneous; the clock only "
-        "advances between inputs, and a neuron that fired within --refractory of an input ignores it",
+        help=f"nominal milliseconds between inputs: the epoch's length (default: the problem's, else {INTERVAL:g}). "
+        "Each epoch runs the schedule up to the next input's time; signals still in flight then join the next epoch",
     )
     parser.add_argument(
         "--tau",
         type=float,
-        default=2.0,
+        default=TAU,
         metavar="MS",
-        help="leak time constant of every neuron, nominal milliseconds (default: 2; inf switches the leak off). "
-        "The leak is computed only when a neuron receives a signal",
+        help=f"leak time constant of every neuron, nominal milliseconds (default: {TAU:g}; inf switches the leak off). "
+        "The leak is computed only when a signal reaches a neuron",
     )
     parser.add_argument(
         "--refractory",
         type=float,
-        default=5.0,
+        default=REFRACTORY,
         metavar="MS",
-        help="absolute refractory period of every neuron, nominal milliseconds (default: 5)",
+        help=f"absolute refractory period of every neuron, nominal milliseconds (default: {REFRACTORY:g})",
+    )
+    parser.add_argument(
+        "--bored-after",
+        type=float,
+        default=BORED_AFTER,
+        metavar="MS",
+        help=f"threshold homeostasis: a neuron's threshold falls with its silence, reaching zero after this many ms "
+        f"without a spike, so a bored neuron fires on its own (default: {BORED_AFTER:g}; 0 = off)",
+    )
+    parser.add_argument(
+        "--refractory-hops",
+        type=float,
+        default=REFRACTORY_HOPS,
+        metavar="RATIO",
+        help=f"the refractory period divided by the time a signal takes to travel one hop; not an integer "
+        f"(default: {REFRACTORY_HOPS:g}, so a hop is {REFRACTORY / REFRACTORY_HOPS:g} ms)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
         default=1,
         help="with --headless: how many epochs to run, printing accuracy along the way (default: 1)",
+    )
+    parser.add_argument(
+        "--input-seed",
+        type=int,
+        default=None,
+        help="draw the run's inputs up front from a stream of their own, keyed to this seed (AUTHORITY.md §4.5), so "
+             "two runs that differ in anything else still see the same epochs in the same order; without it the bits "
+             "come from the network's own stream, which a differently built network consumes differently",
     )
     parser.add_argument(
         "-v",
@@ -310,6 +562,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--quiet",
         action="store_true",
         help="accepted for compatibility: runs are quiet unless --verbose",
+    )
+    parser.add_argument(
+        "--trace",
+        metavar="FILE",
+        help="CSV the Teacher appends one line per epoch to: epoch, time, dopamine, expected, score "
+        "(default: next to the checkpoint, runs/<date>-<time>-seed<seed>.csv; --no-save skips it)",
+    )
+    parser.add_argument(
+        "--no-trace",
+        action="store_true",
+        help="do not write the per-epoch trace",
     )
     parser.add_argument(
         "--save-weights",
@@ -338,21 +601,91 @@ def build_parser() -> argparse.ArgumentParser:
 def cli_main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code (0 = success)."""
     args = build_parser().parse_args(argv)
-    if args.across is None:
-        args.across = 2 * CODES[args.ecc].code_bits if args.ecc else 8
+    args.given_rule = args.rule  # what --rule said, if anything: it outlives a checkpoint's problem
     args.show = not args.headless and args.seeds is None  # a seed batch is headless by definition
     args.fast = args.show and not args.step
-    args.learn = not args.no_learn
-    was_verbose, was_tau, was_refractory = Neuron.verbose, Neuron.tau, Neuron.refractory
-    Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
-    if args.tau <= 0 or args.refractory < 0 or args.interval <= 0:
-        print("error: --tau and --interval must be positive and --refractory must not be negative", file=sys.stderr)
+    try:
+        apply_problem(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
-    Neuron.tau, Neuron.refractory = args.tau, args.refractory
+    was_verbose, was_refractory, was_hops, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau
+    Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
+    if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
+        print("error: --tau, --refractory, --refractory-hops and --interval must be positive", file=sys.stderr)
+        return 2
+    if args.bored_after < 0 or (args.quash is not None and args.quash < 0) or args.quash_k < 0:
+        print("error: --bored-after, --quash and --quash-k must not be negative", file=sys.stderr)
+        return 2
+    if args.dopamine_tau <= 0 or args.release_alpha <= 0 or args.release_theta <= 0 or args.expectation_tau <= 0:
+        print("error: --dopamine-tau, --release-alpha, --release-theta and --expectation-tau must be positive", file=sys.stderr)
+        return 2
+    if args.punish_gain < 0 or not 0 <= args.weight_decay < 1:
+        print("error: --punish-gain must not be negative and --weight-decay must be in [0, 1)", file=sys.stderr)
+        return 2
+    Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = args.refractory, args.refractory_hops, args.bored_after, args.tau
     try:
         return _run(args)
     finally:
-        Neuron.verbose, Neuron.tau, Neuron.refractory = was_verbose, was_tau, was_refractory
+        Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hops, was_bored, was_tau
+
+
+def READ_MEANS(args) -> str:
+    """How the banner says what "on" means at the read (AUTHORITY.md §4.3)."""
+    if args.read == "again":
+        return "spiked again after the input"
+    if args.read == "fired":
+        return "fired this epoch"
+    if args.read == "rate":
+        return (f"a firing rate over a {args.rate_tau:g} ms window, scored against {args.rate_on:g} Hz on and 0 Hz off "
+                f"(§6.9: the targets are saturation and silence)")
+    return f"fired in the last {args.read_window:g} ms"
+
+
+def apply_problem(args: argparse.Namespace) -> None:
+    """Settle what the problem decides: whether a Teacher scores or trains, the epoch's length, the target, the readout."""
+    problem = PROBLEMS[args.problem]
+    if args.input_rate is None:  # the drive is given as a CV; lambda is the coordinate the schedule wants (§4.3)
+        # With no refractory period there is no dead time, so the train is Poisson and its CV is 1 whatever the rate:
+        # the CV coordinate does not reach it. Such a run is rejected further down; leave the default and let it be.
+        args.input_rate = rate_for_cv(args.cv, args.refractory) if args.refractory > 0 else INPUT_RATE
+    args.cv = cv_for_rate(args.input_rate, args.refractory)  # and --input-rate, if given, sets the CV it implies
+    if args.across is None:
+        args.across = 2 * CODES[args.ecc].code_bits if args.ecc else problem.across
+    args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
+    if not problem.trained:
+        args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
+    if problem.target is not None:
+        args.target = problem.target
+    if args.critic is None:
+        args.critic = problem.critic if problem.critic is not None else CRITIC  # --critic overrides the problem's
+    if args.rule is None:
+        args.rule = problem.rule or RULE
+    if args.rule in ("teacher", "adaline"):
+        args.no_punish = not args.punish  # the score already knows which neurons should not have fired (§6.9, §6.10)
+    if args.quash is None:
+        args.quash = QUASH_RATE if problem.quash else 0.0
+    if args.hebb is None:
+        args.hebb = HEBB_RATE if problem.hebb else 0.0
+    if args.drive is None:
+        args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
+    if args.population is None:
+        args.population = problem.population if problem.population is not None else POPULATION
+    if args.flip is None:
+        args.flip = problem.flip if problem.flip is not None else 0.0
+    if args.interval is None:
+        args.interval = problem.interval if problem.interval is not None else INTERVAL
+    args.readout, args.coding = problem.readout, problem.coding
+    if args.read_window is None:
+        args.read_window = problem.read_window
+    if args.read is None:
+        args.read = problem.read  # --read overrides what the problem asks for
+    if args.read == "window" and args.read_window is None:
+        args.read_window = READ_WINDOW
+    args.grid_reach, args.input_cells = problem.reach, problem.input_cells
+    args.no_permute = args.no_permute or not problem.permute
+    if args.rows == ROWS and problem.rows != ROWS:
+        args.rows = problem.rows  # the problem's rows, unless --rows was given (a value equal to the default is taken as not given)
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -384,6 +717,12 @@ def _run(args: argparse.Namespace) -> int:
             grid_from_file, data = loaded
             args.seed = data["seed"]
             args.across, args.rows, args.omega = across_of(data), data["rows"], data["omega"]
+            if data.get("problem") and data["problem"] != args.problem:
+                args.problem = data["problem"]
+                args.interval = None if PROBLEMS[args.problem].interval is not None else args.interval
+                args.rule = args.given_rule  # --rule if it was given, else the problem's
+                apply_problem(args)
+                print(f"problem: {args.problem} (from the checkpoint)", file=sys.stderr)
             if data.get("container") == "lattice":
                 args.nodes = 0
             args.ecc = _ecc_from_checkpoint(data)
@@ -412,7 +751,7 @@ def _run(args: argparse.Namespace) -> int:
             seed=seed,
             omega=args.omega,
             permute=not args.no_permute,
-            weight_range=(args.epsilon, 1.0) if args.positive_weights else (-1.0, 1.0),
+            weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
             minimum_potential=args.minimum_potential,
         )
         if args.minimum_potential >= args.threshold:
@@ -447,8 +786,39 @@ def _run(args: argparse.Namespace) -> int:
                 )
                 grid.connect_within(reach=args.reach, weight=args.weight)
             else:
-                grid = GridOfNeurons(**settings)
+                grid = GridOfNeurons(**settings, reach=args.grid_reach)
+            if args.input_cells and not loaded:
+                grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
+            grid.problem = args.problem
+            grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
+            grid.quash_rate, grid.quash_k = args.quash, args.quash_k
+            grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
+            grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
+            grid.explore, grid.rate_on = args.explore, args.rate_on
+            grid.population = args.population
+            Neuron.rate_tau = args.rate_tau
+            if args.input_seed is not None:
+                grid.use_input_stream(input_stream(max(1, args.epochs), grid.raw_bit_count(), args.input_seed))
+                print(f"inputs: {max(1, args.epochs):,} patterns drawn up front from input seed {args.input_seed} "
+                      f"(§4.5), the same for any network run at this input seed", file=sys.stderr)
+            if args.drive == "rate":
+                isi = args.refractory + 1.0 / args.input_rate if args.input_rate else float("inf")
+                print(f"input drive: rate at CV {args.cv:.3g} (AUTHORITY.md §4.3) -- a Poisson process DRIVES each "
+                      f"input neuron across the {args.interval:g} ms epoch at {args.input_rate:g}/ms of arrivals where "
+                      f"its bit is 1 and {args.input_rate_off:g}/ms where it is 0. Arrivals inside the refractory "
+                      f"period are dropped, so a bit-1 neuron fires every {isi:.2f} ms on average "
+                      f"({1000.0 / isi:.0f} Hz, {args.interval / isi:.1f} spikes an epoch), at a coefficient of "
+                      f"variation of {args.cv:.2f} against a Poisson train's 1", file=sys.stderr)
+            grid.flip = args.flip
+            if not PROBLEMS[args.problem].trained:
+                print(
+                    f"problem {args.problem}: {PROBLEMS[args.problem].description}. Epochs {args.interval:g} ms apart; "
+                    f"scored on the {args.readout} row against {args.target} by the {args.critic} critic, on meaning "
+                    f"{READ_MEANS(args)}; "
+                    "nothing outside the network trains it",
+                    file=sys.stderr,
+                )
             if args.ecc:
                 try:
                     grid.use_ecc(args.ecc)
@@ -469,7 +839,35 @@ def _run(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
             if not args.no_permute or loaded:
-                print(f"input permutation: place i along the bottom row shows coded bit {grid.permutation}", file=sys.stderr)
+                laid = "coded" if grid.coding == "complement" else "raw"
+                print(f"input permutation: place i along the bottom row shows {laid} bit {grid.permutation}", file=sys.stderr)
+            if args.rule != "reinforce":
+                grid.rule = args.rule
+                if grid.dopamine is None:  # a loaded checkpoint brings its own pool
+                    grid.dopamine = Dopamine(tau=args.dopamine_tau, release_alpha=args.release_alpha, release_theta=args.release_theta,
+                                             order=args.order, lr=args.lr, expectation_tau=args.expectation_tau,
+                                             punish=not args.no_punish, punish_gain=args.punish_gain, decay=args.weight_decay,
+                                             expectation_start=args.expectation_start)
+                print(f"rule: {args.rule}, {grid.dopamine.order}, tau {grid.dopamine.tau:g} ms, release gamma(alpha "
+                      f"{grid.dopamine.release_alpha:g}, theta {grid.dopamine.release_theta:g} ms), expectation tau "
+                      f"{grid.dopamine.expectation_tau:g} ms from {grid.dopamine.expectation:g}, lr {grid.dopamine.lr:g}, "
+                      f"{f'bit-0 input neurons punished {grid.dopamine.punish_gain:g}x for refiring' if grid.dopamine.punish else 'no punishment'}, "
+                      f"weight decay {grid.dopamine.decay:g} per epoch; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
+                      f"bored after {Neuron.bored_after:g} ms, "
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
+                      f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
+            else:
+                grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
+                # the Teacher zeroes sigma for the hebb eligibility, so the network is deterministic: report what runs
+                effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
+                print(f"rule: reinforce ({args.eligibility} eligibility"
+                      f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
+                      f"sigma {effective_sigma:g} ({args.explore})"
+                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma else ''}"
+                      f", no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
+                      f"bored after {Neuron.bored_after:g} ms, "
+                      f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
+                      f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             engine = args.engine or (data.get("engine", "objects") if loaded else "objects")
             if engine == "arrays":
                 try:
@@ -496,12 +894,21 @@ def _run(args: argparse.Namespace) -> int:
                     unstick_target=args.unstick_target,
                     critic=args.critic,
                     late=args.late,
+                    leaky=args.leaky,
+                    rule=args.rule,
                 )
                 if loaded:
                     resume_teacher(teacher, data)
+                if args.trace is None and args.save_weights and not args.no_trace:
+                    args.trace = str(Path(args.save_weights).with_suffix(".csv"))
+                if args.trace and not args.no_trace:
+                    Path(args.trace).parent.mkdir(parents=True, exist_ok=True)
+                    teacher.trace_to(args.trace)
+                    print(f"tracing every epoch to {args.trace}", file=sys.stderr)
                 teacher.epoch(input_bits, verbose=Neuron.verbose)  # the first epoch, with exploration, like every other
             else:
-                run_epoch(grid, input_bits, verbose=Neuron.verbose, discharge=args.discharge)
+                explore = random.Random(seed)  # the exploration noise of an untrained run
+                run_epoch(grid, input_bits, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
 
             def save_checkpoint():
                 if args.save_weights:
@@ -511,7 +918,7 @@ def _run(args: argparse.Namespace) -> int:
                 # --step: nothing happens until Space is pressed.
                 visualizer.show(
                     grid, width, height, fast=args.fast, teacher=teacher, report_seconds=args.report,
-                    on_report=save_checkpoint,
+                    on_report=save_checkpoint, noise=None if teacher else args.sigma, rng=None if teacher else explore,
                 )
             else:
                 report_every = max(1, args.epochs // 10)
@@ -525,7 +932,10 @@ def _run(args: argparse.Namespace) -> int:
                             print(f"epoch {epoch}: {teacher.status()}", file=sys.stderr)
                             save_checkpoint()
                     else:
-                        run_epoch(grid, verbose=Neuron.verbose, discharge=args.discharge)
+                        run_epoch(grid, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
+                        if epoch % report_every == 0 or epoch == args.epochs:
+                            print(f"epoch {epoch}: {health(grid)}", file=sys.stderr)
+                            save_checkpoint()
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -538,7 +948,10 @@ def _run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         if teacher:
+            teacher.close_trace()
             print(f"after {teacher.epochs} epochs: {teacher.status()}", file=sys.stderr)
+        elif grid.epoch > 1:
+            print(f"after {grid.epoch} epochs: {health(grid)}", file=sys.stderr)
         if args.save_weights:
             save_checkpoint()
             print(f"saved weights to {args.save_weights}", file=sys.stderr)
@@ -554,6 +967,15 @@ def _run(args: argparse.Namespace) -> int:
         # Ctrl+C is the normal way to stop, so exit cleanly rather than with a traceback.
         print("\nStopped.", file=sys.stderr)
     return 0
+
+
+def health(grid) -> str:
+    """One line on an untrained run: what fired this epoch, spikes to date, and the dopamine."""
+    fired = len(grid.fired_neurons())
+    line = f"{fired} of {len(grid.neurons)} fired this epoch, {grid.total_spikes():,} spikes to date"
+    if grid.dopamine is not None:
+        line += f", {grid.dopamine.status()}"
+    return line
 
 
 def _run_nodes(args: argparse.Namespace, width: int, height: int) -> int:
@@ -611,13 +1033,33 @@ def _seed_worker(job: dict) -> dict:
         )
         grid.connect_within(reach=job["lattice"]["reach"], weight=settings["weight"])
     elif not job.get("layers"):
-        grid = GridOfNeurons(**job["settings"], seed=seed)
+        grid = GridOfNeurons(**job["settings"], seed=seed, reach=job.get("grid_reach", 2))
+        if job.get("input_cells"):
+            grid.set_input_cells(job["input_cells"])
     if job.get("layers"):
         grid = HexColumns(layers=job["layers"], **job["settings"], seed=seed)
     if job.get("ecc"):
         grid.use_ecc(job["ecc"])
-    Neuron.tau, Neuron.refractory = job.get("tau", Neuron.tau), job.get("refractory", Neuron.refractory)
+    Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
+    Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
+    Neuron.tau = job.get("tau", Neuron.tau)
     grid.interval = job.get("interval", grid.interval)
+    grid.problem = job.get("problem")
+    grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
+    grid.rule = job["teacher"].get("rule", RULE)
+    grid.coding = job.get("coding", "complement")
+    grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
+    grid.flip = job.get("flip", 0.0)
+    grid.hebb_rate = job.get("hebb", 0.0)
+    grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
+    grid.drive = job.get("drive", INPUT_DRIVE)
+    grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
+    grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
+    Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
+    if job.get("input_seed") is not None:
+        grid.use_input_stream(input_stream(epochs, grid.raw_bit_count(), job["input_seed"]))
+    if job["teacher"].get("rule", RULE) == "dopamine":
+        grid.dopamine = Dopamine(**job["dopamine"])
     if job.get("engine") == "arrays":
         from .arrays import ArrayNetwork
         grid = ArrayNetwork(grid)
@@ -660,7 +1102,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         threshold=args.threshold,
         omega=args.omega,
         permute=not args.no_permute,
-        weight_range=(args.epsilon, 1.0) if args.positive_weights else (-1.0, 1.0),
+        weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
     )
     teacher_kwargs = dict(
@@ -676,7 +1118,12 @@ def _run_seeds(args: argparse.Namespace) -> int:
         unstick_target=args.unstick_target,
         critic=args.critic,
         late=args.late,
+        leaky=args.leaky,
+        rule=args.rule,
     )
+    dopamine = dict(tau=args.dopamine_tau, release_alpha=args.release_alpha, release_theta=args.release_theta,
+                    order=args.order, lr=args.lr, expectation_tau=args.expectation_tau, punish=not args.no_punish,
+                    punish_gain=args.punish_gain, decay=args.weight_decay, expectation_start=args.expectation_start)
     if args.no_learn:
         print("error: --seeds is for comparing learning runs; drop --no-learn", file=sys.stderr)
         return 2
@@ -691,7 +1138,15 @@ def _run_seeds(args: argparse.Namespace) -> int:
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
                      "save": save, "lattice": lattice, "ecc": args.ecc, "engine": args.engine or "objects",
-                     "layers": args.layers, "tau": args.tau, "refractory": args.refractory, "interval": args.interval})
+                     "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
+                     "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
+                     "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
+                     "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
+                     "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
+                     "synapse_tau": args.synapse_tau,
+                     "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
+                     "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
+                     "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:
             import numpy, scipy  # noqa: F401

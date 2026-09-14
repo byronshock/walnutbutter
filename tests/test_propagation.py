@@ -5,6 +5,11 @@ from walnutbutter.neuron import Neuron
 from walnutbutter.propagation import Signal, Wave, propagate
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_stimulus(forced_input):
+    """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
+
+
 def chain(n, weight=1.0, threshold=1.0):
     """a0 -> a1 -> ... -> a(n-1), one-way."""
     neurons = [Neuron(f"n{i}", threshold=threshold) for i in range(n)]
@@ -84,15 +89,16 @@ def test_forced_neuron_ignores_threshold_and_is_not_fired_twice(capsys, monkeypa
     assert capsys.readouterr().out.count("fired") == 1
 
 
-def test_already_fired_neuron_is_skipped(capsys):
+def test_a_refractory_neuron_is_not_forced(capsys):
     a = Neuron("a")
-    a.fire()
-    waves = propagate(fire=[a])
-    assert waves[0].fired == []
+    a.fire(now=0.0)
+    waves = propagate(fire=[a], now=0.0)
+    assert waves[0].fired == [] and waves[0].time == 0.0
+    assert propagate(fire=[a], now=5.0)[0].fired == [a]
 
 
-def test_empty_stimulus_gives_one_empty_wave():
-    assert propagate() == [Wave(number=0)]
+def test_empty_stimulus_gives_no_waves():
+    assert propagate() == []
 
 
 def test_grid_waves_match_hex_distance_from_origin(capsys):
@@ -103,7 +109,7 @@ def test_grid_waves_match_hex_distance_from_origin(capsys):
     assert len(waves[1].fired) == 18  # both rings around the origin fire in wave 1
     for (q, r), neuron in grid.neurons.items():
         distance = max(abs(q), abs(r), abs(q + r))
-        assert neuron.fired_in_wave == (distance + 1) // 2  # two steps per wave
+        assert first_wave(grid, neuron) == (distance + 1) // 2  # two steps per wave
 
 
 def test_grid_accepts_multiple_stimuli_in_one_epoch(capsys):
@@ -112,7 +118,12 @@ def test_grid_accepts_multiple_stimuli_in_one_epoch(capsys):
     waves = grid.propagate(fire=[origin, corner])
     assert waves[0].fired == [origin, corner]
     assert len(grid.fired_neurons()) == len(grid.neurons)
-    assert grid.get_neuron_at(1, 3).fired_in_wave == 1  # reached from the edge, not the origin
+    assert first_wave(grid, grid.get_neuron_at(1, 3)) == 1  # reached from the edge, not the origin
+
+
+def first_wave(grid, neuron) -> int:
+    """The first wave of the epoch a neuron fired in (it may refire later)."""
+    return next(w.number for w in grid.waves if neuron in w.fired)
 
 
 def test_grid_reset_clears_waves(capsys):
@@ -124,6 +135,72 @@ def test_grid_reset_clears_waves(capsys):
 
 def test_large_grid_has_no_recursion_limit(capsys):
     grid = GridOfNeurons(across=80, rows=60, omega=0)  # 4800 neurons; recursion died near 1000
-    grid.activate_origin()
+    grid.activate_origin(until=60.0)  # the corners are twenty-odd hops out: several intervals
     assert len(grid.fired_neurons()) == len(grid.neurons)
-    assert len(grid.waves) > 20  # two cells per wave now; recursion would still have died
+    assert len(grid.waves) > 20  # two cells per wave; recursion would still have died
+
+
+# --- wave exploration (AUTHORITY.md §6.1) --------------------------------------------
+
+def test_the_exploration_draw_comes_once_a_wave_and_is_held_at_the_spike():
+    import random
+    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.monitor import run_epoch
+
+    def build(mode):
+        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=1, permute=False, omega=0)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.explore = mode
+        return grid
+
+    drawn = {}
+    for mode in ("epoch", "wave"):
+        grid, used = build(mode), []
+        source = random.Random(7)
+
+        class Counting(random.Random):
+            def random(self):
+                used.append(1)
+                return source.random()
+
+        run_epoch(grid, [True, False, False, True], verbose=False, noise=0.1, rng=Counting())
+        drawn[mode] = (len(used), len(grid.waves))
+    epoch_draws, waves = drawn["epoch"]
+    wave_draws, _ = drawn["wave"]
+    assert epoch_draws == 60  # one draw per neuron, once
+    assert wave_draws == 60 * waves > epoch_draws  # one per neuron per wave: the draw explains the decision it precedes
+
+    grid = build("wave")
+    run_epoch(grid, [True, False, False, True], verbose=False, noise=0.1, rng=random.Random(7))
+    assert all(n.noise != 0.0 for n in grid.all_neurons() if n.has_fired)  # every spike kept the draw it decided under
+
+    quiet = build("wave")  # sigma 0: nothing is drawn and nothing is perturbed
+    run_epoch(quiet, [True, False, False, True], verbose=False, noise=0.0)
+    assert quiet.explorer() is None and all(n.noise == 0.0 for n in quiet.all_neurons())
+
+
+def test_wave_exploration_is_bit_identical_across_the_engines():
+    import random
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.monitor import run_epoch
+
+    def make():
+        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=5, permute=False, omega=0)
+        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.quash_rate, grid.explore = 0.02, "wave"
+        return grid
+
+    mesh, net = make(), ArrayNetwork(make())
+    a, b = random.Random(3), random.Random(3)
+    for _ in range(40):
+        run_epoch(mesh, verbose=False, noise=0.1, rng=a)
+        run_epoch(net, verbose=False, noise=0.1, rng=b)
+        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+        # to the last ulp but not bit-for-bit: Box-Muller goes through math.cos/log on one side and
+        # np.cos/log on the other, and those may differ in the final place. It is the documented source
+        # of the engines eventually parting company (§7), so it is pinned tightly rather than exactly.
+        assert np.allclose([n.noise for n in mesh.all_neurons()], net.noise, rtol=0, atol=1e-16)
+        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
