@@ -18,6 +18,7 @@ import argparse
 import json
 import math
 import re
+from datetime import date
 import statistics
 from pathlib import Path
 
@@ -64,16 +65,18 @@ def main() -> None:
     def last(level: float) -> list[float]:
         return [levels[level][s]["last_tenth"] for s in seeds]
 
+    eligibility = one.get("eligibility", "hebb")  # what the arms ran (§6.7); the driver records it since September 14, 2026
     lines = [
-        f"# Sweep {args.name} (September 14, 2026)",
+        f"# Sweep {args.name} ({date.today().strftime('%B %-d, %Y')})",
         "",
         f"{args.knob.upper()} against {len(seeds)} seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce "
-        f"rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's "
+        f"rule with the {eligibility} eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's "
         f"constants, everything else at the defaults in `constants.py`. {one['container']}. Every level at seed *s* "
         f"is given the same input stream (§4.5), so levels pair epoch by epoch. About {epochs_per_second:,.0f} epochs "
         f"a second an arm.",
         "",
-        f"Driver: `docs/rust-sweep.py --name {args.name} --problem reversal --goo --eligibility hebb --{args.knob} ... "
+        f"Driver: `docs/rust-sweep.py --name {args.name} --problem copy --goo {DEFAULT_COUNT} --eligibility {eligibility} "
+        f"--{args.knob.replace('_', '-')} ... "
         f"--seed 1 ... {max(seeds)} --epochs N`; report: `docs/goo-threshold-report.py --name {args.name} --knob "
         f"{args.knob}`; figure: `{args.name}-score.png`. Every arm's trace and summary is under `runs/{args.name}/` "
         f"(not in git).",
@@ -116,11 +119,11 @@ def main() -> None:
     lines.append(f"Best level: {args.knob} {best_level:g}, {best:.4f} over the last tenth, averaged over {len(seeds)} seeds.")
     lines.append("")
     (ROOT / "docs" / f"{args.name}.md").write_text("\n".join(lines) + "\n")
-    plot(args, levels, seeds, scale, default)
+    plot(args, levels, seeds, scale, default, eligibility)
     print("\n".join(lines))
 
 
-def plot(args, levels, seeds, scale, default) -> None:
+def plot(args, levels, seeds, scale, default, eligibility: str = "hebb") -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -152,7 +155,7 @@ def plot(args, levels, seeds, scale, default) -> None:
                   color=INK2, fontsize=9)
     ax.set_ylabel("accuracy over the last tenth of the run", color=INK2, fontsize=9)
     ax.legend(loc="upper right", frameon=False, fontsize=8, labelcolor=INK2)
-    fig.suptitle(f"Hebbian goo against {args.knob.upper()}", x=0.01, ha="left", color=INK, fontsize=12)
+    fig.suptitle(f"Goo against {args.knob.upper()}, {eligibility} eligibility", x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(ROOT / "docs" / f"{args.name}-score.png", facecolor=SURFACE)
     plt.close(fig)
