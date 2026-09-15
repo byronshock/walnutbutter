@@ -76,7 +76,7 @@ at all.
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
 | GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
-| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project. *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
+| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and since September 15, 2026 a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (equal fan-in, §3.4). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -750,6 +750,40 @@ The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
+
+**Equal fan-in — decided (Byron, September 15, 2026, on seeing an output of
+the mnist goo hear 9 synapses where an interior neuron heard 31: "I want all
+neurons to statistically have the same number of connections BUT follow the
+connection rules").** Under the rule below one probability serves every
+projection with an interior end, so an interior neuron hears $P(N-1)$
+synapses in expectation and a zone neuron, which hears only the interior,
+$PH$ — the ratio $H/(N-1)$ at any $P$, 199 to 623 on the mnist goo, and
+the fan-in scaling of §5.2 then hands the zone a threshold so low that an
+output relays whichever of its few sources fires first. So a projection
+from the interior onto a zone neuron takes its own probability, the one
+that gives a zone neuron an interior neuron's expectation:
+
+$$P(i \to j) = \begin{cases}
+0 & i = j \\
+0 & i, j \text{ both in a zone} \\
+\min\!\big(1,\ P\,(N-1)/H\big) & i \text{ interior},\ j \text{ in a zone} \\
+P & \text{otherwise}
+\end{cases}$$
+
+with $N$ the count and $H$ the interior. Every neuron then hears $P(N-1)$
+synapses in expectation; the zones still never talk to each other; the draw
+is still pair by pair on the seed's stream. What a neuron *sends* cannot be
+equalised as well: the zones outnumber the interior, and the interior must
+send them everything they hear — $(I+O)\,P(N-1)/H$ projections per interior
+neuron beside its own — so it is the fan-in, the quantity that sets a
+threshold and what a neuron can integrate, that is equal. The zone side
+stops short above $P = H/(N-1)$ (0.32 on the mnist goo, 0.75 on goo 60),
+where every interior neuron already projects onto every zone neuron. On
+goo 60 the rule moves a zone neuron from 8.8 to 11.8 expected synapses at
+$P = 0.2$; **every result of this section before this paragraph was
+measured under the rule below with one probability**, and stands as
+recorded; a checkpoint from before the rule restores under the rule it was
+wired with (`equal_fan_in=False`).
 
 **Zones of two widths (September 15, 2026, for mnist, §8).** The input zone
 is the first `across` neurons and the output zone the last `outputs`, which

@@ -437,3 +437,40 @@ def test_a_seed_batch_runs_goo_and_its_header_says_what_ran(capsys):
     assert cli_main(["--goo", "20", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb", "--seeds", "2",
                      "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     assert "goo at projection 0.5, 8 in and 8 out, flat threshold and floor, reinforce rule with the hebb eligibility" in capsys.readouterr().err
+
+
+def test_equal_fan_in_gives_every_neuron_the_same_expected_hearing():
+    """§3.4, Byron, September 15, 2026: every neuron statistically hears the same number of synapses, zones apart still."""
+    import statistics as st
+    goo = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2)
+    assert goo.equal_fan_in and goo.interior_count() == 220 and goo.zone_projection() == pytest.approx(0.2 * 299 / 220)
+    interior = st.mean(len(n.incoming) for n in goo.interior())
+    zone = st.mean(len(n.incoming) for n in goo.input_row() + goo.output_row())
+    assert abs(zone - interior) / interior < 0.1 and abs(interior - 0.2 * 299) / (0.2 * 299) < 0.1
+    assert goo.zones_are_apart() and all(c.source in goo.interior() for c in goo.connections.values() if c.target in goo.input_row() + goo.output_row())
+    old = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2, equal_fan_in=False)
+    before = st.mean(len(n.incoming) for n in old.input_row() + old.output_row())
+    assert old.zone_projection() == 0.2 and abs(before - 0.2 * 220) / (0.2 * 220) < 0.1  # the rule before: P times the interior
+    assert before < 0.8 * interior  # 220 / 299 of what an interior neuron hears
+    capped = Goo(count=60, across=8, seed=3, weight=None, projection=0.9)  # 0.9 * 59 / 44 > 1: every interior neuron projects onto every zone neuron
+    assert capped.zone_projection() == 1.0 and all(len(n.incoming) == 44 for n in capped.input_row() + capped.output_row())
+    assert Goo(count=60, across=8, seed=3, weight=None, projection=1.0).zone_projection() == 1.0
+
+
+def test_a_checkpoint_keeps_the_fan_in_rule_and_an_old_one_restores_without_it(tmp_path):
+    import json
+    goo = Goo(count=40, across=8, outputs=4, seed=3, weight=None, projection=0.3)
+    run_epoch(goo, verbose=False)
+    data = checkpoint(goo, tmp_path / "equal.json")
+    assert data["equal_fan_in"] is True
+    back, _ = restore(tmp_path / "equal.json")
+    assert back.equal_fan_in and wiring(back) == wiring(goo)
+    # a checkpoint from before the rule carries no field and was wired with one probability: it restores that way
+    older = Goo(count=40, across=8, outputs=4, seed=3, weight=None, projection=0.3, equal_fan_in=False)
+    run_epoch(older, verbose=False)
+    data = checkpoint(older, tmp_path / "before.json")
+    old = json.loads((tmp_path / "before.json").read_text()); del old["equal_fan_in"]
+    (tmp_path / "before.json").write_text(json.dumps(old))
+    before, _ = restore(tmp_path / "before.json")
+    assert not before.equal_fan_in and before.zone_projection() == 0.3 and wiring(before) == wiring(older)
+    assert len(older.connections) != len(goo.connections)  # the two rules wire the same seed differently
