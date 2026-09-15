@@ -126,7 +126,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
 | HOMEOSTASIS | 10⁻⁶ | per-epoch rate a threshold drifts toward its target firing rate; 0 = off |
 | TARGET_RATE | 0.5 | firing rate homeostasis aims for |
-| UNSTICK | 10⁻³ | per-epoch rate a stuck output's threshold moves toward UNSTICK_TARGET; 0 = off |
+| UNSTICK | 10⁻³ | per-epoch rate a stuck neuron's threshold moves toward UNSTICK_TARGET; 0 = off. Every neuron since September 14, 2026 (§6.7) — it was the output row only, and the interior of a goo with no direct projection was dead for want of it (§3.4) |
 | UNSTICK_TARGET | 0.5 | firing rate the un-sticking aims for |
 | ~~THRESHOLD_RANGE~~ | — | *eliminated, September 14, 2026 (Byron: "It's artificial"; §2, no artificial restrictions).* Homeostasis and un-sticking moved a threshold no further than [−5, 5]; now a threshold goes where the rules take it. What that clamp did to one sweep is in §3.4 |
 | RATE_MEMORY | 0.01 | per-epoch update of $r_j$: about the last 100 epochs |
@@ -622,6 +622,31 @@ the hebb eligibility can learn a copy that has to cross the interior; that
 needs an interior that fires — THRESHOLD on the no-direct goo, from where
 the count × threshold sweep found small goos alive (0.15–0.3), ten seeds,
 a minute on the loop — and it is Byron's to call.
+
+*LR, swept first (Byron, September 14, 2026: "I am afraid that our learning
+rate parameter is now too high because there is much more to learn. Please
+sweep LR in {0.03 0.225 0.015 0.0075 0.005 0.003} across 10 seeds for
+100000 epochs").* On the task as it stood — no direct projection, $\theta$
+3.28 — LR 0.003 to 0.03 (0.0225 run for the 0.225 in the list, which broke
+the pattern, and 0.225 as typed besides), ten seeds, 100,000 epochs,
+`docs/goo60-lr.md`: **0.500 at every level**, 0.4999 to 0.5017, no level
+separable from 0.03 ($|t| \le 1.0$), 43 to 49 of 60 neurons never firing at
+any rate. The learning rate had nothing to act on: nothing reached the
+outputs. A measurement of the dead interior, not of LR, which is still to
+be swept where it can mean something.
+
+**Decided (Byron, September 14, 2026): un-stick every neuron.** *"2. Yes;
+then please sweep THRESHOLD in steps of 0.01 from 0.1 to 0.5. Yes, I know
+this will take a while, but we need a stable value."* The interior of the
+no-direct goo was dead because the only mechanism that walks a silent
+neuron's threshold down until it fires, UNSTICK, was restricted to the
+output row — an artificial restriction (§2), and not one the substance
+gives: *all neurons are first-class citizens*. From here UNSTICK acts on
+every neuron whose running rate is outside the stuck band, a neuron forced
+this epoch excepted, in every engine (§1.3, §6.7). With it, a silent
+interior cures itself at any THRESHOLD, and the question becomes where the
+threshold is *stable* rather than where it merely fires — which is the
+sweep that follows, 0.10 to 0.50 by 0.01, ten seeds each.
 
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
@@ -1594,7 +1619,11 @@ $e_j = \xi_j/\sigma$ (ELIGIBILITY = perturb) or $\pm 1$ by whether $j$ fired
 (hebb). LATE says what a signal arriving after its target fired earns:
 count, ignore, or depress. The Teacher also keeps each unforced neuron's
 firing rate ($r_j$, RATE_MEMORY) and drifts thresholds toward TARGET_RATE
-(HOMEOSTASIS), nudging stuck outputs faster (UNSTICK); nothing clips
+(HOMEOSTASIS), nudging stuck neurons faster (UNSTICK — every neuron and not
+the output row only since September 14, 2026: *"all neurons are first-class
+citizens"*, §2's no artificial restrictions, and the dead interior of §3.4,
+which un-sticking the outputs alone could not reach; a neuron forced this
+epoch is left alone, as homeostasis leaves it); nothing clips
 where they take it (the [−5, 5] that once did was eliminated on September
 14, 2026, §1.3). Under RULE = dopamine the Teacher only scores and reports;
 the network learns by §6.2–6.6.

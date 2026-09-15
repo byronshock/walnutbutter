@@ -264,7 +264,8 @@ def test_teacher_homeostasis_reduces_stuck_neurons():
     from walnutbutter.learning import stuck_neurons
     def run(homeostasis):
         grid = GridOfNeurons(across=8, rows=6, weight=None, seed=1)
-        teacher = Teacher(grid, seed=1, homeostasis=homeostasis, target_rate=0.5)
+        # un-sticking off: since September 14, 2026 it reaches every neuron and would do this job on its own
+        teacher = Teacher(grid, seed=1, homeostasis=homeostasis, target_rate=0.5, unstick=0.0)
         for _ in range(3000):
             teacher.epoch(verbose=False)
         on, off = stuck_neurons(grid)
@@ -319,33 +320,35 @@ def test_the_leak_is_the_default_and_discharge_is_available():
     assert "discharge" in discharging.status()
 
 
-def test_unstick_touches_only_stuck_output_neurons():
-    from walnutbutter.learning import unstick_outputs
+def test_unstick_touches_every_stuck_neuron_wherever_it_sits():
+    """It was the output row only until September 14, 2026 (AUTHORITY.md §6.7): now a stuck interior neuron is nudged too."""
+    from walnutbutter.learning import unstick
     grid = GridOfNeurons(across=6, rows=4, omega=0)
     outputs = output_row(grid)
     hot, cold, fine = outputs[0], outputs[1], outputs[2]
     hot.rate, cold.rate, fine.rate = 1.0, 0.0, 0.5
     interior = grid.get_neuron_at(3, 1)
-    interior.rate = 1.0  # stuck, but not an output: must be left alone
+    interior.rate = 1.0  # stuck, and not an output: nudged all the same
     before = {n: n.threshold for n in grid.neurons.values()}
-    nudged = unstick_outputs(grid, rate=0.1)
-    assert nudged == [hot, cold]
+    nudged = unstick(grid, rate=0.1)
+    assert set(nudged) == {hot, cold, interior}
     assert hot.threshold == pytest.approx(before[hot] + 0.05)
     assert cold.threshold == pytest.approx(before[cold] - 0.05)
-    assert fine.threshold == before[fine] and interior.threshold == before[interior]
-    assert unstick_outputs(grid, rate=0.0) == []
+    assert interior.threshold == pytest.approx(before[interior] + 0.05)
+    assert fine.threshold == before[fine]
+    assert unstick(grid, rate=0.0) == []
 
 
 def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_nothing_clips_it():
-    from walnutbutter.learning import unstick_outputs
+    from walnutbutter.learning import unstick
     grid = GridOfNeurons(across=6, rows=4, omega=0)
     hot = output_row(grid)[0]
     hot.rate = 1.0
     for _ in range(300):
-        unstick_outputs(grid, rate=1.0)
+        unstick(grid, rate=1.0)
     assert hot.threshold == pytest.approx(0.25 + 150.0)  # no range to stop at
     hot.rate = 0.6  # out of the stuck band: nothing more happens
-    assert unstick_outputs(grid, rate=1.0) == []
+    assert unstick(grid, rate=1.0) == []
     assert hot.threshold == pytest.approx(0.25 + 150.0)  # and stays there: nothing more happened
 
 
@@ -424,3 +427,22 @@ def test_a_late_signal_counts_by_default_and_is_ignored_or_depressed_on_request(
     assert Teacher(GridOfNeurons(across=4, rows=3, omega=0)).late == "count"
     with pytest.raises(ValueError):
         Teacher(GridOfNeurons(across=4, rows=3, omega=0), late="whenever")
+
+
+
+def test_unstick_reaches_every_stuck_neuron_and_leaves_a_forced_one_alone():
+    """§6.7, September 14, 2026: un-sticking is for every neuron, not the output row -- the interior of a goo with no
+    direct projection was dead for want of it. A neuron forced this epoch is left alone, as homeostasis leaves it."""
+    from walnutbutter.learning import unstick
+    grid = GridOfNeurons(across=6, rows=4, omega=0)
+    interior, out, forced_in = grid.get_neuron_at(2, 2), output_row(grid)[3], grid.input_row()[0]
+    for n in grid.all_neurons():
+        n.rate = 0.5  # nobody stuck
+    interior.rate, out.rate, forced_in.rate = 0.0, 1.0, 1.0
+    forced_in.forced = True
+    before = {n: n.threshold for n in grid.all_neurons()}
+    nudged = unstick(grid, rate=0.1)
+    assert set(nudged) == {interior, out}  # the interior neuron as much as the output; the forced input not at all
+    assert interior.threshold == pytest.approx(before[interior] - 0.05) and out.threshold == pytest.approx(before[out] + 0.05)
+    assert forced_in.threshold == before[forced_in]
+    assert all(n.threshold == before[n] for n in grid.all_neurons() if n not in (interior, out))

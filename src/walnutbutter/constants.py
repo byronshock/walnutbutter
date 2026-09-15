@@ -152,8 +152,10 @@ BASELINE_RATE = 0.05  # per-epoch update of the running reward baseline the adva
 WINDOW = 200  # epochs the Teacher's moving-average accuracy spans
 HOMEOSTASIS = 1e-6  # per-epoch rate at which a threshold moves toward the target firing rate; 0 = off
 TARGET_RATE = 0.5  # firing rate homeostasis aims for, 0 to 1
-UNSTICK = 1e-3  # per-epoch rate at which a stuck output neuron's threshold moves toward UNSTICK_TARGET; 0 = off
-UNSTICK_TARGET = 0.5  # firing rate the output un-sticking aims for
+UNSTICK = 1e-3  # per-epoch rate at which a stuck neuron's threshold moves toward UNSTICK_TARGET; 0 = off. Every neuron,
+# not the output row only, since September 14, 2026 (AUTHORITY.md §6.7): the interior of a goo with no direct
+# projection was dead for want of it, and 'all neurons are first-class citizens' (Byron)
+UNSTICK_TARGET = 0.5  # firing rate the un-sticking aims for
 # THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
 # (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.
 RATE_MEMORY = 0.01  # per-epoch update of a neuron's running firing rate (about the last 100 epochs)

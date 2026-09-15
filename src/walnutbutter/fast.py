@@ -107,7 +107,7 @@ def _outputs_on(engine, grid, out) -> list[bool]:
 
 
 class _Thresholds:
-    """Teacher.step's bookkeeping after the update, mirrored: learning.update_rates, homeostasis and unstick_outputs.
+    """Teacher.step's bookkeeping after the update, mirrored: learning.update_rates, homeostasis and unstick.
 
     The Rust engine owns the potentials; the Teacher owns each neuron's running
     firing rate and moves its threshold from that once an epoch, in Python, which
@@ -136,8 +136,8 @@ class _Thresholds:
                     thresholds[i] = thresholds[i] + self.homeostasis * (rates[i] - self.target_rate)  # nothing clips it
             moved = True
         if self.unstick > 0:
-            for i in self.out:
-                if rates[i] > STUCK_ABOVE or rates[i] < STUCK_BELOW:
+            for i in range(len(rates)):  # every neuron, not the outputs only (§6.7, September 14, 2026)
+                if not forced[i] and (rates[i] > STUCK_ABOVE or rates[i] < STUCK_BELOW):
                     thresholds[i] = thresholds[i] + self.unstick * (rates[i] - self.unstick_target)
                     self.unstuck += 1
                     moved = True
