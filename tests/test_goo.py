@@ -322,6 +322,7 @@ def test_the_count_read_counts_the_epochs_spikes_and_thresholds_the_rate():
     a.spikes = 11
     assert goo.output_fired()[0] is False
     goo.teacher_threshold = TEACHER_THRESHOLD
+    a.spikes = 10  # back to none for a and one for b: the one-spike read the levels below are asserted against
     assert goo.output_levels()[:2] == [0.0, 1.0]  # a bit, as the row critic wants it
     goo.reset()
     assert a.epoch_spikes == b.epoch_spikes == 0  # the next epoch starts its count afresh
