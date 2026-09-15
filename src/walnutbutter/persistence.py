@@ -47,6 +47,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "ecc": grid.ecc,
         "coding": grid.coding,  # complement, raw or population
         "population": grid.population,  # neurons per raw bit under population coding
+        "clock": grid.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [grid.quash_rate, grid.quash_k],  # the cycle quash (§6.11)
         "flip": grid.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
         "hebb": grid.hebb_rate,  # leaky Hebb (§6.12)
@@ -347,6 +348,7 @@ def _restore_clock(grid, data: dict) -> None:
         grid.dopamine = Dopamine.from_state(data["dopamine"])
     grid.rule = data.get("rule", "dopamine")
     grid.population = data.get("population", grid.population)
+    grid.clock = data.get("clock", 0)
     grid.teacher_threshold = data.get("teacher_threshold", grid.teacher_threshold)
     if data.get("quash"):
         grid.quash_rate, grid.quash_k = data["quash"]

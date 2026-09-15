@@ -82,6 +82,7 @@ class ArrayNetwork(Network):
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
+        self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng

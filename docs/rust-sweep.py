@@ -128,7 +128,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
         grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
                              threshold=args.threshold, minimum_potential=args.minimum_potential)
-    grid.coding, grid.population = args.coding, args.population
+    grid.coding, grid.population, grid.clock = args.coding, args.population, args.clock
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.teacher_threshold = args.teacher_threshold  # the count read's line (§4.3)
     grid.interval, grid.drive = args.interval, args.drive

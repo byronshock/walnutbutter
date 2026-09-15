@@ -598,10 +598,11 @@ The **mnist** problem (AUTHORITY.md §8) reads the handwritten digits from
 `mnist/` (the training split's two IDX files, not in git; `mnist/README.md`
 says where from and `walnutbutter.mnist.fetch()` gets them; the test split is
 not fetched, by decision), each image averaged to 14 × 14 and
-thresholded at half onto 196 input neurons, ten classes on 30 outputs read
-by count, and the class critic: the label's three outputs out-spike every
-other class's three, or nothing. `walnutbutter --problem mnist` builds a
-goo of 300 for it; `--goo N` sizes it.
+thresholded at half; the input zone is three clock neurons always driven,
+the 196 on-off pixels and their 196 complements; ten classes on 30 outputs
+read by count, and the class critic: the label's three outputs out-spike
+every other class's three, or nothing. `walnutbutter --problem mnist` builds
+a goo of 624 for it, an interior of 199 between the zones; `--goo N` sizes it.
 
 With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
 itself is the draw: a neuron that is not refractory fires at a wave with

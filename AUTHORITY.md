@@ -1604,9 +1604,11 @@ every epoch whatever the pattern: a tonic input the network can time by
 and weigh — Williams's bias input, whose value is 1 so that its weight is
 a threshold in disguise [1, §8.4]. Under escape noise (§5.2) they are the
 one steady source of drive in a network whose silence otherwise sits at
-the floor. *Not yet built:* a problem would say how many, they would join
-the input zone (goo, §3.4) or row and be left out of the read, and
-complement coding would leave them alone.
+the floor. *Built the same day, for mnist (§8):* a problem says how many
+(`clock`), they are the first that many neurons of the input zone, their
+coded bit is 1 every epoch so the drive of this section fires them as it
+fires any bit-1 input, they take no raw bits and the coding leaves them
+alone, and they are inputs and not outputs, so no read sees them.
 
 ### 4.4 Waves
 
@@ -3152,10 +3154,12 @@ the layout, the inputs, and whether anything outside the network trains it.
   choices offered:*
   1. **Input: binary bits, 14 × 14.** Each 28 × 28 image is averaged over
      2 × 2 blocks and each block is on iff its mean is at least half of
-     full; the 196 bits go to 196 input neurons as they are — coding raw,
-     no permutation — through the rate drive of §4.3 unchanged, so the
-     ink's weight is lost and nothing about the input path is new. (The
-     alternatives not taken: intensity as rate, at 14 × 14 or 28 × 28.)
+     full, through the rate drive of §4.3 unchanged, so the ink's weight is
+     lost. (The alternatives not taken: intensity as rate, at 14 × 14 or
+     28 × 28.) *The input zone, defined by Byron the same day:* **three
+     clock neurons** (§4.3, always driven), **the 196 on-off pixels, and
+     the 196 complement-coded pixels** — 395 input neurons, no permutation,
+     so exactly 199 of them are driven every epoch whatever the digit.
   2. **Output: population per class.** Ten classes on 30 output neurons,
      three a class in a row (POPULATION), read by count.
   3. **The critic: class.** The label's three must out-spike every other
@@ -3165,9 +3169,10 @@ the layout, the inputs, and whether anything outside the network trains it.
      itself.
   The target is `label`, the label's population code over the output zone,
   for any critic that wants a pattern. Posed on goo (§3.4) with zones of
-  two widths, 196 in and 30 out, **300 neurons unless `--goo` says
-  otherwise** (an interior of 74: a start, to be swept), by the reinforce
-  rule under escape noise; the train split in the seeded shuffle of §4.5,
+  two widths, 395 in and 30 out, and **an interior of 199 unless `--goo`
+  says otherwise** (Byron: "Goo that is not an input or output: please
+  default to 199 neurons"; 624 in all), by the reinforce rule under escape
+  noise; the train split in the seeded shuffle of §4.5,
   cycling, so 100,000 epochs is one and two thirds of a pass. **The test
   split is not fetched** (Byron, the same day: *"we do not dare touch the
   test split. please unfetch it."*): §7 says the network keeps living and
