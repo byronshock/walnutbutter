@@ -20,6 +20,79 @@ const SIGNAL: u8 = 2;
 /// clock.py: two moments closer than this are the same moment.
 const TOLERANCE: f64 = 1e-9;
 
+/// exploration.py: the Box-Muller transform's constant.
+const TWO_PI: f64 = std::f64::consts::TAU;
+
+// --- the exploration stream ---------------------------------------------------------
+// AUTHORITY.md §6.1 says both engines draw from the same Box-Muller stream, so a seed
+// gives the same noise whichever engine runs. That is only true if this engine draws the
+// same uniforms in the same order as Python's `random.Random`, which is MT19937. So it is
+// MT19937, seeded by handing over Python's own 625-word state and handed back at the end,
+// rather than a generator of our own: `fast.py` round-trips the state through
+// `getstate`/`setstate`, and Python's stream carries on exactly where Rust left it.
+
+const MT_N: usize = 624;
+const MT_M: usize = 397;
+const MATRIX_A: u32 = 0x9908_b0df;
+const UPPER_MASK: u32 = 0x8000_0000;
+const LOWER_MASK: u32 = 0x7fff_ffff;
+
+struct MersenneTwister {
+    mt: [u32; MT_N],
+    index: usize,
+}
+
+impl MersenneTwister {
+    /// From Python's `rng.getstate()[1]`: 624 state words followed by the index.
+    fn from_state(state: &[u32]) -> Result<Self, String> {
+        if state.len() != MT_N + 1 {
+            return Err(format!("the stream's state needs {} words, got {}", MT_N + 1, state.len()));
+        }
+        let index = state[MT_N] as usize;
+        if index > MT_N {
+            return Err(format!("the stream's index must be at most {MT_N}, got {index}"));
+        }
+        let mut mt = [0u32; MT_N];
+        mt.copy_from_slice(&state[..MT_N]);
+        Ok(Self { mt, index })
+    }
+
+    /// The state in Python's shape, so `setstate` can take it back.
+    fn state(&self) -> Vec<u32> {
+        let mut out = self.mt.to_vec();
+        out.push(self.index as u32);
+        out
+    }
+
+    fn genrand(&mut self) -> u32 {
+        if self.index >= MT_N {
+            for i in 0..MT_N {
+                let y = (self.mt[i] & UPPER_MASK) | (self.mt[(i + 1) % MT_N] & LOWER_MASK);
+                let mut next = self.mt[(i + MT_M) % MT_N] ^ (y >> 1);
+                if y & 1 != 0 {
+                    next ^= MATRIX_A;
+                }
+                self.mt[i] = next;
+            }
+            self.index = 0;
+        }
+        let mut y = self.mt[self.index];
+        self.index += 1;
+        y ^= y >> 11;
+        y ^= (y << 7) & 0x9d2c_5680;
+        y ^= (y << 15) & 0xefc6_0000;
+        y ^= y >> 18;
+        y
+    }
+
+    /// CPython's `random_random`: 53 bits of randomness from two 32-bit draws.
+    fn random(&mut self) -> f64 {
+        let a = (self.genrand() >> 5) as f64;
+        let b = (self.genrand() >> 6) as f64;
+        (a * 67_108_864.0 + b) * (1.0 / 9_007_199_254_740_992.0)
+    }
+}
+
 #[inline]
 fn slack(time: f64) -> f64 {
     TOLERANCE * f64::max(1.0, time.abs())
@@ -82,6 +155,7 @@ pub struct Engine {
 
     // --- neuron state ----------------------------------------------------------------
     potential: Vec<f64>,
+    noise: Vec<f64>, // the exploration draw each neuron decided under this epoch (§6.1)
     threshold: Vec<f64>,
     floor: Vec<f64>,
     fired_at: Vec<f64>, // NEG_INFINITY when never
@@ -107,6 +181,8 @@ pub struct Engine {
     weight_low: f64,
     weight_high: f64,
     earn: bool, // accumulate the eligibility a teacher pays at the read (§6.9)
+    sigma: f64, // exploration noise, 0 = off (§6.1)
+    explore: Option<MersenneTwister>, // Python's own stream, handed over for the run
 
     // --- the schedule -----------------------------------------------------------------
     heap: BinaryHeap<Event>,
@@ -161,6 +237,7 @@ impl Engine {
             last_signal: vec![f64::NEG_INFINITY; edges],
             eligibility: vec![0.0; edges],
             potential: vec![0.0; neurons],
+            noise: vec![0.0; neurons],
             threshold,
             floor,
             fired_at: vec![f64::NEG_INFINITY; neurons],
@@ -184,6 +261,8 @@ impl Engine {
             weight_low: -1.0,
             weight_high: 1.0,
             earn: false,
+            sigma: 0.0,
+            explore: None,
             heap: BinaryHeap::new(),
             seq: 0,
             stamp: vec![0; neurons],
@@ -204,12 +283,13 @@ impl Engine {
         earn: bool,
         sigma: f64,
     ) -> PyResult<()> {
-        if sigma > 0.0 {
+        if sigma > 0.0 && self.explore.is_none() {
             return Err(PyValueError::new_err(
-                "exploration noise is not implemented here: the draws must come from Python's \
-                 stream in the same order for the engines to agree (see rust/README.md)",
+                "exploration noise needs Python's stream: call set_explore_state(rng.getstate()[1]) \
+                 first, so the draws come in the same order as the other two engines (§6.1)",
             ));
         }
+        self.sigma = sigma;
         self.quash_rate = quash_rate;
         self.quash_k = quash_k;
         self.hebb_rate = hebb_rate;
@@ -218,6 +298,20 @@ impl Engine {
         self.weight_high = weight_high;
         self.earn = earn;
         Ok(())
+    }
+
+    /// Take over Python's exploration stream: `rng.getstate()[1]`, 624 words then the index.
+    ///
+    /// The engine draws from it for the life of the run and `explore_state()` hands it back,
+    /// so `rng.setstate` can carry Python's stream on from exactly where this left it (§6.1).
+    fn set_explore_state(&mut self, state: Vec<u32>) -> PyResult<()> {
+        self.explore = Some(MersenneTwister::from_state(&state).map_err(PyValueError::new_err)?);
+        Ok(())
+    }
+
+    /// The stream's state as Python's `setstate` wants it, or None if none was handed over.
+    fn explore_state(&self) -> Option<Vec<u32>> {
+        self.explore.as_ref().map(|rng| rng.state())
     }
 
     /// Start a new epoch: clear the fired-this-epoch state, exactly as `Network.reset` does.
@@ -229,6 +323,7 @@ impl Engine {
         self.fired_wave.iter_mut().for_each(|w| *w = -1);
         self.delivered_wave.iter_mut().for_each(|w| *w = -1);
         self.forced.iter_mut().for_each(|f| *f = false);
+        self.noise.iter_mut().for_each(|x| *x = 0.0); // Neuron.reset clears it too
         if clear_eligibility {
             self.eligibility.iter_mut().for_each(|e| *e = 0.0);
         }
@@ -273,6 +368,39 @@ impl Engine {
             changed += 1;
         }
         changed
+    }
+
+    /// §6.7 with the perturb eligibility: every connection that delivered into an unforced
+    /// neuron moves by `lr * advantage * (xi_j / sigma)`, the draw that neuron decided under.
+    /// Returns connections changed. The late-signal rule is "count", the default.
+    fn reinforce_perturb(&mut self, advantage: f64, lr: f64, sigma: f64) -> PyResult<usize> {
+        if sigma <= 0.0 {
+            return Err(PyValueError::new_err(
+                "the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)",
+            ));
+        }
+        if advantage == 0.0 {
+            return Ok(0);
+        }
+        let step = lr * advantage;
+        let mut changed = 0;
+        for edge in 0..self.weight.len() {
+            if self.delivered_wave[edge] < 0 {
+                continue;
+            }
+            let target = self.edge_target[edge] as usize;
+            if self.forced[target] {
+                continue; // a forced input: its firing was not the network's doing
+            }
+            let e = self.noise[target] / sigma;
+            if e == 0.0 {
+                continue;
+            }
+            let w = self.weight[edge] + step * e;
+            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     /// An external input of `amount` is not supported yet; stimuli and signals are.
@@ -347,6 +475,12 @@ impl Engine {
                 }
             }
 
+            // §6.1: the exploration draw comes before the decision it is meant to explain,
+            // in propagation.py's position exactly -- after settle(), before anything fires
+            if self.sigma > 0.0 {
+                self.explore_wave(time);
+            }
+
             let mut fired: Vec<u32> = Vec::new();
             // a stimulus listed twice fires once: the first spike makes it refractory
             for k in 0..forced.len() {
@@ -391,6 +525,9 @@ impl Engine {
     }
     fn eligibilities(&self) -> Vec<f64> {
         self.eligibility.clone()
+    }
+    fn noises(&self) -> Vec<f64> {
+        self.noise.clone()
     }
     fn potentials(&self) -> Vec<f64> {
         self.potential.clone()
@@ -465,6 +602,46 @@ impl Engine {
             return self.potential[i];
         }
         self.potential[i] * (-elapsed / self.tau).exp()
+    }
+
+    /// `Network.perturb(sigma, rng, time, hold_fired=True)`, operation for operation (§6.1).
+    ///
+    /// Every neuron leaks to `time`, then takes a draw on top of its potential, floored.
+    /// A neuron that has already fired this epoch **keeps** the draw it decided under as
+    /// its record -- §6.7 credits one e_j per epoch and it must refer to the perturbation
+    /// that produced the spike -- but its potential still takes the new one: the hold is on
+    /// the record, not on the dynamics.
+    ///
+    /// The uniforms are drawn in one block of `count + (count & 1)`, as `exploration.uniforms`
+    /// does, and paired by Box-Muller in the same order, so neuron `j` gets the cosine of pair
+    /// `j / 2` when `j` is even and the sine when it is odd.
+    fn explore_wave(&mut self, time: f64) {
+        let n = self.neurons;
+        if n == 0 {
+            return;
+        }
+        let count = n + (n & 1); // rounded up so the pairs are whole
+        let mut draws = Vec::with_capacity(count);
+        match self.explore.as_mut() {
+            Some(rng) => {
+                for _ in 0..count {
+                    draws.push(rng.random());
+                }
+            }
+            None => return, // set_rules refuses sigma > 0 without a stream, so this cannot happen
+        }
+        for i in 0..n {
+            let pair = i & !1;
+            let angle = TWO_PI * draws[pair];
+            let radius = self.sigma * (-2.0 * (1.0 - draws[pair + 1]).ln()).sqrt();
+            let draw = if i & 1 == 0 { angle.cos() * radius } else { angle.sin() * radius };
+            self.leak(i, time);
+            if self.fired_wave[i] < 0 {
+                self.noise[i] = draw;
+            }
+            let p = self.potential[i] + draw;
+            self.potential[i] = if p < self.floor[i] { self.floor[i] } else { p };
+        }
     }
 
     /// neuron.py: bring the potential up to `now`. Lazy, so call it on arrival.

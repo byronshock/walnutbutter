@@ -268,7 +268,14 @@ exploration noise from the same seed, and are run side by side by
 by wave and move the same weights. They can differ only in the order
 floating-point additions happen, so on the rare epoch where a potential sits
 within rounding of a threshold the two may decide differently and diverge
-from there, like two seeds. On this machine the array engine runs an 8x10
+from there, like two seeds. A third engine, the Rust wave loop in `rust/`
+(`fast.py`; AUTHORITY.md §6.15), owns the state for a whole run and is
+reached from Python -- `fast.train`, and `docs/rust-sweep.py` for a sweep --
+rather than from `--engine`. It runs the reinforce rule with either
+eligibility, drawing its exploration noise from Python's own stream so the
+draws are equal and not approximately equal, and `tests/test_fast.py` runs it
+against the object engine wave by wave; a rule it lacks it refuses rather
+than approximates. On this machine the array engine runs an 8x10
 mesh about twice as fast as the object engine, a 24x20 mesh five times as
 fast and a 48x40 mesh seven times as fast; the object engine has no
 dependencies and prints per neuron with `-v`, which the array engine does not.
@@ -632,6 +639,7 @@ src/walnutbutter/
   propagation.py Schedule: the time-ordered queue of signals in flight, run a wave at a time; propagate()
   dopamine.py  Dopamine: the global pool, its expectation, and the learning at a refire
   arrays.py    ArrayNetwork: the same network as numpy vectors and a scipy sparse matrix (--engine arrays)
+  fast.py      the Rust wave loop (rust/), built from a grid; train(), compare() against the object engine
   exploration.py the Box-Muller noise draws both engines share
   constants.py every global constant: the default network, the neuron's clock, the learning rule's knobs
   grid.py      GridOfNeurons: builds the rectangle of hexagons and wires up both rings of neighbours

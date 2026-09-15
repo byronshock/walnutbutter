@@ -9,8 +9,10 @@ command line would build, then runs `fast.train`, which keeps the input and the 
 in Python's seeded stream and does the epoch and the weight update in Rust. Writes
 runs/<name>/<arm>.csv (a downsampled trace) and docs/<name>.md.
 
-Only the configuration §6.15 supports: the reinforce rule with the hebb eligibility, so
-sigma is 0, and the row critic.
+The reinforce rule with the row critic and late = count. `--eligibility hebb` (the default,
+sigma 0) or `--eligibility perturb`, which draws its noise per wave (§6.1) from the arm's
+seed -- the same stream a Teacher with that seed would use -- and `--sigma` is then a knob
+like any other.
 
 Each arm's inputs are drawn up front from the input stream of §4.5, keyed to the arm's
 seed alone, so every arm at seed s sees the same epochs in the same order however the
@@ -39,6 +41,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "lr": "--lr",
     "quash": "--quash",
     "rate_tau": "--rate-tau",
+    "sigma": "--sigma",  # exploration noise, only felt under --eligibility perturb (§6.1)
     "seed": "--seed",
 }
 DERIVED = ("cv",)  # knobs that are a reparametrisation of another, handled by hand in grid_of
@@ -52,6 +55,8 @@ def parse() -> argparse.Namespace:
         if knob != "seed":
             parser.add_argument(f"--{knob.replace('_', '-')}", type=float, nargs="+", default=None, metavar="V")
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
+    parser.add_argument("--eligibility", choices=("hebb", "perturb"), default="hebb",
+                        help="what the reward acts on (§6.7): a Hebbian +-1, or the perturbation the neuron decided under")
     parser.add_argument("--epochs", type=int, default=1_000_000)
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
@@ -59,13 +64,13 @@ def parse() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def grid_of(problem: str, arm: dict):
+def grid_of(problem: str, arm: dict, eligibility: str = "hebb"):
     """The grid the command line would build for this problem, with the arm's knobs applied."""
     from walnutbutter.cli import apply_problem, build_parser
     from walnutbutter.grid import GridOfNeurons
     from walnutbutter.neuron import Neuron
 
-    argv = ["--problem", problem]
+    argv = ["--problem", problem, "--eligibility", eligibility]
     for knob, value in arm.items():
         if knob in ("seed", "rows") or knob in DERIVED:
             continue
@@ -96,7 +101,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name = job
+    arm, problem, epochs, trace_every, name, eligibility = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
 
@@ -104,11 +109,12 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
-    grid, args = grid_of(problem, arm)
+    grid, args = grid_of(problem, arm, eligibility)
     patterns = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"]))  # drawn up front, §4.5: every arm at this
     started = time.perf_counter()                                           # seed sees the same epochs in the same order
     mean, trace, _ = fast.train(grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every,
-                                patterns=patterns)
+                                patterns=patterns, eligibility=args.eligibility, sigma=args.sigma,
+                                seed=int(arm["seed"]))
     elapsed = time.perf_counter() - started
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
@@ -141,7 +147,8 @@ def summarise(args) -> None:
         print("nothing on disk yet")
         return
     axes = [k for k in swept if k != "seed"]
-    lines = [f"# {args.name}: {args.problem}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15)", ""]
+    lines = [f"# {args.name}: {args.problem}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
+             f"{args.eligibility} eligibility", ""]
     if len(axes) == 2:
         x, y = axes
         xs = sorted({r["arm"][x] for r in rows})
@@ -175,7 +182,7 @@ def main() -> int:
         workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 2) - 1))
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
-        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name) for arm in arms]
+        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)

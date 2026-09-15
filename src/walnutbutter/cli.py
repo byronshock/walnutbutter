@@ -1251,6 +1251,9 @@ def _run_seeds(args: argparse.Namespace) -> int:
     shape = f"{args.across}x{args.rows} {wiring}"
     if args.goo is not None:
         shape = f"{args.goo} neurons of fully connected goo, {args.across} in and {args.across} out"
+    # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
+    scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
+    shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
     print(
         f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,

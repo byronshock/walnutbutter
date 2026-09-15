@@ -4,6 +4,8 @@ The contract is the project's existing one: a third engine must land on the same
 the first two, or it is not a second opinion about the specification, only a faster guess.
 """
 
+import random
+
 import pytest
 
 from walnutbutter import fast
@@ -61,10 +63,57 @@ def test_it_agrees_on_the_shallow_grid_too():
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-def test_it_refuses_exploration_noise_rather_than_approximating_it():
-    grid = mesh()
-    with pytest.raises(ValueError, match="exploration noise"):
-        fast.build(grid, sigma=0.1)
+def test_it_draws_pythons_own_stream_bit_for_bit_and_hands_it_back():
+    """§6.1: every engine draws from the same Box-Muller stream. Rust runs Python's MT19937, from Python's state."""
+    import random
+    from walnutbutter.exploration import gaussians
+    grid = mesh(rows=2, seed=3)
+    rng, mirror = random.Random(99), random.Random(99)
+    engine, neurons, index = fast.build(grid, sigma=0.1, explore_rng=rng)
+    engine.reset(False, False)
+    engine.stimulus(0, 0.0)
+    engine.run(1.0)  # one wave, one draw per neuron
+    assert list(engine.noises()) == gaussians(mirror, len(neurons), 0.1)  # equal, not approximately
+    fast.sync_explore(engine, rng)
+    assert rng.getstate() == mirror.getstate()  # Python's stream carries on from where Rust left it
+    with pytest.raises(ValueError, match="needs a stream"):
+        fast.build(mesh(rows=2), sigma=0.1)
+
+
+@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
+@pytest.mark.parametrize("eligibility", ["perturb", "hebb"])
+def test_it_agrees_with_the_object_engine_under_the_reinforce_rule(eligibility):
+    """§7: a rule is implemented in every engine and passes the same tests. The perturb rule, per-wave draws and all."""
+    from walnutbutter.learning import Teacher
+    grid = mesh(rows=3, seed=11, rule="reinforce")
+    teacher = Teacher(grid, seed=7, rule="reinforce", eligibility=eligibility, sigma=0.1, homeostasis=0.0, unstick=0.0)
+    assert (teacher.sigma > 0) == (eligibility == "perturb")  # the Teacher zeroes sigma for hebb
+    parted = fast.compare(grid, epochs=60, teacher=teacher)
+    assert parted == [], parted
+    if eligibility == "perturb":
+        assert any(n.noise != 0.0 for n in grid.all_neurons())  # the draws really were taken
+        assert teacher.rng.getstate() != random.Random(7).getstate()  # and the stream really moved
+
+
+@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
+def test_compare_refuses_what_it_cannot_mirror():
+    from walnutbutter.learning import Teacher
+    grid = mesh(rows=2, seed=1)
+    with pytest.raises(ValueError, match="homeostasis"):
+        fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", homeostasis=0.01, unstick=0.0))
+    with pytest.raises(ValueError, match="row critic"):
+        fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", late="ignore", homeostasis=0.0, unstick=0.0))
+
+
+@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
+def test_train_runs_the_perturb_rule_from_a_seeded_stream():
+    a = fast.train(mesh(rows=2, seed=4), 30, eligibility="perturb", sigma=0.1, seed=5)
+    b = fast.train(mesh(rows=2, seed=4), 30, eligibility="perturb", sigma=0.1, seed=5)
+    c = fast.train(mesh(rows=2, seed=4), 30, eligibility="perturb", sigma=0.1, seed=6)
+    assert list(a[2].weights()) == list(b[2].weights())  # the same seed, the same run
+    assert list(a[2].weights()) != list(c[2].weights())  # a different stream, a different one
+    with pytest.raises(ValueError, match="positive sigma"):
+        fast.train(mesh(rows=2), 1, eligibility="perturb", sigma=0.0)
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")

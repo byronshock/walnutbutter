@@ -60,8 +60,14 @@ def flatten(grid):
 
 
 def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=SYNAPSE_TAU,
-          weight_range=WEIGHT_RANGE, earn=False, sigma=0.0):
-    """An Engine carrying this grid's topology and state, ready to run epochs."""
+          weight_range=WEIGHT_RANGE, earn=False, sigma=0.0, explore_rng=None):
+    """An Engine carrying this grid's topology and state, ready to run epochs.
+
+    With `sigma` > 0 the engine draws exploration noise per wave (§6.1), and
+    `explore_rng` -- a `random.Random` -- is the stream it draws from: its
+    state is handed over here and `sync_explore` hands it back, so the other
+    two engines given the same stream take the same draws in the same order.
+    """
     rust = _require()
     neurons, index, source, target, weight, active = flatten(grid)
     engine = rust.Engine(
@@ -69,39 +75,92 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
         [n.threshold for n in neurons], [n.minimum_potential for n in neurons],
         Neuron.tau, Neuron.refractory, Neuron.hop(), Neuron.bored_after, Neuron.rate_tau,
     )
+    if sigma > 0.0:
+        if explore_rng is None:
+            raise ValueError("exploration noise needs a stream: pass explore_rng, the random.Random the other engines use")
+        engine.set_explore_state(list(explore_rng.getstate()[1]))
     low, high = weight_range
     engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
     return engine, neurons, index
 
 
-def compare(grid, epochs=20, bits=None):
+def sync_explore(engine, explore_rng) -> None:
+    """Carry Python's stream on from where the engine left it: the draws it took are now taken in Python too."""
+    state = engine.explore_state()
+    if state is not None:
+        explore_rng.setstate((3, tuple(state), None))
+
+
+def compare(grid, epochs=20, bits=None, *, teacher=None):
     """Run `epochs` on the object engine and on the Rust one, and report where they part.
 
     Returns a list of (epoch, what) for every disagreement, empty when the two agree. The
     grid is left as the object engine ran it; the Rust engine is built from its starting
     state and stepped alongside.
+
+    With a `teacher` (a Teacher on this grid, RULE = reinforce, the row critic, late =
+    count, no trace, homeostasis and un-sticking off) each epoch is `teacher.epoch()` on
+    the object side and the same reward, advantage and §6.7 update mirrored on the Rust
+    side, so the perturb eligibility and its per-wave draws (§6.1) are checked as well as
+    the dynamics. The Rust engine is handed the teacher's own stream at the start and the
+    two then draw independently; that they land on the same bits, and on the same stream
+    state at the end, is the test.
     """
+    from .learning import TARGETS
     from .monitor import run_epoch
 
+    sigma = teacher.sigma if teacher is not None else 0.0
+    if teacher is not None:
+        if teacher.rule != "reinforce" or teacher.critic != "row" or teacher.late != "count" or teacher.leaky:
+            raise ValueError("compare mirrors the reinforce rule with the row critic, late = count and no trace only")
+        if teacher.homeostasis or teacher.unstick:
+            raise ValueError("compare cannot mirror homeostasis or un-sticking: switch them off on the teacher")
+        if teacher.grid is not grid:
+            raise ValueError("the teacher must be teaching this grid")
     engine, neurons, index = build(
         grid,
         quash_rate=grid.quash_rate, quash_k=grid.quash_k,
         hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau,
         weight_range=grid.weight_range, earn=grid.rule in ("teacher", "adaline"),
+        sigma=sigma, explore_rng=teacher.rng if teacher is not None else None,
     )
     edges = [c for neuron in neurons for c in neuron.outgoing]
+    out = [index[neuron] for neuron in grid.output_row()]
+    baseline = None
     parted = []
     for epoch in range(epochs):
-        run_epoch(grid, bits, verbose=False)
+        if teacher is None:
+            run_epoch(grid, bits, verbose=False)
+        else:
+            reward = teacher.epoch(bits, verbose=False)
         engine.reset(False, grid.rule in ("teacher", "adaline"))
         for place, when in (grid.input_events or []):
             engine.stimulus(index[grid.input_row()[place]], when)
         engine.run(grid.horizon)
 
+        if teacher is not None:
+            fired = engine.fired_this_epoch()
+            want = TARGETS[teacher.target](grid.target_pattern)
+            mine = sum(1 for i, w in zip(out, want) if fired[i] == w) / len(want)
+            if mine != reward:
+                parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
+            if baseline is None:
+                baseline = reward
+            if teacher.eligibility == "perturb":
+                engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
+            else:
+                engine.reinforce_hebb(reward - baseline, teacher.lr)
+            baseline += teacher.baseline_rate * (reward - baseline)
+
         mine = [n.spikes for n in neurons]
         theirs = list(engine.spike_counts())
         if mine != theirs:
             parted.append((epoch, f"spikes differ: {sum(abs(a - b) for a, b in zip(mine, theirs))} in total"))
+        if sigma > 0.0:
+            mine = [n.noise for n in neurons]
+            theirs = list(engine.noises())
+            if mine != theirs:
+                parted.append((epoch, f"noise differs on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
         mine = [c.weight for c in edges]
         theirs = list(engine.weights())
         worst = max((abs(a - b) for a, b in zip(mine, theirs)), default=0.0)
@@ -109,6 +168,9 @@ def compare(grid, epochs=20, bits=None):
             parted.append((epoch, f"weights differ by up to {worst:g}"))
         if parted:
             break
+    if not parted and teacher is not None and sigma > 0.0:
+        if list(engine.explore_state()) != list(teacher.rng.getstate()[1]):
+            parted.append((epochs, "the two streams ended in different states: a different number of draws was taken"))
     return parted
 
 
@@ -141,8 +203,9 @@ def benchmark(grid, epochs=200, bits=None):
     return timings
 
 
-def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None):
-    """Run `epochs` of the §6.7 rule with the hebb eligibility, the whole wave loop in Rust.
+def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
+          eligibility="hebb", sigma=0.0, seed=None):
+    """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
     from the grid's own seeded stream, in the same order the other engines draw them — and
@@ -154,10 +217,21 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     order. Without it the bits come from the grid's own stream, which a differently built
     network consumes differently.
 
-    The row critic and sigma 0 only: this is the configuration every recent result was
-    measured on, and the one the engine supports (see rust/README.md).
+    `eligibility` is hebb (sigma is then 0, as the Teacher sets it) or perturb, which
+    needs a positive `sigma` and draws its noise per wave (§6.1) from `random.Random(seed)`,
+    the stream a Teacher with that seed would use, so a Rust run and a Python run of the
+    same seed take the same draws. The row critic and late = count only.
     """
+    import random
+
     from .learning import TARGETS
+
+    if eligibility not in ("hebb", "perturb"):
+        raise ValueError(f"eligibility must be hebb or perturb, got {eligibility!r}")
+    if eligibility == "perturb" and sigma <= 0.0:
+        raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
+    sigma = sigma if eligibility == "perturb" else 0.0
+    explore_rng = random.Random(seed) if sigma > 0.0 else None
 
     if patterns is not None:
         if len(patterns) < epochs:
@@ -167,6 +241,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     engine, neurons, index = build(
         grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
         hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau, weight_range=grid.weight_range,
+        sigma=sigma, explore_rng=explore_rng,
     )
     row = grid.output_row()
     out = [index[neuron] for neuron in row]
@@ -194,7 +269,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         reward = sum(1 for i, w in zip(out, want) if fired[i] == w) / len(want)
         if baseline is None:
             baseline = reward
-        engine.reinforce_hebb(reward - baseline, lr)
+        if sigma > 0.0:
+            engine.reinforce_perturb(reward - baseline, lr, sigma)
+        else:
+            engine.reinforce_hebb(reward - baseline, lr)
         baseline += baseline_rate * (reward - baseline)
         total += reward
         if trace_every and (epoch + 1) % trace_every == 0:

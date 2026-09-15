@@ -1653,7 +1653,7 @@ pauses the free run at the end of an epoch to show its trace, a raster of
 every spike. The network runs forever: these are read as health, not
 convergence, and drift is normal.
 
-### 6.15 A third engine — written, not yet built
+### 6.15 A third engine — built, and every rule in it
 
 *Byron, September 14, 2026, asking whether another language would make the
 scheduling significantly faster, and then: "please build and test the rust
@@ -1672,18 +1672,37 @@ the expected order.
 `rust/` holds that loop: the wave batching of §4.4, the neuron dynamics of §5,
 the quash of §6.11 and leaky Hebb of §6.12, behind PyO3, with `fast.py` to
 build it from a grid and `compare()` to check it lands on the same bits as the
-object engine. It refuses exploration noise rather than approximating it,
-because the draws would have to come from Python's stream in the same order
-for the engines to agree.
+object engine.
 
-**It has not been compiled or run.** This machine has no Rust toolchain, and
-installing one needs a password. Everything in `rust/` is therefore unverified
-code, and `tests/test_fast.py` skips every test that needs the extension. The
-two that do not — that the module refuses clearly when absent, and that the
-edge order matches the object engine's push order — pass. That second one is
-not cosmetic: signals due at one moment are summed in push order, so an engine
-that flattens the topology differently sums a wave differently and lands on
-different bits.
+*As first written it refused exploration noise rather than approximating it,
+because the draws would have to come from Python's stream in the same order
+for the engines to agree — and the perturb eligibility of §6.7 with it. Byron,
+September 14, 2026: "rules in authority.md must be implemented
+cross-platform."* So it takes the stream rather than refusing it: the engine
+runs Python's own MT19937, seeded by handing over `rng.getstate()`, draws the
+same uniforms in the same order as the other two engines, pairs them by the
+same Box-Muller (§6.1), and hands the state back so Python's stream carries on
+from where Rust left it. The draws are equal, not approximately equal;
+`tests/test_fast.py` compares them with `==`, and compares the three engines
+wave by wave and weight by weight under both eligibilities of §6.7. The
+per-wave draw lands in propagation.py's position exactly: after the floor,
+before anything fires, and a neuron that has already fired keeps the draw it
+decided under.
+
+**It is built and run.** The toolchain arrived after this section was first
+written; `fast.available()` is true, `compare()` returns nothing on every
+configuration it is asked about, and the engine ran the CV sweep of §4.3.
+Two tests need no extension — that the module refuses clearly when absent,
+and that the edge order matches the object engine's push order — and that
+second one is not cosmetic: signals due at one moment are summed in push
+order, so an engine that flattens the topology differently sums a wave
+differently and lands on different bits.
+
+*What it still lacks:* the dopamine rule's in-loop weight updates
+(§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
+as the eligibility they earn, LATE other than count, and the leaky trace on
+the reinforce rule. Those pay at the read, in Python, and a run that needs
+them takes the array engine.
 
 The profile also named an algorithmic win that needs no new language: **the hop
 delay is constant**, so every signal from a wave arrives at exactly
@@ -1694,11 +1713,15 @@ worth more than the rewrite.
 
 ## 7. Invariants the scaffolding guarantees — kept
 
-- **Two engines, one network.** The object engine (neurons and a queue of
-  waves) and the array engine (numpy vectors, a scipy sparse matrix) run the
-  same network: same ids, same firing wave by wave, same weights to
-  $10^{-12}$, and `tests/test_arrays.py` runs them side by side. A new rule
-  is implemented in both and must pass the same tests.
+- **Three engines, one network.** The object engine (neurons and a queue of
+  waves), the array engine (numpy vectors, a scipy sparse matrix) and the
+  Rust wave loop (§6.15) run the same network: same ids, same firing wave by
+  wave, same exploration draws, same weights to $10^{-12}$, and
+  `tests/test_arrays.py` and `tests/test_fast.py` run them side by side. A
+  rule is implemented in every engine that runs it and must pass the same
+  tests; an engine that lacks a rule says so and refuses, never
+  approximates (Byron, September 14, 2026: "rules in authority.md must be
+  implemented cross-platform").
 - **A seed is the whole run.** Shortcuts, weights, permutation, inputs and
   exploration noise all come from the seed's stream, in both engines.
 - **Checkpoints round-trip.** A checkpoint rebuilds the network from its

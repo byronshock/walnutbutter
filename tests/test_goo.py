@@ -283,3 +283,13 @@ def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
 def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):
     assert cli_main(["--scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     assert "every threshold and floor rescaled by in-degree / 18" in capsys.readouterr().err
+
+
+def test_a_seed_batchs_header_says_which_axis_the_arm_ran_on(capsys):
+    """A sweep's own log should identify its arm without cross-referencing the command that made it."""
+    assert cli_main(["--goo", "20", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
+    assert "fully connected goo, 8 in and 8 out, fan-in scaled" in capsys.readouterr().err
+    assert cli_main(["--goo", "20", "--no-scale-with-fan-in", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
+    assert "flat threshold and floor" in capsys.readouterr().err
+    assert cli_main(["--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
+    assert "hex grid, omega 0.2, flat threshold and floor" in capsys.readouterr().err

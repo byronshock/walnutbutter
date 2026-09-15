@@ -30,13 +30,15 @@ its silence (§5.4). Plus the two local rules that must run inside the loop beca
 change weights the rest of the epoch sees: the quash (§6.11) and leaky Hebb (§6.12), and
 the eligibility a teacher pays at the read (§6.9).
 
+Exploration noise (§6.1) and the perturb eligibility of §6.7 as well, since September
+14, 2026: the engine runs Python's own MT19937, seeded by handing over `rng.getstate()`,
+so it draws the same uniforms in the same order as the other two engines and pairs them
+by the same Box-Muller, and `fast.sync_explore` hands the state back so Python's stream
+carries on from where Rust left it. No per-wave round trip, and the draws are equal, not
+approximately equal: `tests/test_fast.py` checks them with `==`.
+
 ## What it does not
 
-- **Exploration noise.** `sigma > 0` is rejected rather than approximated: the draws
-  would have to come from Python's Mersenne stream in the same order for the engines to
-  agree, and that is a per-wave round trip. The configuration every recent result was
-  measured on runs at sigma 0 (the hebb eligibility zeroes it), so this is not yet a gap
-  that bites.
 - **The dopamine rule's in-loop weight updates** (§6.2–6.6, mode "apply"). The teacher,
   adaline, reinforce and local rules all pay at the read, in Python, which is once an
   epoch rather than once a wave.
