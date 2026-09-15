@@ -557,6 +557,13 @@ THRESHOLD = 0.25 and every result measured with it; this is the third of the
 three readings §3.4 opened with — that THRESHOLD was a constant of the grid
 and belongs to the container — taken for goo and not for the substance.
 
+*Held, not announced (Byron, September 14, 2026, on seeing the trace of
+the best seed): "Before announcing this as a result, there's a bug in the
+task. We are going to quash that bug and possibly any 'learning'." The
+figures from here to the end of this section, and the TEACHER_THRESHOLD
+sweep of §4.3, stand as what was measured on the task as it was, not as
+findings, until the bug is found and the runs redone.*
+
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
 eligibility").** The working network as it now stands — goo 60 at $\theta$
@@ -748,7 +755,9 @@ the substance working and the teacher not. 40 Hz reads one stray spike as
 off; where the line should sit was a sweep, below.
 
 *Swept (Byron, September 14, 2026: "sweep TEACHER_THRESHOLD in {25, 30, 35,
-40, 45, 50, 60, 80, 100} on 10 seeds with eligibility=hebb").* The working
+40, 45, 50, 60, 80, 100} on 10 seeds with eligibility=hebb") — and held, not
+announced: a bug in the task was identified the same day (§3.4), and these
+figures are what was measured on the task as it was.* The working
 network — goo 60 at $\theta$ 3.28, copy — 100,000 epochs, the Rust loop,
 ninety arms in eighty seconds; `docs/goo60-teacher-threshold.md`,
 `goo60-teacher-threshold-score.png`. At a 35 ms epoch the count is an
