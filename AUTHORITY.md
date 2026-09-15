@@ -562,7 +562,9 @@ the best seed): "Before announcing this as a result, there's a bug in the
 task. We are going to quash that bug and possibly any 'learning'." The
 figures from here to the end of this section, and the TEACHER_THRESHOLD
 sweep of §4.3, stand as what was measured on the task as it was, not as
-findings, until the bug is found and the runs redone.*
+findings, until the bug is found and the runs redone. Found and tested the
+same day, below: the bug was the direct projection, and those figures
+measured one synapse.*
 
 **The bug, and the test of it (Byron, September 14, 2026).** *"The
 count-read figures are not incorrect, but the task specifies a fully
@@ -587,6 +589,39 @@ Copy (§8) asks for it; `--direct-projection` puts the synapses back for the
 comparison; a container that cannot be built so refuses. If the score falls
 to chance without the direct projection, the reading above was right and
 what the rule had learned was one synapse.
+
+**Tested the same day: the reading was right.** The working network — goo
+60, copy, hebb, the count read at 40 Hz — ten seeds, 100,000 epochs, on
+the Rust loop corrected as §6.15 records, with the direct projection and
+without it. `docs/goo60-direct.md`, `docs/goo60-nodirect.md`, and the
+traces `goo60-direct-goo60-trace.png` and `goo60-nodirect-goo60-trace.png`.
+
+| arm | last 10,000 epochs | over seeds | seeds above 0.55 | stuck on / off, of 60 | epochs a second |
+|---|---|---|---|---|---|
+| direct projection (the control) | 0.569 | 0.521–0.651 | 6 | 0.0 / 20.9 | 7,378 |
+| no direct projection (the task) | **0.500** | 0.500–0.501 | 0 | 0.8 / 46.8 | 10,064 |
+
+Paired on the seed the direct projection is worth +0.069, $t = 4.7$,
+better on ten seeds of ten; without it every seed sits at 0.500 to three
+places and the trace is a flat line. **What the rule had learned was one
+synapse**: leave out the ACROSS² connections from the input zone to the
+output zone and the score is chance, exactly. (The control also
+re-measured the earlier run on the corrected loop — 0.569 against 0.556
+before the stamp fix, the same seeds no longer identical — so the missed
+firings had been worth about 0.013 even with the projection in place.)
+
+*What the null arm is, and is not.* It is not a network that tried to
+learn a two-hop copy and could not. With 47 of 60 neurons stuck off, the
+interior at $\theta$ 3.28 is silent — four driven inputs at weights in
+[−1, 1] rarely sum to 3.28 within TAU — so nothing reaches the outputs at
+all, the outputs never fire, and all-off scores 0.500 by arithmetic; the
+un-sticking nudged the outputs' thresholds 110,000 times toward a rate
+nothing could deliver. So this arm decides what the earlier figures were
+made of, and it does. It does not yet say whether the reinforce rule with
+the hebb eligibility can learn a copy that has to cross the interior; that
+needs an interior that fires — THRESHOLD on the no-direct goo, from where
+the count × threshold sweep found small goos alive (0.15–0.3), ten seeds,
+a minute on the loop — and it is Byron's to call.
 
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
@@ -781,7 +816,9 @@ off; where the line should sit was a sweep, below.
 *Swept (Byron, September 14, 2026: "sweep TEACHER_THRESHOLD in {25, 30, 35,
 40, 45, 50, 60, 80, 100} on 10 seeds with eligibility=hebb") — and held, not
 announced: a bug in the task was identified the same day (§3.4), and these
-figures are what was measured on the task as it was.* The working
+figures are what was measured on the task as it was — with the input zone
+wired straight onto the output zone, which was what the rule had learned.
+They measure one synapse against the read's count, not a copy.* The working
 network — goo 60 at $\theta$ 3.28, copy — 100,000 epochs, the Rust loop,
 ninety arms in eighty seconds; `docs/goo60-teacher-threshold.md`,
 `goo60-teacher-threshold-score.png`. At a 35 ms epoch the count is an
