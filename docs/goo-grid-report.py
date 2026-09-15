@@ -127,12 +127,16 @@ def plot(args, cells, ys, xs, seeds, label) -> None:
     ax.tick_params(colors=INK2, labelsize=8, length=0)
     ax.set_xlabel(label.get(args.x, args.x), color=INK2, fontsize=9)
     ax.set_ylabel(label.get(args.y, args.y), color=INK2, fontsize=9)
-    for i in range(len(ys)):
-        for j in range(len(xs)):
-            v = grid[i, j]
-            if not np.isnan(v):
-                ax.text(j, i, f"{v:.3f}", ha="center", va="center", fontsize=7.5,
-                        color=INK if v < lo + 0.6 * (np.nanmax(grid) - lo) else SURFACE)
+    if len(ys) * len(xs) <= 64:  # past that the labels overlap and say nothing
+        for i in range(len(ys)):
+            for j in range(len(xs)):
+                v = grid[i, j]
+                if not np.isnan(v):
+                    ax.text(j, i, f"{v:.3f}", ha="center", va="center", fontsize=7.5,
+                            color=INK if v < lo + 0.6 * (np.nanmax(grid) - lo) else SURFACE)
+    if len(xs) > 12:  # thin the x ticks so they read
+        keep = list(range(0, len(xs), max(1, len(xs) // 10)))
+        ax.set_xticks(keep, [f"{xs[k]:g}" for k in keep])
     for spine in ax.spines.values():
         spine.set_visible(False)
     cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
@@ -143,6 +147,28 @@ def plot(args, cells, ys, xs, seeds, label) -> None:
                  x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(ROOT / "docs" / f"{args.name}-score.png", facecolor=SURFACE)
+    plt.close(fig)
+    # one line per row over the x knob: the shape a heatmap hides when the rows are ordered
+    fig, ax = plt.subplots(figsize=(7.6, 4.2), dpi=150)
+    fig.patch.set_facecolor(SURFACE)
+    ax.set_facecolor(SURFACE)
+    from matplotlib import cm
+    for i, y in enumerate(ys):
+        ax.plot(xs, grid[i], color=cm.Blues(0.35 + 0.6 * i / max(1, len(ys) - 1)), linewidth=1.4, marker="o",
+                markersize=2.5, label=f"{label.get(args.y, args.y)} {y:g}")
+    ax.axhline(0.5, color=INK2, linewidth=0.9, linestyle=(0, (4, 3)))
+    ax.annotate("chance", (0.995, 0.5), xycoords=("axes fraction", "data"), ha="right", va="bottom", color=INK2, fontsize=7)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.grid(axis="y", color="#e6e5df", linewidth=0.8)
+    ax.set_axisbelow(True)
+    ax.tick_params(colors=INK2, labelsize=8, length=0)
+    ax.set_xlabel(label.get(args.x, args.x), color=INK2, fontsize=9)
+    ax.set_ylabel(f"accuracy, last tenth, mean of {len(seeds)} seeds", color=INK2, fontsize=9)
+    ax.legend(loc="lower right", frameon=False, fontsize=7, ncol=2, labelcolor=INK2)
+    fig.suptitle(f"{label.get(args.y, args.y)} by {label.get(args.x, args.x)}, one line a row", x=0.01, ha="left", color=INK, fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(ROOT / "docs" / f"{args.name}-rows.png", facecolor=SURFACE)
     plt.close(fig)
 
 
