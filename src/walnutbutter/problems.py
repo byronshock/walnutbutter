@@ -45,6 +45,16 @@ PROBLEMS: dict[str, Problem] = {
         "the top row learns to show the bottom row reversed, taught by a Teacher with a target and a critic",
         ACROSS, ROWS, trained=True, rule="reinforce", quash=False,
     ),
+    "copy": Problem(
+        "copy",
+        "an input is complement-coded and presented on the input neurons, and the desired output is exactly the "
+        "input expressed across the output neurons (Byron, September 14, 2026): eight in, eight out, output place i "
+        "taught to show coded bit i. Unpermuted: 'permuting patterns should no longer matter, all neurons are "
+        "first-class citizens of the population' (Byron, same day), and on goo a permutation of the input zone is only "
+        "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
+        "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
+        ACROSS, ROWS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
+    ),
     "sustain_inputs": Problem(
         "sustain_inputs",
         "the 16 four-bit inputs laid down as they are on 4 neurons (no complement coding, so 0000 forces nothing and "

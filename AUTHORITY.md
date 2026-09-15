@@ -341,12 +341,23 @@ a problem the grid cannot do.
 
 That points the comparison somewhere more useful than a working baseline.
 reaching_copy is the grid with its **depth** taken away and its locality
-kept; goo is the grid with both taken away. So goo on reaching_copy's task
-against reaching_copy itself is a comparison at equal depth — one hop each —
-and whatever separates them is **locality alone**, which is the cleaner half
-of the question this container was built to ask. Not run: it is Byron's to
-call, and the drivers can run it as they stand (`docs/rust-sweep.py --goo
---problem reaching_copy`).
+kept; goo is the grid with both taken away, so a comparison at equal depth
+would leave **locality alone** as what separates them — the cleaner half of
+the question this container was built to ask.
+
+**The task, defined (Byron, September 14, 2026).** Neither reversal nor
+reaching_copy is the task Byron then set out, and §8 records it in his words
+as **copy**: an input complement-coded onto eight input neurons, and the
+desired output exactly that input across eight output neurons, place for
+place, unpermuted. Every sweep of this section so far ran on reversal, the
+input *reversed* on the outputs, with the input permuted. **For goo that
+makes no difference** (§4.3): its zones are interchangeable neurons, so
+reversed, permuted and copy are one task by relabelling, and the goo arms
+of both sweeps stand as measurements of copy — at chance, 250,000 epochs,
+under either eligibility. For the grid it does make a difference, so the
+grid arms do not transfer and the baseline on copy is unmeasured. From here
+the comparisons, and the count sweep below, are posed on copy
+(`docs/rust-sweep.py --problem copy [--goo N]`, the Rust loop). Not run.
 
 *Byron's reading, after the two sweeps (September 14, 2026): "I think we may
 actually have too many neurons. FOR NOW."* Counted as synapses per raw bit of
@@ -364,7 +375,7 @@ one network that learns outright is the one with an order of magnitude fewer
 to move; reaching_copy, one hop but 780 a bit, gets partway. That is a
 "too many" story, and a depth story only secondarily. Recorded as a
 hypothesis and not as a change to §1.1: the default network stays at eighty
-neurons until this is measured. The test is a count sweep on hebbian goo —
+neurons until this is measured. The test is a count sweep on hebbian goo on copy (§8) —
 `--goo N` for $N$ in {8, 12, 16, 24, 32, 48, 64, 80}, ten seeds — because
 $N$ is goo's only knob, so nothing has to be re-tiled to vary it, and goo 16
 at 240 connections is shallow_copy's regime with no geometry at all. Not run.
@@ -474,6 +485,20 @@ drawn once per network and fixed for its life: place $i$ along the row
 shows coded bit $\pi(i)$. With an error-correcting code (`--ecc`), 4 data
 bits are first encoded to 7 (Hamming) or 6 (parity) before complement
 coding.
+
+*Byron, September 14, 2026: "Permuting patterns should no longer matter.
+All neurons are first-class citizens of the population." And: "I don't
+think asking for the target reversed should matter either."* Both are
+statements about geometry, and both are exactly right where there is none.
+The permutation was there for the grid, where a place is a position and a
+bit's neighbours are the bits beside it; a reversed target puts output
+place $7 - i$ half a row away from input place $i$. On goo (§3.4) every
+neuron of a zone is wired identically to every other, so a permutation of
+the input zone and a reversal of the output zone are each a relabelling of
+interchangeable neurons: they change which weight draw sits where and
+nothing else, and copy, reversal and any permutation of either are one task.
+The copy problem (§8) runs unpermuted. The permutation rule above stays as
+written for the problems measured with it, and on the grid both still bite.
 
 (A problem may instead lay the raw bits down as they are, `coding = raw`,
 which sustain_inputs does, or repeat each bit over POPULATION neurons,
@@ -1843,6 +1868,24 @@ the layout, the inputs, and whether anything outside the network trains it.
   complement-coded and permuted onto the bottom row; the top row is taught
   to show the bottom row reversed by a Teacher with a target and a critic
   (§6.2). The task of the pre-alpha, kept as the baseline.
+- **copy** *(Byron, September 14, 2026: "Let's define this task very
+  clearly: An input is complement-coded and presented on the list of input
+  neurons. The desired output is exactly the input expressed across the list
+  of output neurons. As things are currently set up, there should be eight
+  input neurons and eight output neurons.")* Four raw bits, complement-coded
+  to eight onto the input neurons, **unpermuted**; output place $i$ is
+  taught to show coded bit $i$ — exactly the input, place for place — by the
+  reinforce rule with the row critic. *Byron, the same day, on why there is
+  no permutation: "Permuting patterns should no longer matter. All neurons
+  are first-class citizens of the population." And on the target: "I don't
+  think asking for the target reversed should matter either, frankly."* On
+  goo neither does, by symmetry (§4.3); on the grid both do. On the
+  8 × 10 grid the inputs are the bottom row and the outputs the top; on goo
+  (§3.4) the first eight neurons and the last eight. It is reversal with the
+  target set to copy and the permutation off, and it is the task the goo
+  comparisons of §3.4 are posed on from here. Every sweep of that section
+  before this definition ran on reversal, whose target is the input
+  reversed; none of them measured this task.
 - **sustain_inputs** (Byron, September 12, 2026). The same 16 inputs will
   be used across 8 neurons. However, this network is not trained
   externally: the neurons will utilize the new eligibility rule (§6).
