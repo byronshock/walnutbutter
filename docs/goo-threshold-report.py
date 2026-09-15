@@ -43,9 +43,10 @@ def main() -> None:
     parser.add_argument("--default", type=float, default=None, help="the level to pair every other level against")
     args = parser.parse_args()
     runs = ROOT / "runs" / args.name
-    pattern = re.compile(rf"^{args.knob}(?P<value>[-0-9.e+]+)-seed(?P<seed>\d+)\.json$")
+    # the knob's value, then any knobs the sweep held fixed (goo60, say), then the seed
+    pattern = re.compile(rf"^{args.knob}(?P<value>[-0-9.e+]+)(?:-[a-z_]+[-0-9.e+]+)*-seed(?P<seed>\d+)\.json$")
     levels: dict[float, dict[int, dict]] = {}
-    for path in sorted(runs.glob(f"{args.knob}*-seed*.json")):
+    for path in sorted(runs.glob(f"{args.knob}*seed*.json")):
         m = pattern.match(path.name)
         if not m:
             continue
@@ -66,7 +67,7 @@ def main() -> None:
     lines = [
         f"# Sweep {args.name} (September 14, 2026)",
         "",
-        f"{args.knob.upper()} against {len(seeds)} seeds of goo (AUTHORITY.md §3.4), the reversal problem, the reinforce "
+        f"{args.knob.upper()} against {len(seeds)} seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce "
         f"rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's "
         f"constants, everything else at the defaults in `constants.py`. {one['container']}. Every level at seed *s* "
         f"is given the same input stream (§4.5), so levels pair epoch by epoch. About {epochs_per_second:,.0f} epochs "

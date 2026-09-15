@@ -51,6 +51,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "sigma": "--sigma",  # exploration noise, only felt under --eligibility perturb (§6.1)
     "threshold": "--threshold",  # THRESHOLD, quoted per THRESHOLD_FAN_IN incoming synapses; goo scales it (§5.2)
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
+    "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
     "seed": "--seed",
 }
@@ -124,6 +125,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
                              threshold=args.threshold, minimum_potential=args.minimum_potential)
     grid.coding, grid.population = args.coding, args.population
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
+    grid.teacher_threshold = args.teacher_threshold  # the count read's line (§4.3)
     grid.interval, grid.drive = args.interval, args.drive
     grid.input_rate, grid.input_rate_off = args.input_rate, args.input_rate_off
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
