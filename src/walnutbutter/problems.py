@@ -48,6 +48,7 @@ class Problem:
     drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
     flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
     outputs: int | None = None  # the width of the output zone when it differs from the input's (goo, §3.4); None: across
+    clock: int = 0  # clock neurons (§4.3): input neurons at the front of the input zone whose bit is always 1
     goo: int | None = None  # the goo this problem is posed on: --goo defaults to this many neurons (None: the grid unless --goo)
     data: str | None = None  # a dataset the inputs come from, with their labels, in place of random bits (§4.5): "mnist"
 
@@ -143,12 +144,13 @@ PROBLEMS: dict[str, Problem] = {
     "mnist": Problem(
         "mnist",
         "the MNIST digits (Byron, September 15, 2026: 'a new task, with its own data folder: mnist'): each 28 x 28 image "
-        "averaged over 2 x 2 blocks to 14 x 14 and each block on iff its mean is at least half, 196 raw bits on 196 input "
-        "neurons, no permutation; ten classes on 30 output neurons, three a class, read by count, and the class critic: "
-        "reward 1 when the label's three out-spike every other class's three, else 0. Posed on goo, 300 neurons unless "
-        "--goo says otherwise, by the reinforce rule; the train split in a seeded shuffle, cycling (mnist.stream)",
-        196, ROWS, trained=True, target="label", critic="class", rule="reinforce", quash=False, permute=False,
-        read="count", coding="raw", population=3, outputs=30, goo=300, data="mnist",
+        "averaged over 2 x 2 blocks to 14 x 14 and each block on iff its mean is at least half; the input zone is three "
+        "clock neurons always driven, the 196 on-off pixels and their 196 complements (395 in all), no permutation; ten "
+        "classes on 30 output neurons, three a class, read by count, and the class critic: reward 1 when the label's three "
+        "out-spike every other class's three, else 0. Posed on goo with an interior of 199 unless --goo says otherwise "
+        "(624 neurons), by the reinforce rule; the train split in a seeded shuffle, cycling (mnist.stream)",
+        3 + 2 * 196, ROWS, trained=True, target="label", critic="class", rule="reinforce", quash=False, permute=False,
+        read="count", coding="complement", population=3, outputs=30, clock=3, goo=3 + 2 * 196 + 199 + 30, data="mnist",
     ),
     "population_denoise": Problem(
         "population_denoise",

@@ -86,6 +86,8 @@ class Network:
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
+        self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
+        # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
         self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
         self.input_rate = INPUT_RATE  # per ms: what a bit-1 neuron fires at under rate drive
@@ -264,8 +266,12 @@ class Network:
         return CODES[self.ecc] if self.ecc else None
 
     def raw_bit_count(self) -> int:
-        """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits."""
-        width = self.input_width()
+        """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits.
+
+        Clock neurons (§4.3) are input neurons too, but their bit is always 1
+        and no raw bit reaches them: they come off the width first.
+        """
+        width = self.input_width() - self.clock
         if self.coding in ("raw", "population", "population-complement"):
             if self.code:
                 raise ValueError(f"an error-correcting code needs complement coding, not {self.coding}")
@@ -323,6 +329,7 @@ class Network:
             coded = complement_code([bit for bit in word for _ in range(self.population)])
         else:
             coded = complement_code(word)
+        coded = [True] * self.clock + coded  # the clock neurons lead the input zone, always on (§4.3)
         self.set_input([coded[i] for i in self.permutation], time)
         self.input_data = bits if self.code else None
         self.input_bits = word  # the bits that were complement-coded: the codeword with ecc, the raw bits without

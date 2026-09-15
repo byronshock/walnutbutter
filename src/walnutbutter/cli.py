@@ -756,6 +756,7 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
     args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8)
+    args.clock = problem.clock  # clock neurons at the front of the input zone, always driven (§4.3)
     args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
     if args.goo is None and problem.goo is not None and args.nodes is None and not args.layers:
         args.goo = problem.goo  # the problem is posed on goo of this many neurons unless a grid was asked for
@@ -925,6 +926,10 @@ def _run(args: argparse.Namespace) -> int:
                 args.eligibility = "hazard" if grid.hazard else ELIGIBILITY
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
+            grid.clock = args.clock
+            if args.clock:
+                print(f"clock neurons: the first {args.clock} input neurons are driven every epoch whatever the pattern "
+                      f"(§4.3), and take no raw bits", file=sys.stderr)
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
@@ -1200,6 +1205,7 @@ def _seed_worker(job: dict) -> dict:
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
     grid.coding = job.get("coding", "complement")
+    grid.clock = job.get("clock", 0)
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
     grid.flip = job.get("flip", 0.0)
     grid.hebb_rate = job.get("hebb", 0.0)
@@ -1304,7 +1310,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "teacher_threshold": args.teacher_threshold, "delta": args.delta,
-                     "outputs": args.outputs, "data": args.data,
+                     "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:

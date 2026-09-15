@@ -145,8 +145,8 @@ def test_the_three_engines_agree_under_the_class_critic():
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
-    assert (problem.across, problem.outputs, problem.goo, problem.population) == (196, 30, 300, 3)
-    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "class", "raw", "count", "mnist")
+    assert (problem.across, problem.outputs, problem.goo, problem.population, problem.clock) == (395, 30, 624, 3, 3)
+    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "class", "complement", "count", "mnist")
     assert not problem.permute and problem.trained and problem.rule == "reinforce"
     assert dataset_stream(None, 1) is None
     with pytest.raises(ValueError, match="no dataset"):
@@ -162,7 +162,41 @@ def test_the_real_data_streams_and_a_short_run_scores(capsys):
     from walnutbutter.cli import cli_main
     assert cli_main(["--headless", "--problem", "mnist", "--seed", "1", "--epochs", "5", "--no-save", "-q"]) == 0
     err = capsys.readouterr().err
-    assert "Goo(300 neurons" in err and "196 in, 30 out" in err and "images of mnist" in err and "learning label (hazard" in err
+    assert "Goo(624 neurons" in err and "395 in, 30 out" in err and "images of mnist" in err and "learning label (hazard" in err
+    assert "clock neurons: the first 3" in err
+
+
+def test_clock_neurons_lead_the_input_zone_and_fire_every_epoch():
+    """§4.3, Byron: 'Clock neurons can be created for a task as input neurons always driven by 1.'"""
+    pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+
+    def make():
+        g = Goo(count=30, across=8, outputs=4, seed=3, weight=None, permute=False)
+        g.coding, g.clock, g.drive, g.read = "complement", 2, "rate", "count"
+        return g
+
+    goo = make()
+    assert goo.raw_bit_count() == 3  # eight places: two clocks, then three bits and their complements
+    goo.set_input_bits([True, False, True])
+    assert goo.input_coded == [True, True, True, False, True, False, True, False]
+    assert [n.should_fire for n in goo.input_row()][:2] == [True, True]
+    twin = make()
+    net = ArrayNetwork(twin)
+    rng_a, rng_b = random.Random(1), random.Random(1)
+    for _ in range(6):
+        run_epoch(goo, verbose=False, rng=rng_a)
+        run_epoch(net, verbose=False, rng=rng_b)
+        clocks = goo.input_row()[:2]
+        assert all(n.epoch_spikes >= 1 for n in clocks)  # driven every epoch (a clock the mesh fired first still fired)
+        assert [n.spikes for n in goo.all_neurons()] == net.spikes.tolist()
+    from walnutbutter.persistence import checkpoint, restore
+    import tempfile, pathlib
+    with tempfile.TemporaryDirectory() as folder:
+        data = checkpoint(goo, pathlib.Path(folder) / "clock.json")
+        assert data["clock"] == 2
+        back, _ = restore(pathlib.Path(folder) / "clock.json")
+        assert back.clock == 2 and back.raw_bit_count() == 3
 
 
 def test_a_checkpoint_keeps_the_output_zone(tmp_path):
