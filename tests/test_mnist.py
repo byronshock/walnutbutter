@@ -30,10 +30,9 @@ def tiny(tmp_path):
     images[2, 0:2, 0:2] = 255   # full: on
     images[2, 26:28, 26:28] = 200  # and the bottom-right block on too
     labels = np.array([7, 0, 7], dtype=np.uint8)
-    for split, (img, lab) in {"train": (images, labels), "test": (images[:1], labels[:1])}.items():
-        (names_i, _, _), (names_l, _, _) = mnist.FILES[split]
-        idx(tmp_path / names_i, img)
-        idx(tmp_path / names_l, lab)
+    (names_i, _, _), (names_l, _, _) = mnist.FILES["train"]
+    idx(tmp_path / names_i, images)
+    idx(tmp_path / names_l, labels)
     return images, labels
 
 
@@ -50,6 +49,9 @@ def test_the_idx_files_are_read_and_the_bits_are_the_blocks_at_half(tmp_path):
         mnist.load("train", tmp_path / "nowhere")
     with pytest.raises(ValueError, match="split"):
         mnist.load("validation", tmp_path)
+    with pytest.raises(ValueError, match="split"):
+        mnist.load("test", tmp_path)  # not a split this module knows: "we do not dare touch the test split"
+    assert set(mnist.FILES) == {"train"}
 
 
 def test_downsample_and_binarize_average_each_block():
