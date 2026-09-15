@@ -46,6 +46,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "quash": "--quash",
     "rate_tau": "--rate-tau",
     "sigma": "--sigma",  # exploration noise, only felt under --eligibility perturb (§6.1)
+    "threshold": "--threshold",  # THRESHOLD, quoted per THRESHOLD_FAN_IN incoming synapses; goo scales it (§5.2)
     "seed": "--seed",
 }
 DERIVED = ("cv",)  # knobs that are a reparametrisation of another, handled by hand in grid_of
