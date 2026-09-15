@@ -101,7 +101,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
         data["projection"] = grid.projection  # the zone rule's probability (§3.4); below 1 the seed decided the wiring
         data["outputs"] = grid.outputs  # the output zone's width, when it differs from the input's (§8, mnist)
-        data["equal_fan_in"] = grid.equal_fan_in  # the fan-in rule of September 15, 2026 (§3.4); absent: the rule before it
+        data["wiring"] = grid.wiring  # the rule (§3.4), or one of the two before it; a checkpoint restores under its own
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -210,7 +210,9 @@ def _restore_goo(data: dict) -> Goo:
         scale_with_fan_in=data.get("scale_with_fan_in", True),
         projection=data.get("projection", 1.0),
         outputs=data.get("outputs"),
-        equal_fan_in=data.get("equal_fan_in", False),  # a checkpoint from before the rule was wired without it
+        # the wiring it was built under: recorded since the uniform rule; before that, the zone rule, with or without
+        # the afternoon's equal fan-in (§3.4)
+        wiring=data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones"),
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)

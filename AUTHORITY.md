@@ -76,7 +76,7 @@ at all.
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
 | GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
-| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and since September 15, 2026 a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (equal fan-in, §3.4). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
+| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability any ordered pair of distinct neurons projects, one way, each direction its own draw, since Byron eliminated the zone rule on the evening of September 15, 2026; every neuron hears $P(N-1)$ synapses in expectation. *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -157,10 +157,10 @@ connections, signalling and learning:
   unit distances: a hexagonal lattice, a random scatter, or the positions a
   butter recipe describes.
 - **Goo** (`--goo N`). The plane taken away: $N$ neurons with no positions
-  at all, no neighbourhood and no shortcuts, wired by a rule about zones
-  (§3.4): the input and output zones, picked by index because there are no
-  places to pick them by, never project onto each other, and every other
-  ordered pair projects with probability GOO_PROJECTION. It began as the
+  at all, no neighbourhood and no shortcuts, wired by one probability
+  (§3.4): every ordered pair of distinct neurons projects with probability
+  GOO_PROJECTION; the input and output zones are picked by index because
+  there are no places to pick them by. It began as the
   control the other three are measured against and is the working network.
 
 A neuron may sit in several input and output zones at once; structures are
@@ -751,7 +751,26 @@ rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
 
-**Equal fan-in — decided (Byron, September 15, 2026, on seeing an output of
+**One probability — decided (Byron, September 15, 2026, evening: "Please
+eliminate the zone rule: P(i projects onto j) = 0 if i == j, P otherwise").**
+That is the whole of goo's wiring now:
+
+$$P(i \to j) = \begin{cases} 0 & i = j \\ P & \text{otherwise} \end{cases}$$
+
+every ordered pair of distinct neurons, one way, each direction its own
+draw, pair by pair on the seed's stream, $P$ = GOO_PROJECTION. Every neuron
+hears $P(N-1)$ synapses in expectation, so the equal fan-in below comes for
+free and needs no second probability; the zones are still where the inputs
+are driven and the outputs read, but they may now project onto each other
+and onto themselves — an input straight onto an output, as before September
+14 — and there need not be an interior between them at all, only no overlap.
+This supersedes the zone rule and the equal fan-in of the two paragraphs
+below, both of a day's standing; the results of this section up to the
+mnist runs of §8 were measured under them and stand as recorded, and a
+checkpoint restores under the wiring it was built with (`wiring`: uniform,
+zones, zones-equal).
+
+**Equal fan-in — decided, then superseded the same evening (Byron, September 15, 2026, on seeing an output of
 the mnist goo hear 9 synapses where an interior neuron heard 31: "I want all
 neurons to statistically have the same number of connections BUT follow the
 connection rules").** Under the rule below one probability serves every
@@ -791,7 +810,7 @@ is `across` unless a task says otherwise: 196 in and 30 out for the digits.
 The rule below is unchanged — a pair with both ends in either zone never
 projects — and `count` must exceed the two widths together.
 
-**The wiring is a rule (Byron, September 14, 2026).** *"I want goo to be
+**The wiring is a rule — decided, then superseded on September 15 (Byron, September 14, 2026).** *"I want goo to be
 constructed according to a probabilistic rule: P(Neuron i connects to
 Neuron j) = 0 if i == j; 0 if i in inputs or outputs AND j in inputs or
 outputs; P_connection otherwise."* And, correcting the verb: *"Instead of
@@ -2882,8 +2901,9 @@ the layout, the inputs, and whether anything outside the network trains it.
   taught to show coded bit $i$ — exactly the input, place for place — by the
   reinforce rule with the row critic, **read by count** (§4.3, the same day:
   spikes counted over the epoch, a rate estimated, on above
-  TEACHER_THRESHOLD). On goo the zones never project onto each other
-  (§3.4's rule, the same day again), so the copy must cross the interior —
+  TEACHER_THRESHOLD). On goo the zones never projected onto each other
+  under the rule of that day (§3.4; one probability since the 15th), so the
+  copy had to cross the interior —
   or the one synapse from input $i$ to output $i$ is the whole task, which
   is what it had been. *Byron, the same day, on why there is
   no permutation: "Permuting patterns should no longer matter. All neurons

@@ -416,9 +416,9 @@ wiring (`connect_by_distance`) remains in the library for reference.
 The plane taken away (AUTHORITY.md §3.4). Every container above has to say
 what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
-a rule about zones (AUTHORITY.md §3.4): the input zone and the output zone
-never project onto each other -- not in, not out, not within -- and every
-other ordered pair projects, one way, with probability `--projection`
+one probability (AUTHORITY.md §3.4; Byron, September 15, 2026, eliminating
+the zone rule that held for a day): every ordered pair of distinct neurons
+projects, one way, with probability `--projection`
 (GOO_PROJECTION, 0.2 since September 15, 2026, from two sweeps: the plateau
 in P runs 0.15 to 0.5 and 0.2 has the highest floor and the fastest goo
 that learns). `--goo` makes 60 neurons (GOO_COUNT; it was the grid's 80

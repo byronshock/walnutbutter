@@ -81,7 +81,7 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
     goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
     goo.coding, goo.population, goo.read, goo.rule = "raw", 3, "count", "reinforce"
     assert goo.output_width() == 6 and len(goo.output_row()) == 6 and len(goo.input_row()) == 4
-    assert len(goo.interior()) == 10 and goo.zones_are_apart() and repr(goo).endswith("4 in, 6 out, zones apart)")
+    assert len(goo.interior()) == 10 and repr(goo).endswith("4 in, 6 out)")
     patterns = [[True, False, True, False], [False, True, False, True]]
     goo.use_input_stream(patterns, [1, 0])
     run_epoch(goo, verbose=False, rng=random.Random(1))
@@ -102,8 +102,8 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
     goo.input_label = None
     with pytest.raises(ValueError, match="labels"):
         class_accuracy(goo)
-    with pytest.raises(ValueError, match="interior"):
-        Goo(count=10, across=4, outputs=6)
+    with pytest.raises(ValueError, match="overlap"):
+        Goo(count=9, across=4, outputs=6)  # ten would abut the zones; nine overlaps them
     with pytest.raises(ValueError, match="labels for"):
         goo.use_input_stream(patterns, [1])
 
@@ -206,5 +206,5 @@ def test_a_checkpoint_keeps_the_output_zone(tmp_path):
     data = checkpoint(goo, tmp_path / "zones.json")
     assert data["outputs"] == 6
     back, _ = restore(tmp_path / "zones.json")
-    assert back.outputs == 6 and len(back.output_row()) == 6 and back.zones_are_apart()
+    assert back.outputs == 6 and len(back.output_row()) == 6
     assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]

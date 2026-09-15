@@ -6,47 +6,36 @@ into R3, the lattice measures unit distances -- and all three then have to
 say what "near" means before they can say what connects. Goo has no
 positions at all, so there is no distance to measure and nothing to be near.
 
-Its wiring is a rule about zones, and it is probabilistic (Byron, September
-14, 2026):
+Its wiring is one probability (Byron, September 15, 2026: "Please eliminate
+the zone rule"):
 
-    P(neuron i projects onto neuron j) = 0             if i == j
-                                       = 0             if i and j are both in a zone
-                                       = GOO_PROJECTION otherwise
+    P(neuron i projects onto neuron j) = 0                if i == j
+                                       = GOO_PROJECTION   otherwise
 
-where the zones are the input zone, the first `across` neurons, and the
-output zone, the last `outputs`. Every projection is one-way and each
-direction is its own draw, as every connection in this system is (§3). So
-the zones never talk to each other directly -- not input to output, not
-output to input, not within a zone -- and everything else, every ordered
-pair with an interior end, projects with probability GOO_PROJECTION. A copy
-has to go through the interior. At GOO_PROJECTION = 1 nothing is drawn to
-decide the topology and `count` fixes it; below 1 the seed's stream decides,
-pair by pair in (i, j) order, the projection draw and then the weight.
+Every projection is one-way and each direction is its own draw, as every
+connection in this system is (§3), so every neuron hears GOO_PROJECTION
+times the others in expectation, and an input may project straight onto an
+output. At GOO_PROJECTION = 1 nothing is drawn to decide the topology and
+`count` fixes it; below 1 the seed's stream decides, pair by pair in (i, j)
+order, the projection draw and then the weight.
 
-Equal fan-in (Byron, September 15, 2026: "I want all neurons to
-statistically have the same number of connections BUT follow the connection
-rules"): an interior neuron hears P from everyone, P (N - 1) synapses in
-expectation, and a zone neuron hears only the interior, so a projection
-from the interior onto a zone neuron takes the probability min(1, P (N - 1)
-/ H), H the interior's size, that gives a zone neuron the same expectation.
-What a neuron sends cannot be equalised too -- the zones outnumber the
-interior, which must send them everything they hear -- so it is what a
-neuron hears, the fan-in that sets its threshold (§5.2), that is equal.
-Above P = H / (N - 1) every interior neuron already projects onto every zone
-neuron and the zone side stops short. `equal_fan_in=False` is the rule as
-it stood before that day, kept so its checkpoints restore.
-
-With no rows there is no bottom row to be the input, so the zones go by
-index and are addressed the way every other container's rows are --
+The zones are still where the inputs are driven and the outputs read: the
+input zone is the first `across` neurons and the output zone the last
+`outputs`, addressed the way every other container's rows are --
 `get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out -- so `rows` is
-2 because it is counting those two zones, not any depth. A goo needs an
-interior for its zones to talk through, so `count` must exceed the two zones
-together; the output zone is `across` wide unless `outputs` says otherwise
-(196 in and 30 out for the digits of §8).
+2 because it is counting those two zones, not any depth. The neurons in
+neither zone are the interior; there need not be any, but the zones may not
+overlap.
 
-Goo rescales its potential axis by each neuron's own fan-in (§5.2): an
-interior neuron hears every other neuron, a zone neuron only the interior,
-so the two start at different thresholds and the same threshold per synapse.
+Two earlier wirings are kept, so that their checkpoints restore: "zones",
+the rule of September 14, 2026, under which the zones never projected onto
+each other and every pair with an interior end projected at GOO_PROJECTION;
+and "zones-equal", the same with an interior-to-zone projection scaled to
+min(1, P (N - 1) / H) so that a zone neuron heard what an interior one did
+(the afternoon of September 15). The uniform rule gives that equal hearing
+for free.
+
+Goo rescales its potential axis by each neuron's own fan-in (§5.2).
 """
 
 from __future__ import annotations
@@ -63,6 +52,7 @@ from .neuron import Neuron
 
 DEFAULT_COUNT = GOO_COUNT  # sixty since September 14, 2026 (§1.2); it was the grid's eighty while the two were compared
 ZONES = 2  # what `rows` counts in goo: the input zone and the output zone, and no depth between them
+WIRINGS = ("uniform", "zones", "zones-equal")  # the rule (§3.4), and the two it superseded, kept so their checkpoints restore
 
 
 class Goo(Network):
@@ -81,7 +71,7 @@ class Goo(Network):
         scale_with_fan_in: bool = True,
         projection: float = GOO_PROJECTION,
         outputs: int | None = None,
-        equal_fan_in: bool = True,
+        wiring: str = "uniform",
     ):
         """Make the goo and wire it by the zone rule.
 
@@ -91,12 +81,10 @@ class Goo(Network):
         given: a task with more inputs than classes, §8's mnist, asks for
         different widths). `count` must exceed the two together so there is
         an interior for the zones to talk through. `projection` is the
-        probability an ordered pair with an interior end projects; pairs with
-        both ends in a zone never do. At 1 the topology is fixed by `count`;
-        below 1 the seed decides it. With `equal_fan_in` (the rule since
-        September 15, 2026) a projection from the interior onto a zone neuron
-        takes `zone_projection()` instead, so every neuron hears the same
-        number of synapses in expectation.
+        probability an ordered pair projects. At 1 the topology is fixed by
+        `count`; below 1 the seed decides it. `wiring` is "uniform", the
+        rule; "zones" and "zones-equal" are the two rules before it (see the
+        module docstring), kept so their checkpoints restore.
 
         `threshold` and `minimum_potential` default to goo's own constants
         (§1.2), and `scale_with_fan_in` rescales each neuron's potential axis
@@ -109,19 +97,24 @@ class Goo(Network):
         outputs = across if outputs is None else outputs
         if across < 1 or outputs < 1:
             raise ValueError(f"goo needs zones at least one neuron wide, got {across} in and {outputs} out")
-        if count <= across + outputs:
+        if wiring not in WIRINGS:
+            raise ValueError(f"unknown wiring {wiring!r}; choose from {', '.join(WIRINGS)}")
+        if wiring != "uniform" and count <= across + outputs:
             raise ValueError(
-                f"goo needs an interior for its zones to talk through: count must exceed the zones together, "
-                f"got {count} for {across} in and {outputs} out"
+                f"the {wiring} wiring needs an interior for its zones to talk through: count must exceed the zones "
+                f"together, got {count} for {across} in and {outputs} out"
             )
+        if count < across + outputs:
+            raise ValueError(f"the zones would overlap: count must be at least the zones together, got {count} for "
+                             f"{across} in and {outputs} out")
         if not 0.0 < projection <= 1.0:
             raise ValueError(f"the projection probability must be in (0, 1], got {projection}")
         self.across = across  # the width of the input zone, not a count of cells: goo has no cells
         self.outputs = outputs  # the width of the output zone
         self.rows = ZONES  # row 1 is the input zone and row 0 the output zone; there is nothing in between
         self.count = count
-        self.projection = projection  # P(i projects onto j) for a pair with an interior end
-        self.equal_fan_in = equal_fan_in  # interior -> zone at zone_projection(), so a zone neuron hears what an interior one does
+        self.projection = projection  # P(i projects onto j), every ordered pair
+        self.wiring = wiring  # the rule, or one of the two before it
         self.weight = weight  # fixed weight for every projection, or None for random
         self.threshold = threshold
         self.minimum_potential = minimum_potential
@@ -155,30 +148,31 @@ class Goo(Network):
         return self.count - self.across - self.outputs
 
     def zone_projection(self) -> float:
-        """P(an interior neuron projects onto a zone neuron): what gives a zone neuron an interior neuron's expected fan-in.
+        """P(an interior neuron projects onto a zone neuron), under each wiring.
 
-        An interior neuron hears `projection` from the other count - 1; a zone
-        neuron hears only the interior, so the probability is scaled up by
-        (count - 1) / interior, and stops at 1 (AUTHORITY.md §3.4). Under the
-        rule as it stood before September 15, 2026 it is `projection` itself.
+        Uniform: `projection`, like every pair. "zones": `projection` too.
+        "zones-equal": scaled up by (count - 1) / interior and stopped at 1,
+        so that a zone neuron, hearing only the interior, heard what an
+        interior neuron did (the afternoon of September 15, 2026, §3.4).
         """
-        if not self.equal_fan_in:
+        if self.wiring != "zones-equal":
             return self.projection
         return min(1.0, self.projection * (self.count - 1) / self.interior_count())
 
     def _wire(self) -> None:
-        """The zone rule, pair by pair in (i, j) order: a draw where one is needed, then the weight."""
+        """The rule, pair by pair in (i, j) order: a draw where one is needed, then the weight."""
         low, high = self.weight_range
         zone = self.zone_indices()
-        onto_zone = self.zone_projection()  # interior -> zone: the fan-in rule's probability (§3.4)
+        apart = self.wiring != "uniform"  # the two earlier wirings: the zones never project onto each other
+        onto_zone = self.zone_projection()
         for i, source in enumerate(self.neurons):
             in_zone = i in zone
             for j, target in enumerate(self.neurons):
                 if i == j:
                     continue  # no neuron projects onto itself (§3)
-                if in_zone and j in zone:
-                    continue  # the zones never project onto each other
-                p = onto_zone if (not in_zone and j in zone) else self.projection
+                if apart and in_zone and j in zone:
+                    continue
+                p = onto_zone if (apart and not in_zone and j in zone) else self.projection
                 if p < 1.0 and self._rng.random() >= p:
                     continue
                 weight = self._rng.uniform(low, high) if self.weight is None else self.weight
@@ -203,12 +197,12 @@ class Goo(Network):
         return self.outputs
 
     def interior(self) -> list[Neuron]:
-        """Every neuron in neither zone: the only route from the input zone to the output zone."""
+        """Every neuron in neither zone."""
         zone = self.zone_indices()
         return [n for i, n in enumerate(self.neurons) if i not in zone]
 
     def zones_are_apart(self) -> bool:
-        """True when no projection has both ends in a zone, as the rule requires."""
+        """True when no projection has both ends in a zone: what the two earlier wirings required, and the uniform rule does not."""
         zone = {self.neurons[i] for i in self.zone_indices()}
         return not any(c.source in zone and c.target in zone for c in self.connections.values())
 
@@ -249,5 +243,6 @@ class Goo(Network):
         return self.neurons[index]
 
     def __repr__(self) -> str:
+        apart = ", zones apart" if self.wiring != "uniform" else ""
         return (f"Goo({self.count} neurons, {len(self.connections)} projections at P {self.projection:g}; "
-                f"{self.across} in, {self.outputs} out, zones apart)")
+                f"{self.across} in, {self.outputs} out{apart})")
