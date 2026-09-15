@@ -306,16 +306,22 @@ def test_the_count_read_counts_the_epochs_spikes_and_thresholds_the_rate():
     from walnutbutter.constants import TEACHER_THRESHOLD
     goo = Goo(count=20, across=4, seed=1, permute=False)
     goo.read = "count"
-    assert goo.teacher_threshold == TEACHER_THRESHOLD == 40.0
+    assert goo.teacher_threshold == TEACHER_THRESHOLD == 14.3  # the middle of the one-spike band at 35 ms
     run_epoch(goo, bits=[True, False], verbose=False)
     per_ms = 1000.0 / goo.interval
     for neuron, hz, on in zip(goo.output_row(), goo.output_counts_hz(), goo.output_fired()):
-        assert hz == neuron.epoch_spikes * per_ms and on == (hz >= 40.0)
-    # at 35 ms one spike is 28.6 Hz and reads off; two are 57 and read on: a stray background spike is not a one
+        assert hz == neuron.epoch_spikes * per_ms and on == (hz >= 14.3)
+    # at 35 ms one spike is 28.6 Hz and reads on; none reads off: the line sits halfway between them
     a, b = goo.output_row()[0], goo.output_row()[1]
-    a.spikes_at_reset, a.spikes = 10, 11
-    b.spikes_at_reset, b.spikes = 10, 12
+    a.spikes_at_reset, a.spikes = 10, 10
+    b.spikes_at_reset, b.spikes = 10, 11
     assert goo.output_fired()[:2] == [False, True]
+    goo.teacher_threshold = 42.9  # the middle of the two-spike band: one spike now reads off, two on
+    b.spikes = 12
+    assert goo.output_fired()[:2] == [False, True]
+    a.spikes = 11
+    assert goo.output_fired()[0] is False
+    goo.teacher_threshold = TEACHER_THRESHOLD
     assert goo.output_levels()[:2] == [0.0, 1.0]  # a bit, as the row critic wants it
     goo.reset()
     assert a.epoch_spikes == b.epoch_spikes == 0  # the next epoch starts its count afresh

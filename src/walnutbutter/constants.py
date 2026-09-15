@@ -91,11 +91,13 @@ RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate ov
 RATE_ON = 200.0  # Hz: the rate an output the target says should be on is driven to. 200 Hz is 1/REFRACTORY, the fastest
 # the absolute refractory period allows: FOR NOW the teacher aims at saturation, not at a middling set point (§6.9).
 RATE_OFF = 0.0  # Hz: and one that should be off is driven to silence.
-TEACHER_THRESHOLD = 40.0  # Hz: the "count" read (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
+TEACHER_THRESHOLD = 14.3  # Hz: the "count" read (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
 # times each neuron fired in the epoch. ESTIMATE the firing rate based on the count. If the firing rate estimate exceeds
 # TEACHER_THRESHOLD, the output neuron is 1. Otherwise it is zero"). The rate is the epoch's count over its length, so
-# at 35 ms one spike is 28.6 Hz and two are 57: 40 Hz reads a single background spike as off and two as on. A working
-# network makes background, and a read that counted any spike as "on" was scoring that background as error.
+# at 35 ms one spike is 28.6 Hz: 14.3 is the middle of the one-spike band, halfway between no spike and one, so an
+# output is on if it fired at all this epoch and the line sits as far from both edges as it can (Byron, the same day,
+# setting it to mean one spike -- not for the score it yields; the sweep of §4.3 is a measurement of one synapse). It
+# was 40, two spikes, from the read's first hour.
 READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only counting spikes this recently before the
 # epoch's end (Byron, September 14, 2026, going forward with bit reading and a five-millisecond window)
 

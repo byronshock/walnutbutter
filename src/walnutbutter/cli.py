@@ -357,8 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=TEACHER_THRESHOLD,
         metavar="HZ",
-        help=f"the count read's line between off and on, in Hz (default: {TEACHER_THRESHOLD:g}: at a 35 ms epoch one spike "
-        f"is 28.6 Hz and reads off, two are 57 and read on)",
+        help=f"the count read's line between off and on, in Hz (default: {TEACHER_THRESHOLD:g}, the middle of the "
+        f"one-spike band: at a 35 ms epoch one spike is 28.6 Hz and reads on, none reads off; 42.9 would mean two)",
     )
     parser.add_argument(
         "--read-window",
