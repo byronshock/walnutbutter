@@ -432,7 +432,8 @@ def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
 def test_a_seed_batch_runs_goo_and_its_header_says_what_ran(capsys):
     assert cli_main(["--goo", "20", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     err = capsys.readouterr().err
-    assert "20 neurons of goo at projection 0.2, 8 in and 8 out, fan-in scaled, reinforce rule with the perturb eligibility" in err
+    assert ("20 neurons of goo at projection 0.2, 8 in and 8 out, fan-in scaled, reinforce rule with the hazard eligibility, "
+            "escape delta 0.455") in err  # the default eligibility follows the neuron (§1.3)
     assert cli_main(["--goo", "20", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb", "--seeds", "2",
                      "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     assert "goo at projection 0.5, 8 in and 8 out, flat threshold and floor, reinforce rule with the hebb eligibility" in capsys.readouterr().err

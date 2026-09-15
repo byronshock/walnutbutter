@@ -144,7 +144,8 @@ def test_cli_rejects_unknown_arguments():
 
 
 def test_cli_weight_and_threshold_options(capsys):
-    args = ["--headless", "-v", "--across", "6", "--rows", "5", "--weight", "0.2", "--threshold", "1", "--input", "101"]
+    args = ["--headless", "-v", "--across", "6", "--rows", "5", "--weight", "0.2", "--threshold", "1", "--input", "101",
+            "--delta", "0"]  # the deterministic neuron: the count below is the threshold's doing
     assert cli_main(args) == 0
     assert capsys.readouterr().out.count("fired") == 3  # only the input neurons: 0.4 max input < 1
 
@@ -195,7 +196,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
             "--lr", "0.1", "--epochs", "200", "--rule", "reinforce"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "learning all-off (perturb, lr 0.1, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err
+    assert "learning all-off (hazard, lr 0.1, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err  # the default follows the neuron
     assert "after 200 epochs:" in err and "to date over 200 epochs" in err
     final = float(err.rsplit("% recent", 1)[0].rsplit(" ", 1)[1])
     assert 0 <= final <= 100  # the factored-out rule runs and reports; no performance claim under the schedule

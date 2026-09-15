@@ -502,7 +502,8 @@ def test_command_line_reproduces_the_sweep_sequence_exactly(tmp_path, capsys):
     teacher = Teacher(nodes, seed=3, rule="reinforce")  # the reversal problem's rule, which the command line uses
     for _ in range(epochs):
         teacher.epoch(verbose=False)
-    assert cli_main(["--headless", "--nodes", "--seed", "3", "--reach", "2", "-q", "--epochs", str(epochs)]) == 0
+    # --delta 0: the sequence being reproduced is the deterministic neuron's (§5.2), as the Teacher above ran it
+    assert cli_main(["--headless", "--nodes", "--seed", "3", "--reach", "2", "-q", "--epochs", str(epochs), "--delta", "0"]) == 0
     saved = read_checkpoint(next(Path("runs").glob("*-seed3.json")))
     assert saved["weights"] == [c.weight for c in nodes.connections.values()]
     assert saved["thresholds"] == [n.threshold for n in nodes]

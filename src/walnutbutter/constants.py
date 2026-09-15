@@ -58,12 +58,14 @@ BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms
 # floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
 # Superseded by ESCAPE_DELTA (Byron, September 15, 2026: "The hazard is buying us what the bored clock was supposed to
 # buy us, and much much more cleanly"): not run on top of the hazard; the mechanism stays, the configuration does not.
-ESCAPE_DELTA = 0.0  # off. Positive, the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15,
-# 2026: "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a
-# wave with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this
-# constant times its starting threshold -- one expected spike per hop at threshold, e times more per delta_j above it.
-# 0 is the deterministic threshold. Swept {0.7, 1.05, 1.4} on copy, September 15, 2026; the hazard eligibility (§6.7)
-# needs it.
+ESCAPE_DELTA = 0.455  # the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15, 2026:
+# "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a wave
+# with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this constant
+# times its starting threshold -- one expected spike per hop at threshold, e times more per delta_j above it. 0 is the
+# deterministic threshold. The value is Byron's word (September 15, 2026, after the Delta x LR grid of §3.4): inside the
+# plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up. Applied by the command line and the sweep
+# driver (--delta); a network built in the library is deterministic until Network.set_delta, as it has no noise until a
+# Teacher gives it sigma. The hazard eligibility (§6.7) needs it.
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own
@@ -163,7 +165,10 @@ WEIGHT_DECAY = 1e-4  # every weight moves toward 0 by this fraction each epoch: 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the top row should show, derived from the input row (learning.TARGETS)
 CRITIC = "row"  # how the reward is judged (learning.CRITICS)
-ELIGIBILITY = "perturb"  # what the global reward acts on (learning.ELIGIBILITIES)
+ELIGIBILITY = "perturb"  # what the global reward acts on when the threshold decides (learning.ELIGIBILITIES): the
+# pre-alpha's. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA > 0,
+# §5.2) unless told otherwise -- the eligibility every measurement at 0.455 was made with; additive noise on top of the
+# hazard was never measured (Claude's reading of the default Byron set, September 15, 2026)
 LATE = "count"  # what a signal arriving after its target fired earns (learning.LATE_RULES)
 BASELINE_RATE = 0.05  # per-epoch update of the running reward baseline the advantage is measured against
 WINDOW = 200  # epochs the Teacher's moving-average accuracy spans

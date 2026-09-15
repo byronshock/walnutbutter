@@ -237,7 +237,7 @@ def test_sustain_inputs_runs_by_dopamine_and_checkpoints_it(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "from the checkpoint" in err and "rule: dopamine" in err
     assert cli_main(["--headless", "-a", "8", "-r", "4", "--seed", "1", "--epochs", "5", "--rule", "reinforce", "--no-save", "-q"]) == 0
-    assert "perturb, lr" in capsys.readouterr().err
+    assert "hazard, lr" in capsys.readouterr().err  # the default eligibility follows the neuron, which has escape noise by default
     assert cli_main(["--headless", "--order", "update-first", "--dopamine-tau", "0"]) == 2
     assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "8", "-r", "4", "--epochs", "5", "--no-save",
                      "--rule", "dopamine", "--order", "update-first"]) == 0
@@ -411,11 +411,12 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
 
 def test_the_reinforce_banner_reports_the_sigma_that_actually_runs(capsys):
     """The Teacher zeroes sigma for the hebb eligibility; the banner used to print the asked-for value."""
+    # --delta 0: on the deterministic neuron hebb explores nothing; under escape noise the hazard explores for it
     assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "hebb",
-                     "--sigma", "0.1", "--epochs", "3", "--no-save"]) == 0
+                     "--sigma", "0.1", "--epochs", "3", "--no-save", "--delta", "0"]) == 0
     err = capsys.readouterr().err
     assert "sigma 0" in err and "not a policy gradient" in err
     assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "perturb",
-                     "--sigma", "0.1", "--epochs", "3", "--no-save"]) == 0
+                     "--sigma", "0.1", "--epochs", "3", "--no-save", "--delta", "0"]) == 0
     err = capsys.readouterr().err
     assert "sigma 0.1" in err and "not a policy gradient" not in err
