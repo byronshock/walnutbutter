@@ -76,6 +76,7 @@ at all.
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
 | GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
+| GOO_PROJECTION | 1 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project. *Byron, September 14, 2026.* 1 is the goo the fine sweep ran on with its zone block removed, and spends no draws on the topology; a starting value, Byron's to set |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -155,10 +156,11 @@ connections, signalling and learning:
   unit distances: a hexagonal lattice, a random scatter, or the positions a
   butter recipe describes.
 - **Goo** (`--goo N`). The plane taken away: $N$ neurons with no positions
-  at all, every ordered pair connected, no neighbourhood and no shortcuts
-  (§3.4). Its input and output zones are picked by index, because there are
-  no places to pick them by. It is the control the other three are measured
-  against — whatever the geometry is worth is what goo is missing.
+  at all, no neighbourhood and no shortcuts, wired by a rule about zones
+  (§3.4): the input and output zones, picked by index because there are no
+  places to pick them by, never project onto each other, and every other
+  ordered pair projects with probability GOO_PROJECTION. It began as the
+  control the other three are measured against and is the working network.
 
 A neuron may sit in several input and output zones at once; structures are
 permissive, never artificially restricted.
@@ -201,6 +203,11 @@ connection-id order from the seeded stream, unless a fixed weight is given
 to all. Learning (§6) keeps every weight inside WEIGHT_RANGE.
 
 ### 3.4 Goo — the container decided (Byron, September 14, 2026), the rest written for revising
+
+*The wiring below was rewritten later the same day as a rule about zones,
+in Byron's words, at "The wiring is a rule" — everything above that mark
+describes goo as it was first built, every ordered pair connected, and the
+sweeps of this section ran on that goo and stand as measured on it.*
 
 *Byron asked for a fourth container and said what it was: fully connected
 goo. Everything below it — the zones, the id order, the refusals — is
@@ -742,6 +749,40 @@ The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
+
+**The wiring is a rule (Byron, September 14, 2026).** *"I want goo to be
+constructed according to a probabilistic rule: P(Neuron i connects to
+Neuron j) = 0 if i == j; 0 if i in inputs or outputs AND j in inputs or
+outputs; P_connection otherwise."* And, correcting the verb: *"Instead of
+'connects' I should have said 'projects'. The connections are all
+one-way."* So, with the zones the first and last ACROSS neurons and
+$P$ = GOO_PROJECTION (§1.2):
+
+$$P(i \to j) = \begin{cases} 0 & i = j \\ 0 & i \text{ and } j \text{ both in a zone} \\ P & \text{otherwise} \end{cases}$$
+
+each direction its own draw, as every connection in §3 is. The zones never
+talk to each other directly — not input to output, not output to input, not
+within a zone — and everything with an interior end projects with
+probability $P$; a copy has to cross the interior. This replaces the cut of
+the direct projection above, which it contains, and it needs an interior:
+$N$ must exceed $2\,\text{ACROSS}$, and a goo without one is refused. At
+$P = 1$ nothing is drawn for the topology and $N$ fixes it; below 1 the
+seed's stream decides, pair by pair in $(i, j)$ order, the projection draw
+and then the weight, and a goo wired below 1 needs its seed to be rebuilt,
+as a grid needs its seed for its shortcuts. Ids stay contiguous; every
+engine and checkpoint is untouched, and a checkpoint from before the rule
+says so and is not rebuilt.
+
+At $P = 1$ and sixty neurons that is 3,300 projections against the 3,540 of
+every ordered pair: the $16 \times 15$ pairs within the zones are the ones
+missing. An interior neuron hears all 59 others and a zone neuron only the
+44 of the interior, and §5.2 scales each by its own fan-in, so at
+GOO_THRESHOLD 0.2 the interior starts at $\theta$ 0.656 and the zones at
+0.489, the same threshold per synapse. *Not yet measured on the rule:* the
+fine sweep above ran on a goo whose zones still projected within
+themselves and from the outputs back onto the inputs, so its plateau and
+the 0.20 it chose are figures for that goo; the first thing to do on this
+one is to run the working point again.
 
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
@@ -2344,10 +2385,10 @@ the layout, the inputs, and whether anything outside the network trains it.
   taught to show coded bit $i$ — exactly the input, place for place — by the
   reinforce rule with the row critic, **read by count** (§4.3, the same day:
   spikes counted over the epoch, a rate estimated, on above
-  TEACHER_THRESHOLD), and with **no direct projection** from the input
-  neurons to the output neurons (§3.4, the same day again: the copy must go
-  through the interior, or the one synapse from input $i$ to output $i$ is
-  the whole task). *Byron, the same day, on why there is
+  TEACHER_THRESHOLD). On goo the zones never project onto each other
+  (§3.4's rule, the same day again), so the copy must cross the interior —
+  or the one synapse from input $i$ to output $i$ is the whole task, which
+  is what it had been. *Byron, the same day, on why there is
   no permutation: "Permuting patterns should no longer matter. All neurons
   are first-class citizens of the population." And on the target: "I don't
   think asking for the target reversed should matter either, frankly."* On

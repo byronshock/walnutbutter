@@ -16,7 +16,7 @@ from .butter import CELL_AREA
 from .cartesian import CartesianNodes
 from .columns import HexColumns
 from .goo import DEFAULT_COUNT as GOO_COUNT, Goo
-from .constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD
+from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_THRESHOLD
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
@@ -118,20 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
         "threshold every result to date was measured at",
     )
     parser.add_argument(
-        "--direct-projection",
-        "--direct_projection",
-        dest="direct_projection",
-        action="store_true",
-        default=None,
-        help="wire the input zone straight onto the output zone, as a fully connected goo does (AUTHORITY.md §3.4): "
-        "the default unless the problem says otherwise -- copy does, so that a copy has to go through the interior",
-    )
-    parser.add_argument(
-        "--no-direct-projection",
-        "--no_direct_projection",
-        dest="direct_projection",
-        action="store_false",
-        help="leave out every connection from an input neuron to an output neuron; only goo can be built so",
+        "--projection",
+        type=float,
+        default=GOO_PROJECTION,
+        metavar="P",
+        help=f"goo's wiring (AUTHORITY.md §3.4): the probability an ordered pair with an interior end projects, one way, "
+        f"each direction its own draw; pairs with both ends in a zone never project (default: {GOO_PROJECTION:g})",
     )
     parser.add_argument(
         "--no-scale-with-fan-in",
@@ -747,8 +739,6 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read_window = problem.read_window
     if args.read is None:
         args.read = problem.read  # --read overrides what the problem asks for
-    if args.direct_projection is None:
-        args.direct_projection = problem.direct_projection  # --direct-projection / --no- override the problem
     if args.read == "window" and args.read_window is None:
         args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
@@ -853,38 +843,38 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             elif args.goo is not None:
-                if args.goo < args.across:
+                if args.goo <= 2 * args.across:
                     print(
-                        f"error: --goo needs at least as many neurons as the zones are wide, got {args.goo} "
-                        f"for {args.across} across",
+                        f"error: goo needs an interior for its zones to talk through: --goo must exceed twice "
+                        f"--across, got {args.goo} for {args.across} across",
                         file=sys.stderr,
                     )
+                    return 2
+                if not 0.0 < args.projection <= 1.0:
+                    print(f"error: --projection must be in (0, 1], got {args.projection}", file=sys.stderr)
                     return 2
                 grid = Goo(
                     count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
                     permute=not args.no_permute, weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
                     scale_with_fan_in=args.scale_with_fan_in is not False,
-                    direct=args.direct_projection is not False,
+                    projection=args.projection,
                 )
-                print(f"{grid!r}: {grid.mean_out_degree():.1f} outgoing per neuron"
-                      + ("" if grid.direct else f" -- {len(grid.connections)} connections, none from the input zone to the output zone"),
-                      file=sys.stderr)
-                first = grid.all_neurons()[0]
+                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; the zones talk only through "
+                      f"the {len(grid.interior())} interior neurons", file=sys.stderr)
+                inner, edge = grid.interior()[0], grid.all_neurons()[0]
                 if grid.scale_with_fan_in_on:
                     print(
-                        f"fan-in scaling (§5.2): x{grid.fan_in_scale():.2f} on the potential axis, so threshold "
-                        f"{first.threshold:.3f} and floor {first.minimum_potential:.3f}",
+                        f"fan-in scaling (§5.2): an interior neuron hears {len(inner.incoming)} synapses and starts at "
+                        f"threshold {inner.threshold:.3f}, floor {inner.minimum_potential:.3f}; a zone neuron hears "
+                        f"{len(edge.incoming)} and starts at {edge.threshold:.3f}, {edge.minimum_potential:.3f}",
                         file=sys.stderr,
                     )
                 else:
                     print(
-                        f"fan-in scaling off: a flat threshold {first.threshold:g} and floor "
-                        f"{first.minimum_potential:g} at {grid.count - 1} incoming synapses",
+                        f"fan-in scaling off: a flat threshold {edge.threshold:g} and floor {edge.minimum_potential:g}",
                         file=sys.stderr,
                     )
-                if grid.zones_overlap():
-                    print("goo: the input and output zones overlap -- it is reading what it writes", file=sys.stderr)
             elif args.layers is not None:
                 if args.layers < 1:
                     print(f"error: --layers needs at least 1, got {args.layers}", file=sys.stderr)
@@ -903,10 +893,6 @@ def _run(args: argparse.Namespace) -> int:
                 grid.connect_within(reach=args.reach, weight=args.weight)
             else:
                 grid = GridOfNeurons(**settings, reach=args.grid_reach)
-            if args.direct_projection is False and args.goo is None and not loaded:
-                print("error: only goo can be built with no direct projection from its inputs to its outputs; use --goo, "
-                      "or --direct-projection to run this problem on the grid as wired", file=sys.stderr)
-                return 2
             if args.scale_with_fan_in and args.goo is None and not loaded:
                 grid.scale_with_fan_in(args.threshold, args.minimum_potential)
                 print(
@@ -1159,7 +1145,7 @@ def _seed_worker(job: dict) -> dict:
             seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
             minimum_potential=settings["minimum_potential"],
             scale_with_fan_in=job.get("scale_with_fan_in") is not False,
-            direct=job.get("direct_projection") is not False,
+            projection=job.get("projection", GOO_PROJECTION),
         )
     elif job.get("lattice"):
         settings = job["settings"]
@@ -1277,7 +1263,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
                      "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
-                     "scale_with_fan_in": args.scale_with_fan_in, "direct_projection": args.direct_projection,
+                     "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
@@ -1300,7 +1286,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
               else f"hex grid, omega {args.omega:g}")
     shape = f"{args.across}x{args.rows} {wiring}"
     if args.goo is not None:
-        shape = f"{args.goo} neurons of fully connected goo, {args.across} in and {args.across} out"
+        shape = f"{args.goo} neurons of goo at projection {args.projection:g}, {args.across} in and {args.across} out"
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"

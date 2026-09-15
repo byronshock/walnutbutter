@@ -37,7 +37,6 @@ class Problem:
     hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
     drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
     flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
-    direct_projection: bool = True  # False: no connection runs from an input neuron to an output neuron (§3.4); goo builds it so
 
 
 PROBLEMS: dict[str, Problem] = {
@@ -55,8 +54,8 @@ PROBLEMS: dict[str, Problem] = {
         "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
         "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
         ACROSS, ROWS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
-        read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3)
-        direct_projection=False,  # and the same day: "INPUT NEURONS DO NOT PROJECT DIRECTLY ONTO OUTPUT NEURONS" (§3.4)
+        read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
+        # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
     "sustain_inputs": Problem(
         "sustain_inputs",

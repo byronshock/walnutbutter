@@ -92,7 +92,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
     if goo:
         data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
         data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
-        data["direct_projection"] = grid.direct  # whether the input zone projects straight onto the output zone (§3.4)
+        data["projection"] = grid.projection  # the zone rule's probability (§3.4); below 1 the seed decided the wiring
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -177,13 +177,18 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
 
 
 def _restore_goo(data: dict) -> Goo:
-    """Rebuild goo from its count, then load its weights.
+    """Rebuild goo from its count and the zone rule, then load its weights.
 
-    No seed is needed. Nothing about goo's topology was drawn -- the count
-    alone fixes which pairs connect and in what id order -- so a goo built
-    without one restores exactly, unlike a grid whose shortcuts cannot be
-    rebuilt without the stream that chose them.
+    At projection 1 nothing about the topology was drawn, so a goo built
+    without a seed restores exactly; below 1 the seed decided the wiring and
+    is needed, as a grid's is for its shortcuts. A checkpoint from before the
+    zone rule (one that records `direct_projection`) cannot be rebuilt: its
+    zones projected onto each other.
     """
+    if "direct_projection" in data:
+        raise ValueError(f"{path_of(data)}: goo built before the zone rule of September 14, 2026; its wiring cannot be rebuilt")
+    if data.get("projection", 1.0) < 1.0 and data["seed"] is None:
+        raise ValueError(f"{path_of(data)}: goo wired at projection {data['projection']:g} without a seed cannot be rebuilt")
     goo = Goo(
         count=data["count"],
         across=across_of(data),
@@ -194,7 +199,7 @@ def _restore_goo(data: dict) -> Goo:
         weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
         minimum_potential=data.get("minimum_potential", -1.0),
         scale_with_fan_in=data.get("scale_with_fan_in", True),
-        direct=data.get("direct_projection", True),
+        projection=data.get("projection", 1.0),
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)
