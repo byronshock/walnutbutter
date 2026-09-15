@@ -229,7 +229,7 @@ def test_goo_rescales_its_potential_axis_by_fan_in_and_keeps_the_grids_ratio():
     floors = {n.minimum_potential for n in goo.all_neurons()}
     assert len(thetas) == len(floors) == 1  # homogeneous: every goo neuron has the same fan-in
     assert thetas.pop() == pytest.approx(GOO_THRESHOLD * scale) and floors.pop() == pytest.approx(GOO_MINIMUM_POTENTIAL * scale)
-    assert GOO_THRESHOLD * scale == pytest.approx(3.278, abs=1e-3)  # what a goo neuron starts at since September 14, 2026
+    assert GOO_THRESHOLD * scale == pytest.approx(0.656, abs=1e-3)  # what a goo neuron starts at: 0.2 x 59/18, from the fine sweep
     # the floor is not a second decision: it is the same axis, so the ratio is the grid's -4 exactly
     assert all(n.minimum_potential / n.threshold == pytest.approx(-4.0) for n in goo.all_neurons())
 
@@ -237,8 +237,8 @@ def test_goo_rescales_its_potential_axis_by_fan_in_and_keeps_the_grids_ratio():
 def test_the_scaling_can_be_switched_off_and_then_goo_is_flat():
     goo = Goo(seed=1, scale_with_fan_in=False)
     assert not goo.scale_with_fan_in_on
-    assert {n.threshold for n in goo.all_neurons()} == {GOO_THRESHOLD} == {1.0}  # goo's own, not the grid's 0.25
-    assert {n.minimum_potential for n in goo.all_neurons()} == {GOO_MINIMUM_POTENTIAL} == {-4.0}
+    assert {n.threshold for n in goo.all_neurons()} == {GOO_THRESHOLD} == {0.2}  # goo's own, not the grid's 0.25
+    assert {n.minimum_potential for n in goo.all_neurons()} == {GOO_MINIMUM_POTENTIAL} and GOO_MINIMUM_POTENTIAL == pytest.approx(-0.8)
 
 
 def test_a_neuron_wired_like_an_interior_grid_cell_is_left_exactly_where_it_was():
@@ -277,9 +277,9 @@ def test_both_engines_see_the_scaled_axis():
 
 def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
     assert cli_main(["--goo", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "fan-in scaling (§5.2): x3.28 on the potential axis, so threshold 3.278 and floor -13.111" in capsys.readouterr().err
+    assert "fan-in scaling (§5.2): x3.28 on the potential axis, so threshold 0.656 and floor -2.622" in capsys.readouterr().err
     assert cli_main(["--goo", "--no-scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "fan-in scaling off: a flat threshold 1 and floor -4" in capsys.readouterr().err  # goo's own constants
+    assert "fan-in scaling off: a flat threshold 0.2 and floor -0.8" in capsys.readouterr().err  # goo's own constants
 
 
 def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):

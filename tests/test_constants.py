@@ -2,6 +2,8 @@
 
 import inspect
 
+import pytest
+
 from walnutbutter import constants as C
 from walnutbutter.cartesian import CartesianNodes
 from walnutbutter.cli import build_parser
@@ -60,8 +62,8 @@ def test_goo_has_its_own_count_threshold_and_floor():
     d = defaults_of(Goo)
     assert (d["across"], d["weight_range"]) == (C.ACROSS, C.WEIGHT_RANGE)
     assert (d["count"], d["threshold"], d["minimum_potential"]) == (C.GOO_COUNT, C.GOO_THRESHOLD, C.GOO_MINIMUM_POTENTIAL)
-    assert DEFAULT_COUNT == C.GOO_COUNT == 60 and C.GOO_THRESHOLD == 1.0
-    assert C.GOO_MINIMUM_POTENTIAL == C.GOO_THRESHOLD * C.MINIMUM_POTENTIAL / C.THRESHOLD == -4.0  # the grid's ratio, kept
+    assert DEFAULT_COUNT == C.GOO_COUNT == 60 and C.GOO_THRESHOLD == 0.2  # from the fine sweep (§3.4)
+    assert C.GOO_MINIMUM_POTENTIAL == C.GOO_THRESHOLD * C.MINIMUM_POTENTIAL / C.THRESHOLD == pytest.approx(-0.8)  # the grid's ratio, kept
     assert C.THRESHOLD == 0.25 and C.MINIMUM_POTENTIAL == -1.0  # the grid, the columns and the lattice keep theirs
     assert build_parser().parse_args(["--goo"]).goo == C.GOO_COUNT
     assert build_parser().parse_args([]).goo is None  # no goo unless asked for
