@@ -453,14 +453,17 @@ and raising the threshold against an unmoved floor caps inhibition while
 excitation piles up. Moving both lands it: the output zone varies, and goo
 then produces more distinct output words than the grid does.
 
-That is activity, not learning. Swept at 250,000 epochs and ten seeds
+That is activity, not learning. Swept twice at 250,000 epochs and ten seeds
 against the same goo run flat and against the grid (AUTHORITY.md §3.4,
-`docs/goo-250k.md`): **all three at chance** -- grid 0.520, flat goo 0.511,
-scaled goo 0.507 -- because the defaults are the reinforce rule with the
-perturb eligibility, which §6.7 already records at chance on the grid. The
-rescaling fixed the read carrying nothing, not the rule learning nothing, and
-the comparison goo was built for still wants a configuration in which the
-grid learns (the hebb eligibility). `--no-scale-with-fan-in` runs goo flat,
+`docs/goo-250k.md`, `docs/goo-250k-hebb.md`): **all three at chance both
+times** -- under the perturb eligibility grid 0.520, flat goo 0.511, scaled
+goo 0.507; under hebb scaled goo 0.513, flat goo 0.506, grid 0.502. The grid
+does not learn reversal at ten rows under either rule; where hebb learns
+(§6.7's 0.98, §4.3's 0.64) the task is one hop wide. The rescaling fixed the
+read carrying nothing, not the rule learning nothing, and the comparison goo
+was built for wants a one-hop task the grid can do: reaching_copy, which is
+the grid with its depth taken away, against goo, which is the grid with its
+depth and its locality taken away. `--no-scale-with-fan-in` runs goo flat,
 and `--scale-with-fan-in` offers the rule to any other container.
 
 ## Learning

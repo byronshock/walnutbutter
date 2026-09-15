@@ -312,17 +312,46 @@ nothing; and (ii) 250,000 epochs of the perturb rule on this problem is not a
 learning run for any of the three, which the grid's own figure, 0.520, states
 on its own.
 
-*What the comparison needs, and does not have yet.* A configuration in which
-the grid demonstrably learns, so that goo has something to fall short of or
-match: the reinforce rule with the **hebb** eligibility, on shallow_copy or
-reaching_copy, where §6.7 puts the grid at 0.80–0.98. That eligibility now
-runs in every engine (§6.15), and the Rust loop is the engine to run it on —
-except that `docs/rust-sweep.py` builds a grid only and does not yet know
-`--goo`. Not run: it is the next sweep, not this one, and it is Byron's to
-call. The two rejected alternatives are still on the table if that sweep
-finds the rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the
-reading that THRESHOLD was never a constant of the substance but a constant
-of the grid.
+**Swept again with the hebb eligibility (Byron, September 14, 2026: "the
+exact same sweep with eligibility=hebb, since that's the rule where we are
+seeing learning emerge on the hex grid").** The same three arms, ten seeds,
+250,000 epochs, reversal, every arm at seed $s$ on the same input stream —
+on the Rust wave loop this time (§6.15), the Teacher's homeostasis and
+un-sticking mirrored at the command line's constants so it is the same
+experiment. `docs/goo-250k-hebb.md`, `goo-250k-hebb-score.png`.
+
+| arm | last 25,000 epochs | over seeds | stuck on | stuck off |
+|---|---|---|---|---|
+| goo, threshold and floor scaled | **0.513** | 0.500–0.553 | 51.3 | 8.7 |
+| goo, flat | 0.506 | 0.500–0.524 | 75.7 | 0.3 |
+| hex grid, 8 × 10 | 0.502 | 0.500–0.514 | 61.5 | 7.1 |
+
+**Still chance, and this time the grid is the worst of the three.** Paired
+on the seed, scaled goo beats the grid by 0.011 ($t = 1.9$) and flat goo by
+0.007 ($t = 1.1$); flat goo beats the grid by 0.004 ($t = 1.2$). None of it
+survives, and the grid at 0.502 is the number to read: **on reversal, at ten
+rows, the hex grid does not learn under the hebb eligibility either.** The
+0.978 and 0.80 that §6.7 records for that eligibility are on shallow_copy —
+twelve across, *two* rows, one hop — and the 0.64 of §4.3's CV sweep is on
+reaching_copy, five rows wired to REACH 5 so that the bottom row synapses
+straight onto the top: one hop again. The rule that learns learns where the
+task is one hop wide, and reversal at ten rows, nine hex steps and five hops,
+is not that task. Both sweeps of this section measured goo against a grid on
+a problem the grid cannot do.
+
+That points the comparison somewhere more useful than a working baseline.
+reaching_copy is the grid with its **depth** taken away and its locality
+kept; goo is the grid with both taken away. So goo on reaching_copy's task
+against reaching_copy itself is a comparison at equal depth — one hop each —
+and whatever separates them is **locality alone**, which is the cleaner half
+of the question this container was built to ask. Not run: it is Byron's to
+call, and the drivers can run it as they stand (`docs/rust-sweep.py --goo
+--problem reaching_copy`).
+
+The two rejected alternatives are still on the table if that sweep finds the
+rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
+that THRESHOLD was never a constant of the substance but a constant of the
+grid.
 
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
