@@ -37,6 +37,12 @@ by the same Box-Muller, and `fast.sync_explore` hands the state back so Python's
 carries on from where Rust left it. No per-wave round trip, and the draws are equal, not
 approximately equal: `tests/test_fast.py` checks them with `==`.
 
+The Teacher's firing-rate memory, homeostasis and un-sticking (§1.3) are mirrored by
+`fast.train` once an epoch in Python, in the object engine's order, at the constants the
+command line runs them at -- so a Rust run is the run `walnutbutter --seeds` would do, and
+`tests/test_fast.py` checks the moved thresholds against the object engine every epoch.
+`docs/rust-sweep.py` builds goo as well as the grid. This is the default engine for a sweep.
+
 ## What it does not
 
 - **The dopamine rule's in-loop weight updates** (§6.2–6.6, mode "apply"). The teacher,

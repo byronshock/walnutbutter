@@ -1739,11 +1739,23 @@ second one is not cosmetic: signals due at one moment are summed in push
 order, so an engine that flattens the topology differently sums a wave
 differently and lands on different bits.
 
+*The Teacher's threshold moves (Byron, September 14, 2026: "please always
+default to the rust engine unless it is broken").* The firing-rate memory,
+homeostasis and un-sticking of §1.3 are the Teacher's, not the network's,
+and `fast.train` mirrors them once an epoch in Python — the same operations
+in the same order as the object engine, the thresholds pushed to the loop —
+at the constants the command line runs them at, so a Rust run is the run
+`walnutbutter --seeds` would do. Every rust-sweep before that date ran with
+them off, the CV sweep of §4.3 included. `docs/rust-sweep.py` builds goo
+(§3.4) as well as the grid, and the Rust loop is now the default engine for
+any sweep: the array engine is the fallback when Rust cannot run a
+configuration, and a gap is closed in Rust rather than run around.
+
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
 as the eligibility they earn, LATE other than count, and the leaky trace on
 the reinforce rule. Those pay at the read, in Python, and a run that needs
-them takes the array engine.
+them takes the array engine — and says so.
 
 The profile also named an algorithmic win that needs no new language: **the hop
 delay is constant**, so every signal from a wave arrives at exactly
