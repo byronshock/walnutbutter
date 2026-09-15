@@ -74,7 +74,7 @@ at all.
 | THRESHOLD | 0.25 | $\theta$ every neuron of the grid, the columns and the lattice starts with, quoted at THRESHOLD_FAN_IN incoming synapses (§5.2); goo has its own, below |
 | THRESHOLD_FAN_IN | 18 | the in-degree THRESHOLD and MINIMUM_POTENTIAL are quoted at: an interior hex cell's two rings at REACH 2. A container that scales rescales neuron $j$'s whole potential axis by $d_j / \text{THRESHOLD\_FAN\_IN}$ (§5.2); goo does, nothing else does yet |
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
-| GOO_THRESHOLD | 1 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $59/18 = 3.28$, past the saturation edge of §3.4. The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo on that decision |
+| GOO_THRESHOLD | 1 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $59/18 = 3.28$, past the saturation edge of §3.4. The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo on that decision. *Swept at 0.01 steps on the no-direct copy with every neuron un-sticking (§3.4, September 14, 2026): 1 is off the plateau — 0.502 — and 0.15–0.40 is on it, 0.20 the level where every seed learned. To be set by Byron* |
 | GOO_MINIMUM_POTENTIAL | −4 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −13.1 |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
@@ -647,6 +647,58 @@ this epoch excepted, in every engine (§1.3, §6.7). With it, a silent
 interior cures itself at any THRESHOLD, and the question becomes where the
 threshold is *stable* rather than where it merely fires — which is the
 sweep that follows, 0.10 to 0.50 by 0.01, ten seeds each.
+
+**Swept: THRESHOLD 0.10 to 0.50 by 0.01, with every neuron un-sticking.**
+Goo 60 with no direct projection, copy, hebb, the count read at one spike,
+the floor following at −4, ten seeds, 100,000 epochs, on the Rust loop:
+410 arms in fifteen minutes, a live goo running at a third of a dead one's
+speed (2,000 epochs a second against 6,000). `docs/goo60-nodirect-threshold.md`
+has all 41 rows; `goo60-nodirect-threshold-score.png` the curve. Two levels
+past the range were run besides, because goo's default, GOO_THRESHOLD = 1,
+lies outside it.
+
+| THRESHOLD, in bands of five | $\theta$ on goo 60 | last 10,000 epochs |
+|---|---|---|
+| 0.10–0.14 | 0.33–0.46 | 0.540 |
+| 0.14–0.18 | 0.46–0.59 | 0.559 |
+| 0.18–0.22 | 0.59–0.72 | **0.567** |
+| 0.22–0.26 | 0.72–0.85 | 0.559 |
+| 0.26–0.30 | 0.85–0.98 | 0.562 |
+| 0.30–0.34 | 0.98–1.11 | 0.557 |
+| 0.34–0.38 | 1.11–1.25 | 0.566 |
+| 0.38–0.42 | 1.25–1.38 | 0.557 |
+| 0.42–0.46 | 1.38–1.51 | 0.539 |
+| 0.46–0.50 | 1.51–1.64 | 0.539 |
+| 0.75 | 2.46 | 0.532 |
+| **1.00, the default** | **3.28** | **0.502** |
+
+**The interior lives at every threshold.** All 41 levels score above
+chance, 0.52 to 0.59, where the same task at $\theta$ 3.28 with the output
+row alone un-sticking sat at 0.500 on every seed (above). Un-sticking every
+neuron is what made a two-hop copy learnable at all, and it made the
+*starting* threshold nearly irrelevant across a threefold range: the
+network finds its own operating point.
+
+**It is a plateau, not a peak.** The grand mean over the 41 levels is
+0.554; the spread of the level means (sd 0.015) is the seed noise within a
+level (standard error 0.013). From 0.14 to 0.42 the bands sit at
+0.557–0.567; below 0.14 and above 0.42 they fall to 0.54 and the stuck
+counts rise; at 0.75 three seeds of ten learn, and **at the default, 1.0,
+none do** — 0.502, every seed within 0.498–0.509, nine neurons stuck on
+and eight off. The default is off the plateau, and every-neuron
+un-sticking does not carry it back within 100,000 epochs. It has to move.
+
+**0.20 is the one level where every seed learned.** 0.588 over the last
+tenth, the worst seed at 0.556 where every other level's worst is near
+0.50, a spread of 0.019 against 0.03–0.045 elsewhere, and not one neuron
+stuck on or off at the end; its neighbours 0.19 and 0.21 are 0.559 and
+0.575, on the plateau, so a small drift in the value stays there. On goo 60
+that is $\theta$ 0.66 and a floor of −2.6, a fifth of the default's. The
+honest caveat: with 41 levels, one this tight could be chance at ten seeds
+— the plateau cannot be. 0.27, the plateau's centre and the next tightest
+(worst seed 0.518, nothing stuck), is the other candidate. **GOO_THRESHOLD
+stays at 1 until Byron sets it** (§1.2): the value is substance, and this
+sweep is what he asked for to choose it.
 
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
