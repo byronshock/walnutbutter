@@ -69,6 +69,10 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
+    parser.add_argument("--direct-projection", dest="direct", action="store_true", default=None,
+                        help="wire the input zone straight onto the output zone whatever the problem asks (§3.4)")
+    parser.add_argument("--no-direct-projection", dest="direct", action="store_false",
+                        help="leave out every connection from an input neuron to an output neuron")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
     parser.add_argument("--eligibility", choices=("hebb", "perturb"), default="hebb",
@@ -84,7 +88,8 @@ def parse() -> argparse.Namespace:
     return args
 
 
-def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None):
+def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None,
+            direct: bool | None = None):
     """The network the command line would build for this problem, with the arm's knobs applied."""
     from walnutbutter.cli import apply_problem, build_parser
     from walnutbutter.goo import Goo
@@ -94,6 +99,8 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD
 
     argv = ["--problem", problem, "--eligibility", eligibility]
+    if direct is not None:  # --direct-projection / --no-direct-projection, over what the problem asks for (§3.4)
+        argv.append("--direct-projection" if direct else "--no-direct-projection")
     base_threshold = GOO_THRESHOLD if "goo" in arm else THRESHOLD  # goo has its own (§1.2)
     if "goo" in arm and "threshold" not in arm:
         argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
@@ -139,7 +146,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio = job
+    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, direct = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
 
@@ -147,7 +154,7 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
-    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio)
+    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, direct)
     first = grid.all_neurons()[0]
     started_at = {"theta": first.threshold, "floor": first.minimum_potential}  # what a neuron starts at, scaling applied
     patterns = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"]))  # drawn up front, §4.5: every arm at this
@@ -234,7 +241,7 @@ def main() -> int:
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility, args.scale,
-                 args.floor_ratio) for arm in arms]
+                 args.floor_ratio, args.direct) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)
