@@ -584,11 +584,11 @@ class ArrayNetwork(Network):
         self.threshold_v[unforced] = self.threshold_v[unforced] + rate * (self.rate[unforced] - target)  # nothing clips it
         return int(unforced.sum())
 
-    def unstick_outputs(self, rate: float, target: float) -> list[int]:
+    def unstick(self, rate: float, target: float) -> list[int]:
+        """learning.unstick as one vector operation: every stuck neuron not forced this epoch."""
         if rate <= 0:
             return []
-        idx = self.output_index
-        stuck = idx[(self.rate[idx] > STUCK_ABOVE) | (self.rate[idx] < STUCK_BELOW)]
+        stuck = np.flatnonzero(((self.rate > STUCK_ABOVE) | (self.rate < STUCK_BELOW)) & ~self.forced)
         self.threshold_v[stuck] = self.threshold_v[stuck] + rate * (self.rate[stuck] - target)
         return stuck.tolist()
 

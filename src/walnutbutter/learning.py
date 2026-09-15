@@ -365,26 +365,34 @@ def homeostasis(
     return moved
 
 
-def unstick_outputs(
+def unstick(
     grid: GridOfNeurons,
     rate: float,
     target: float = 0.5,
 ) -> list[Neuron]:
-    """Nudge the threshold of every *stuck* output neuron toward a target firing rate.
+    """Nudge the threshold of every *stuck* neuron toward a target firing rate.
 
-    Only output neurons whose running rate is beyond the stuck band (almost
-    always on, or almost always off) are touched, and only while they are.
-    A saturated output gets no learning signal because the exploration noise
-    never changes whether it fires; moving its threshold back toward the
-    region where the noise matters gives the rule a gradient there, and
-    nothing else in the mesh is disturbed. Returns the neurons nudged (indices, for the array engine).
+    Every neuron whose running rate is beyond the stuck band (almost always
+    on, or almost always off) is touched, and only while it is; a neuron
+    forced this epoch is left alone, as homeostasis leaves it. A saturated
+    neuron gets no learning signal because nothing changes whether it fires;
+    moving its threshold back toward the region where the rule has a gradient
+    gives it one, and nothing else in the mesh is disturbed.
+
+    It was the output row only until September 14, 2026, when the interior of
+    a goo with no direct projection turned out to be dead for want of exactly
+    this (AUTHORITY.md §3.4): "all neurons are first-class citizens" (Byron),
+    and a restriction to the outputs was an artificial one (§2). Returns the
+    neurons nudged (indices, for the array engine).
     """
     if arrays(grid):
-        return grid.unstick_outputs(rate, target)
+        return grid.unstick(rate, target)
     if rate <= 0:
         return []
     nudged = []
-    for neuron in output_row(grid):
+    for neuron in grid.all_neurons():
+        if forced(neuron):
+            continue
         if neuron.rate > STUCK_ABOVE or neuron.rate < STUCK_BELOW:
             neuron.threshold = neuron.threshold + rate * (neuron.rate - target)
             nudged.append(neuron)
@@ -551,7 +559,7 @@ class Teacher:
             raise ValueError(f"unstick target firing rate must be between 0 and 1, got {unstick_target}")
         self.unstick = unstick
         self.unstick_target = unstick_target
-        self.unstuck_count = 0  # how many epoch-nudges the output un-sticking has applied
+        self.unstuck_count = 0  # how many epoch-nudges the un-sticking has applied
         self.moved = 0  # synapses the external teacher has moved
         self.last_signal: float | None = None  # the teacher's score for the last epoch, in [-1, 1]
         self.mistakes = 0.0  # output neurons read wrongly in the last epoch (the ADALINE rule)
@@ -611,7 +619,7 @@ class Teacher:
             reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.grid)
         homeostasis(self.grid, self.homeostasis, self.target_rate)
-        self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target))
+        self.unstuck_count += len(unstick(self.grid, self.unstick, self.unstick_target))
         self.baseline += self.baseline_rate * (reward - self.baseline)
         self.epochs += 1
         if self._trace is not None:

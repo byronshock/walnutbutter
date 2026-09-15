@@ -534,14 +534,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSTICK,
         metavar="RATE",
-        help=f"per-epoch rate at which a stuck output neuron's threshold moves toward --unstick-target; only "
-        f"output neurons firing >99%% or <1%% of the time are touched, only while stuck (default: {UNSTICK:g}; 0 = off)",
+        help=f"per-epoch rate at which a stuck neuron's threshold moves toward --unstick-target -- every neuron, "
+        f"not the outputs only, since September 14, 2026 (AUTHORITY.md §6.7); only "
+        f"neurons firing >99%% or <1%% of the time are touched, only while stuck, and never one forced this epoch "
+        f"(default: {UNSTICK:g}; 0 = off)",
     )
     parser.add_argument(
         "--unstick-target",
         type=float,
         default=UNSTICK_TARGET,
-        help=f"firing rate the output un-sticking aims for (default: {UNSTICK_TARGET:g})",
+        help=f"firing rate the un-sticking aims for (default: {UNSTICK_TARGET:g})",
     )
     parser.add_argument(
         "--minimum-potential",
