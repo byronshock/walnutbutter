@@ -89,7 +89,7 @@ at all.
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
 | TEACHER_THRESHOLD | 14.3 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz, so 14.3 — the middle of the one-spike band — means *at least one spike*, the line as far from both edges as it can sit (Byron, September 14, 2026, choosing it to mean one spike and not for its score). It was 40, two spikes, for the read's first hour |
-| BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods |
+| BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods. Superseded by ESCAPE_DELTA (Byron, September 15, 2026): the hazard buys what the clock was to buy, "and much much more cleanly"; it is not run on top of the hazard |
 | ESCAPE_DELTA | 0 (off) | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). Positive, a neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$: one expected spike per hop at threshold, $e$ times more per $\Delta_j$ above it. 0 is the deterministic threshold. Swept $\{0.7, 1.05, 1.4\}$ on copy (§3.4) |
 
 ### 1.3 Learning
@@ -942,9 +942,10 @@ the same goo, since the network is busier and every decision settles the
 traces of its synapses.
 
 *Not measured then, and asked for within the hour:* $\Delta$ below 0.7 and
-LR under the hazard, both below. Still open: the bored clock (BORED_AFTER
-$> 0$) on top of the hazard, which §5.4 says composes and which no arm has
-run.
+LR under the hazard, both below. The bored clock on top of the hazard is
+not a question (Byron, the same day, on the grid: "I don't think we want a
+bored clock on top of the hazard. The hazard is buying us what the bored
+clock was supposed to buy us, and much much more cleanly"; §5.4).
 
 **The $\Delta \times$ LR grid (Byron, September 15, 2026: "sweep Delta in
 {0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7} x LR in {0.005 0.01 0.015
@@ -993,7 +994,7 @@ ten seeds, with the worst seed beneath:
 mean, the best column averaged over LR, nine seeds of ten over hebb, and a
 floor within noise of the grid's best. 0.3 is the choice by the floor
 alone. The next question is LR above 0.03, which the grid's top row has not
-closed, and after it the bored clock on top of the hazard.
+closed.
 
 ## 4. Signalling — kept, on a schedule
 
@@ -1729,10 +1730,11 @@ distribution function. This is that unit with the noise in the threshold
 rather than on the potential — an escape-noise integrate-and-fire neuron,
 the spike response model's soft threshold — and its boredom is stochastic:
 a neuron nobody talks to sits at rest and fires on its own at a rate the
-margin sets, and the clock of §5.4, when it runs, raises that rate by
-lowering $\theta_j(t)$. It replaces the additive noise of §6.1 as the
-source of exploration; nothing is added to any potential and nothing has to
-be recorded. Its eligibility is in §6.7.
+margin sets. It replaces the additive noise of §6.1 as the source of
+exploration — nothing is added to any potential and nothing has to be
+recorded — and it replaces the clock of §5.4 as the source of boredom
+(Byron, September 15, 2026, below), which is not run on top of it. Its
+eligibility is in §6.7.
 
 *Rest is loud and the floor is the only silence.* A neuron at rest fires
 $21\,e^{-1/\Delta}$ times an epoch at the default clock (twenty-one hops
@@ -1783,12 +1785,18 @@ boredom.
 and it is Williams's unit outright").* With ESCAPE_DELTA $> 0$ (§5.2) a
 bored neuron's firing is a rate rather than a deadline: it fires on its own
 at $e^{s/\Delta_j}$ spikes per hop from wherever its margin sits, without
-waiting for the threshold to reach the potential. The clock above still
-runs when BORED_AFTER is positive and composes with the hazard — a falling
-$\theta_j(t)$ raises it — but it is no longer the only thing in the system
-that turns silence into a spike (§8, shallow_not), and the flood that turned
-it off is not a property of the hazard, whose spontaneous rate $\Delta$
-sets directly.
+waiting for the threshold to reach the potential. It is no longer the only
+thing in the system that turns silence into a spike (§8, shallow_not), and
+the flood that turned the clock off is not a property of the hazard, whose
+spontaneous rate $\Delta$ sets directly.
+
+*Superseded, not composed (Byron, September 15, 2026, on the grid of §3.4):
+"I don't think we want a bored clock on top of the hazard. The hazard is
+buying us what the bored clock was supposed to buy us, and much much more
+cleanly."* So the clock stays off. The code still knows how to run it —
+`threshold_at` falls with silence when BORED_AFTER is positive, and the
+hazard would read that falling threshold — but that is a mechanism left in
+place, not a configuration to run; the hazard is the bored neuron.
 
 ## 6. Learning rules — open
 
