@@ -152,7 +152,7 @@ def test_a_checkpoint_carries_a_floor_per_neuron_once_a_container_scales_with_fa
     assert data["scale_with_fan_in"] is True
     assert data["floors"] == [n.minimum_potential for n in goo.all_neurons()]
     from walnutbutter.constants import GOO_MINIMUM_POTENTIAL
-    assert data["floors"][0] == pytest.approx(GOO_MINIMUM_POTENTIAL * 23 / 18)  # goo's floor, in-degree 23 over the reference
+    assert data["floors"][0] == pytest.approx(GOO_MINIMUM_POTENTIAL * 12 / 18)  # an input of 24 hears the 12 interior (§3.4)
     restored, _ = restore(path)
     assert [n.minimum_potential for n in restored.all_neurons()] == data["floors"]
     assert [n.threshold for n in restored.all_neurons()] == data["thresholds"]

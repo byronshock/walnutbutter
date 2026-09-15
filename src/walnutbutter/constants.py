@@ -38,8 +38,13 @@ GOO_THRESHOLD = 0.2  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN like the gri
 # neuron un-sticking, 0.15-0.40 is a plateau and 0.20 the one level where every seed learned. It was 1 -- theta 3.28,
 # chosen to sit past the saturation edge -- which turned out to be off the plateau: a dead interior on the no-direct
 # copy. The grid keeps 0.25 -- the threshold belongs to the container, the third reading §3.4 named, adopted for goo
-GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # -4: the floor follows at the grid's ratio, as
+GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the floor follows at the grid's ratio of -4, as
 # every goo sweep ran it (§5.2, one axis, two points)
+GOO_PROJECTION = 1.0  # P(neuron i projects onto neuron j) for a pair with an interior end (AUTHORITY.md §3.4; Byron,
+# September 14, 2026: "P(i connects to j) = 0 if i == j; 0 if i in inputs or outputs AND j in inputs or outputs;
+# P_connection otherwise" -- and, correcting the verb, "I should have said projects. The connections are all one-way").
+# Pairs with both ends in a zone never project. 1 is the goo the fine sweep ran on with its zone block removed and no
+# draws spent on the topology; below 1 the seed decides the wiring. A starting value: Byron's to set
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
 REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11, 2026)

@@ -31,9 +31,8 @@ architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
 (`--goo`) began as the control -- the same eighty neurons with no positions
 at all and every ordered pair connected, so whatever the geometry is worth is
 what goo is missing -- and is the working network since September 14, 2026:
-sixty neurons at its own threshold, 0.2, with no direct projection from its
-inputs to its outputs and every neuron un-sticking itself (AUTHORITY.md
-§1.2, §3.4).
+sixty neurons at its own threshold, 0.2, wired by a rule about zones and
+every neuron un-sticking itself (AUTHORITY.md §1.2, §3.4).
 
 ## Setup (once)
 
@@ -417,10 +416,16 @@ wiring (`connect_by_distance`) remains in the library for reference.
 The plane taken away (AUTHORITY.md §3.4). Every container above has to say
 what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
-the only wiring that needs no ruler: **every ordered pair**. `--goo` makes
-60 neurons (GOO_COUNT; it was the grid's 80 while the two were compared) and
-60 x 59 = 3,540 one-way connections; goo 80, against the grid's 1,395, was
-the same neurons with four and a half times the wiring.
+a rule about zones (AUTHORITY.md §3.4): the input zone and the output zone
+never project onto each other -- not in, not out, not within -- and every
+other ordered pair projects, one way, with probability `--projection`
+(GOO_PROJECTION, 1 by default). `--goo` makes 60 neurons (GOO_COUNT; it was
+the grid's 80 while the two were compared): at projection 1, 3,300
+projections, an interior neuron hearing all 59 others and a zone neuron the
+44 of the interior. A copy has to cross the interior. (It began as every
+ordered pair -- 3,540 at sixty, and goo 80 against the grid's 1,395 was the
+same neurons with four and a half times the wiring -- which is what the
+sweeps below ran on.)
 
 With no rows there is no bottom row to be the input, so the zones go by
 index: the first `--across` neurons are the input zone and the last
@@ -503,9 +508,8 @@ ceiling down, not up.
 
 Then the bug: a fully connected goo wires input i straight onto output i,
 and that one synapse was what the rule had learned. Cut the input-to-output
-projection (`copy` asks for it; `--direct-projection` puts it back) and
-every seed sits at 0.500 -- a dead interior at theta 3.28, since nothing
-walked a silent interior neuron's threshold down. So **un-sticking now
+projection and every seed sits at 0.500 -- a dead interior at theta 3.28,
+since nothing walked a silent interior neuron's threshold down. So **un-sticking now
 reaches every neuron**, not the output row only, and with it the interior
 lives at every threshold from 0.10 to 0.50 (`docs/goo60-nodirect-threshold.md`,
 410 arms): a plateau at ~0.56 from 0.15 to 0.40, 0.20 the level where every
