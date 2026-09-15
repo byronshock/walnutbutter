@@ -71,3 +71,18 @@ Driver: `docs/rust-sweep.py --name goo60-zones-threshold --problem copy --goo ..
 
 Best cell: projection P 0.5, THRESHOLD 0.26: 0.6237 over 10 seeds.
 
+**Stability by projection P** (full cells only): the mean over every THRESHOLD, the five-level band with the highest rolling mean, how many cells had every seed above 0.55, and the cell with the highest worst seed
+
+| projection P | mean | best band | every seed > 0.55 | worst-seed leader |
+|---|---|---|---|---|
+| 0.5 | 0.6020 | 0.37–0.41: 0.6147 | 14 of 41 | THRESHOLD 0.47: 0.6110, worst 0.591 |
+| 0.6 | 0.5890 | 0.42–0.46: 0.6074 | 7 of 41 | THRESHOLD 0.44: 0.6231, worst 0.603 |
+| 0.7 | 0.5759 | 0.43–0.47: 0.5888 | 1 of 41 | THRESHOLD 0.47: 0.6016, worst 0.556 |
+| 0.8 | 0.5706 | 0.33–0.37: 0.5867 | 1 of 41 | THRESHOLD 0.35: 0.6027, worst 0.556 |
+| 0.85 | 0.5594 | 0.2–0.24: 0.5710 | 0 of 41 | THRESHOLD 0.22: 0.5701, worst 0.504 |
+| 0.9 | 0.5638 | 0.18–0.22: 0.5742 | 0 of 41 | THRESHOLD 0.47: 0.5880, worst 0.508 |
+| 0.95 | 0.5525 | 0.13–0.17: 0.5646 | 0 of 41 | THRESHOLD 0.25: 0.5430, worst 0.508 |
+| 1 | 0.5430 | 0.34–0.38: 0.5537 | 0 of 41 | THRESHOLD 0.41: 0.5405, worst 0.510 |
+
+Cells where every seed learned (above 0.55): projection P 0.5 / THRESHOLD 0.13, projection P 0.5 / THRESHOLD 0.21, projection P 0.5 / THRESHOLD 0.24, projection P 0.5 / THRESHOLD 0.26, projection P 0.5 / THRESHOLD 0.28, projection P 0.5 / THRESHOLD 0.29, projection P 0.5 / THRESHOLD 0.32, projection P 0.5 / THRESHOLD 0.35, projection P 0.5 / THRESHOLD 0.38, projection P 0.5 / THRESHOLD 0.39, projection P 0.5 / THRESHOLD 0.45, projection P 0.5 / THRESHOLD 0.46, projection P 0.5 / THRESHOLD 0.47, projection P 0.5 / THRESHOLD 0.5, projection P 0.6 / THRESHOLD 0.25, projection P 0.6 / THRESHOLD 0.28, projection P 0.6 / THRESHOLD 0.31, projection P 0.6 / THRESHOLD 0.35, projection P 0.6 / THRESHOLD 0.37, projection P 0.6 / THRESHOLD 0.44, projection P 0.6 / THRESHOLD 0.48, projection P 0.7 / THRESHOLD 0.47, projection P 0.8 / THRESHOLD 0.35
+
