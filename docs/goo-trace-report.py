@@ -26,12 +26,15 @@ def main() -> None:
     parser.add_argument("--name", required=True)
     parser.add_argument("--arm", default="", help="the arm's name without its -seed<N>, e.g. threshold0.5-goo80; empty for a seed-only run")
     parser.add_argument("--window", type=int, default=10, help="samples per rolling mean")
+    parser.add_argument("--seed", type=int, default=None, help="draw this one seed, its raw samples under the smoothed line")
     args = parser.parse_args()
     runs = ROOT / "runs" / args.name
     stem = f"{args.arm}-seed" if args.arm else "seed"  # a run that sweeps only the seed names its arms seed<N>
     seeds = sorted(int(p.stem[len(stem):]) for p in runs.glob(f"{stem}*.csv"))
+    if args.seed is not None:
+        seeds = [s for s in seeds if s == args.seed]
     if not seeds:
-        raise SystemExit(f"no {stem}<N>.csv under {runs}")
+        raise SystemExit(f"no {stem}<N>.csv under {runs}" + (f" for seed {args.seed}" if args.seed is not None else ""))
     traces, finals = {}, {}
     for seed in seeds:
         with open(runs / f"{stem}{seed}.csv") as handle:
@@ -62,13 +65,18 @@ def plot(args, traces, finals) -> None:
     seeds = sorted(traces)
     xs = [e for e, _ in traces[seeds[0]]]
     smoothed = {s: smooth([v for _, v in traces[s]], args.window) for s in seeds}
+    one = len(seeds) == 1
+    if one:  # the raw samples, each a single epoch's score in eighths, under the smoothed line
+        s = seeds[0]
+        ax.scatter(xs, [v for _, v in traces[s]], s=6, color=BLUE, alpha=0.35, linewidths=0, label="one epoch's score, every 1,000")
     for s in seeds:
         ys = smoothed[s]
         colour = ORANGE if finals.get(s) is not None and finals[s] < 0.52 else BLUE
         ax.plot(xs[:len(ys)], ys, color=colour, linewidth=0.8, alpha=0.45)
     n = min(len(v) for v in smoothed.values())
     mean = [statistics.fmean(smoothed[s][i] for s in seeds) for i in range(n)]
-    ax.plot(xs[:n], mean, color=INK, linewidth=2.0, label=f"mean of {len(seeds)} seeds")
+    ax.plot(xs[:n], mean, color=INK, linewidth=2.0,
+            label=(f"seed {seeds[0]}, rolling mean of {args.window} samples" if one else f"mean of {len(seeds)} seeds"))
     ax.axhline(0.5, color=INK2, linewidth=0.9, linestyle=(0, (4, 3)))
     ax.annotate("chance", (0.995, 0.5), xycoords=("axes fraction", "data"), ha="right", va="bottom", color=INK2, fontsize=7)
     for spine in ("top", "right"):
@@ -82,13 +90,18 @@ def plot(args, traces, finals) -> None:
     step = xs[1] - xs[0] if len(xs) > 1 else 1
     ax.set_ylabel(f"score, rolling mean of {args.window} sampled epochs ({args.window * step:,} epochs)", color=INK2, fontsize=8)
     stuck = [s for s in seeds if finals.get(s) is not None and finals[s] < 0.52]
-    note = f"thin: each seed" + (f"; orange: seed{'s' if len(stuck) > 1 else ''} {', '.join(map(str, stuck))} ended at chance" if stuck else "")
-    ax.plot([], [], color=BLUE, linewidth=0.8, alpha=0.6, label=note)
+    if not one:
+        note = f"thin: each seed" + (f"; orange: seed{'s' if len(stuck) > 1 else ''} {', '.join(map(str, stuck))} ended at chance" if stuck else "")
+        ax.plot([], [], color=BLUE, linewidth=0.8, alpha=0.6, label=note)
     ax.legend(loc="lower right", frameon=False, fontsize=7.5, labelcolor=INK2)
     ax.set_ylim(0.35, 1.0)
-    fig.suptitle(f"{args.name}: {args.arm or 'every seed'}, score over the run", x=0.01, ha="left", color=INK, fontsize=11)
+    who = f"seed {seeds[0]}" if one else (args.arm or "every seed")
+    tail = f" -- {finals[seeds[0]]:.3f} over the last tenth" if one and finals.get(seeds[0]) is not None else ""
+    fig.suptitle(f"{args.name}: {args.arm + ', ' if one and args.arm else ''}{who}, score over the run{tail}", x=0.01, ha="left", color=INK, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = ROOT / "docs" / (f"{args.name}-{args.arm}-trace.png" if args.arm else f"{args.name}-trace.png")
+    if one:
+        out = out.with_name(out.stem + f"-seed{seeds[0]}.png")
     fig.savefig(out, facecolor=SURFACE)
     plt.close(fig)
     print(out)
