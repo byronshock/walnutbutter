@@ -419,10 +419,15 @@ there is no distance to measure and nothing to be near, and what is left is
 a rule about zones (AUTHORITY.md §3.4): the input zone and the output zone
 never project onto each other -- not in, not out, not within -- and every
 other ordered pair projects, one way, with probability `--projection`
-(GOO_PROJECTION, 1 by default). `--goo` makes 60 neurons (GOO_COUNT; it was
-the grid's 80 while the two were compared): at projection 1, 3,300
-projections, an interior neuron hearing all 59 others and a zone neuron the
-44 of the interior. A copy has to cross the interior. (It began as every
+(GOO_PROJECTION, 0.2 since September 15, 2026, from two sweeps: the plateau
+in P runs 0.15 to 0.5 and 0.2 has the highest floor and the fastest goo
+that learns). `--goo` makes 60 neurons (GOO_COUNT; it was the grid's 80
+while the two were compared): about 650 projections at 0.2, the seed's
+choice of them, an interior neuron hearing about twelve and a zone neuron
+about nine. At projection 1 it is 3,300, an interior neuron hearing all 59
+others and a zone neuron the 44 of the interior -- the fully connected
+goo, which the sweeps found the worst value. A copy has to cross the
+interior. (It began as every
 ordered pair -- 3,540 at sixty, and goo 80 against the grid's 1,395 was the
 same neurons with four and a half times the wiring -- which is what the
 sweeps below ran on.)

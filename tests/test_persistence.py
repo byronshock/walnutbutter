@@ -146,7 +146,7 @@ def test_checkpoint_without_a_floor_restores_without_one(tmp_path):
 def test_a_checkpoint_carries_a_floor_per_neuron_once_a_container_scales_with_fan_in(tmp_path):
     """§5.2: the floor stopped being one scalar when goo started rescaling its potential axis."""
     from walnutbutter.goo import Goo
-    goo = Goo(count=24, across=6, seed=1, weight=None)
+    goo = Goo(count=24, across=6, seed=1, weight=None, projection=1.0)  # at P 1 an input of 24 hears exactly the 12 interior
     path = tmp_path / "goo.json"
     data = checkpoint(goo, path)
     assert data["scale_with_fan_in"] is True

@@ -76,7 +76,7 @@ at all.
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
 | GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
-| GOO_PROJECTION | 1 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project. *Byron, September 14, 2026.* 1 is the goo the fine sweep ran on with its zone block removed, and spends no draws on the topology; a starting value, Byron's to set |
+| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project. *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -876,13 +876,17 @@ are at THRESHOLD 0.2: $P$ 0.15 at 0.633, and $P$ 0.2 at 0.626 with a
 worst seed of 0.600 — the highest floor in either sweep, spread 0.017 —
 and THRESHOLD 0.2's row is the best of the four (0.607, five every-seed
 cells of nine, its best band 0.15–0.35 at 0.615), so GOO_THRESHOLD stays
-where it is.
+where it is. At $P$ 0.2 the wiring is the seed's: about 650 projections at
+sixty neurons, an interior neuron hearing about twelve and a zone neuron
+about nine, so by §5.2 they start near $\theta$ 0.13 and 0.10 — the
+network the sweep measured, not the 3,300-projection one described above.
 
 *The stable value.* $P$ **0.2**: inside the plateau with a level on either
 side that also has every seed learning at THRESHOLD 0.2 (0.15 and 0.25),
 one step clear of the cliff at 0.1, the highest floor anywhere, and the
 fastest goo that learns — 651 projections, 7,200 epochs a second, against
-1,642 and 4,500 at 0.5. GOO_PROJECTION is 1 in §1.2 until Byron sets it.
+1,642 and 4,500 at 0.5. *Set to 0.2 on September 15, 2026, on the word:
+§1.2.*
 
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
