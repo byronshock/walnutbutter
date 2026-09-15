@@ -348,6 +348,27 @@ of the question this container was built to ask. Not run: it is Byron's to
 call, and the drivers can run it as they stand (`docs/rust-sweep.py --goo
 --problem reaching_copy`).
 
+*Byron's reading, after the two sweeps (September 14, 2026): "I think we may
+actually have too many neurons. FOR NOW."* Counted as synapses per raw bit of
+task rather than as neurons, the day's evidence lines up behind it:
+
+| network | neurons | connections | synapses per raw bit | hebb, best seen |
+|---|---|---|---|---|
+| shallow_copy | 24 | 215 | ~54 | **0.978** (§6.7) |
+| reaching_copy | 80 | 3,122 | ~780 | 0.64 (§4.3) |
+| hex grid 8 × 10, reversal | 80 | 1,395 | ~349 | 0.502 |
+| goo 80, reversal | 80 | 6,320 | ~1,580 | 0.513 |
+
+One scalar reward spread over more synapses moves each of them less, and the
+one network that learns outright is the one with an order of magnitude fewer
+to move; reaching_copy, one hop but 780 a bit, gets partway. That is a
+"too many" story, and a depth story only secondarily. Recorded as a
+hypothesis and not as a change to §1.1: the default network stays at eighty
+neurons until this is measured. The test is a count sweep on hebbian goo —
+`--goo N` for $N$ in {8, 12, 16, 24, 32, 48, 64, 80}, ten seeds — because
+$N$ is goo's only knob, so nothing has to be re-tiled to vary it, and goo 16
+at 240 connections is shallow_copy's regime with no geometry at all. Not run.
+
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
