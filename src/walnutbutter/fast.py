@@ -16,7 +16,10 @@ the same bits. `compare()` is the harness for that.
 
 from __future__ import annotations
 
-from .constants import QUASH_K, SYNAPSE_TAU, WEIGHT_RANGE
+from .constants import (
+    HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, THRESHOLD_RANGE,
+    UNSTICK, UNSTICK_TARGET, WEIGHT_RANGE,
+)
 from .neuron import Neuron
 
 try:  # pragma: no cover - exercised only where the extension is built
@@ -91,6 +94,51 @@ def sync_explore(engine, explore_rng) -> None:
         explore_rng.setstate((3, tuple(state), None))
 
 
+class _Thresholds:
+    """Teacher.step's bookkeeping after the update, mirrored: learning.update_rates, homeostasis and unstick_outputs.
+
+    The Rust engine owns the potentials; the Teacher owns each neuron's running
+    firing rate and moves its threshold from that once an epoch, in Python, which
+    is cheap and keeps the arithmetic in the same order as the object engine's.
+    """
+
+    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, threshold_range,
+                 rate_memory=RATE_MEMORY):
+        self.engine, self.out = engine, out
+        self.rates = [n.rate for n in neurons]
+        self.thresholds = [n.threshold for n in neurons]
+        self.homeostasis, self.target_rate = homeostasis, target_rate
+        self.unstick, self.unstick_target = unstick, unstick_target
+        self.low, self.high = threshold_range
+        self.rate_memory = rate_memory
+        self.unstuck = 0
+
+    def step(self) -> None:
+        fired, forced = self.engine.fired_this_epoch(), self.engine.forced_flags()
+        rates, thresholds = self.rates, self.thresholds
+        for i in range(len(rates)):
+            if not forced[i]:
+                rates[i] += self.rate_memory * ((1.0 if fired[i] else 0.0) - rates[i])
+        moved = False
+        if self.homeostasis > 0:
+            for i in range(len(rates)):
+                if not forced[i]:
+                    thresholds[i] = max(self.low, min(self.high, thresholds[i] + self.homeostasis * (rates[i] - self.target_rate)))
+            moved = True
+        if self.unstick > 0:
+            for i in self.out:
+                if rates[i] > STUCK_ABOVE or rates[i] < STUCK_BELOW:
+                    thresholds[i] = max(self.low, min(self.high, thresholds[i] + self.unstick * (rates[i] - self.unstick_target)))
+                    self.unstuck += 1
+                    moved = True
+        if moved:
+            self.engine.set_thresholds(thresholds)
+
+    def stuck(self) -> tuple[int, int]:
+        """learning.stuck_neurons: how many are (almost) always on, and always off."""
+        return sum(1 for r in self.rates if r > STUCK_ABOVE), sum(1 for r in self.rates if r < STUCK_BELOW)
+
+
 def compare(grid, epochs=20, bits=None, *, teacher=None):
     """Run `epochs` on the object engine and on the Rust one, and report where they part.
 
@@ -99,10 +147,10 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     state and stepped alongside.
 
     With a `teacher` (a Teacher on this grid, RULE = reinforce, the row critic, late =
-    count, no trace, homeostasis and un-sticking off) each epoch is `teacher.epoch()` on
-    the object side and the same reward, advantage and §6.7 update mirrored on the Rust
-    side, so the perturb eligibility and its per-wave draws (§6.1) are checked as well as
-    the dynamics. The Rust engine is handed the teacher's own stream at the start and the
+    count, no trace) each epoch is `teacher.epoch()` on the object side and the same
+    reward, advantage, §6.7 update, firing-rate memory, homeostasis and un-sticking
+    mirrored on the Rust side, so the perturb eligibility and its per-wave draws (§6.1)
+    and the Teacher's threshold moves are checked as well as the dynamics. The Rust engine is handed the teacher's own stream at the start and the
     two then draw independently; that they land on the same bits, and on the same stream
     state at the end, is the test.
     """
@@ -113,8 +161,6 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     if teacher is not None:
         if teacher.rule != "reinforce" or teacher.critic != "row" or teacher.late != "count" or teacher.leaky:
             raise ValueError("compare mirrors the reinforce rule with the row critic, late = count and no trace only")
-        if teacher.homeostasis or teacher.unstick:
-            raise ValueError("compare cannot mirror homeostasis or un-sticking: switch them off on the teacher")
         if teacher.grid is not grid:
             raise ValueError("the teacher must be teaching this grid")
     engine, neurons, index = build(
@@ -126,6 +172,11 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     )
     edges = [c for neuron in neurons for c in neuron.outgoing]
     out = [index[neuron] for neuron in grid.output_row()]
+    book = None
+    if teacher is not None:
+        book = _Thresholds(engine, neurons, out, homeostasis=teacher.homeostasis, target_rate=teacher.target_rate,
+                           unstick=teacher.unstick, unstick_target=teacher.unstick_target,
+                           threshold_range=teacher.threshold_range)
     baseline = None
     parted = []
     for epoch in range(epochs):
@@ -150,7 +201,12 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
                 engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
             else:
                 engine.reinforce_hebb(reward - baseline, teacher.lr)
+            book.step()
             baseline += teacher.baseline_rate * (reward - baseline)
+            if [n.rate for n in neurons] != book.rates:
+                parted.append((epoch, "firing-rate memories differ"))
+            if [n.threshold for n in neurons] != book.thresholds:
+                parted.append((epoch, "thresholds differ after homeostasis / un-sticking"))
 
         mine = [n.spikes for n in neurons]
         theirs = list(engine.spike_counts())
@@ -204,7 +260,8 @@ def benchmark(grid, epochs=200, bits=None):
 
 
 def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
-          eligibility="hebb", sigma=0.0, seed=None):
+          eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
+          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, threshold_range=THRESHOLD_RANGE):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -221,6 +278,16 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     needs a positive `sigma` and draws its noise per wave (§6.1) from `random.Random(seed)`,
     the stream a Teacher with that seed would use, so a Rust run and a Python run of the
     same seed take the same draws. The row critic and late = count only.
+
+    `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
+    (§1.3), mirrored here at the constants the command line runs them at, so a
+    Rust run is the run `walnutbutter --seeds` would do; 0 switches either off,
+    which is what every rust-sweep before September 14, 2026 ran with.
+
+    Returns (mean score, trace, engine, report): the trace is every
+    `trace_every` epochs' score, or empty when that is 0, and the report holds
+    the mean over the last tenth of the run, the final firing-rate memories and
+    thresholds, and how many neurons ended stuck on and off.
     """
     import random
 
@@ -248,9 +315,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     places = grid.input_row()
     at = [index[neuron] for neuron in places]
     want_of = TARGETS[target]
+    book = _Thresholds(engine, neurons, out, homeostasis=homeostasis, target_rate=target_rate, unstick=unstick,
+                       unstick_target=unstick_target, threshold_range=threshold_range)
 
     baseline = None
-    total = 0.0
+    total = tail = 0.0
+    tenth = max(1, epochs // 10)
     trace = []
     for epoch in range(epochs):
         grid.reset()
@@ -273,9 +343,14 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
             engine.reinforce_perturb(reward - baseline, lr, sigma)
         else:
             engine.reinforce_hebb(reward - baseline, lr)
+        book.step()
         baseline += baseline_rate * (reward - baseline)
         total += reward
+        if epoch >= epochs - tenth:
+            tail += reward
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
-    engine.set_weights(engine.weights())  # no-op, but leaves the engine addressable by the caller
-    return total / epochs, trace, engine
+    on, off = book.stuck()
+    report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
+              "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck}
+    return total / epochs, trace, engine, report

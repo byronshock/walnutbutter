@@ -9,6 +9,10 @@ command line would build, then runs `fast.train`, which keeps the input and the 
 in Python's seeded stream and does the epoch and the weight update in Rust. Writes
 runs/<name>/<arm>.csv (a downsampled trace) and docs/<name>.md.
 
+`--goo [N]` runs goo (AUTHORITY.md §3.4) in place of the grid, its potential axis scaled with
+fan-in unless `--no-scale-with-fan-in`; the Teacher's homeostasis and un-sticking run at the
+constants the command line uses, so an arm here is the run `walnutbutter --seeds` would do.
+
 The reinforce rule with the row critic and late = count. `--eligibility hebb` (the default,
 sigma 0) or `--eligibility perturb`, which draws its noise per wave (§6.1) from the arm's
 seed -- the same stream a Teacher with that seed would use -- and `--sigma` is then a knob
@@ -55,6 +59,10 @@ def parse() -> argparse.Namespace:
         if knob != "seed":
             parser.add_argument(f"--{knob.replace('_', '-')}", type=float, nargs="+", default=None, metavar="V")
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
+    parser.add_argument("--goo", type=int, nargs="?", const=0, default=None, metavar="N",
+                        help="goo instead of the grid (§3.4): N neurons, or the default count with no number")
+    parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
+                        help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
     parser.add_argument("--eligibility", choices=("hebb", "perturb"), default="hebb",
                         help="what the reward acts on (§6.7): a Hebbian +-1, or the perturbation the neuron decided under")
     parser.add_argument("--epochs", type=int, default=1_000_000)
@@ -64,9 +72,10 @@ def parse() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def grid_of(problem: str, arm: dict, eligibility: str = "hebb"):
-    """The grid the command line would build for this problem, with the arm's knobs applied."""
+def grid_of(problem: str, arm: dict, eligibility: str = "hebb", goo: int | None = None, scale: bool = True):
+    """The network the command line would build for this problem, with the arm's knobs applied."""
     from walnutbutter.cli import apply_problem, build_parser
+    from walnutbutter.goo import DEFAULT_COUNT, Goo
     from walnutbutter.grid import GridOfNeurons
     from walnutbutter.neuron import Neuron
 
@@ -83,9 +92,14 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb"):
     apply_problem(args)
     Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
-    grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
-                         omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
-                         threshold=args.threshold, minimum_potential=args.minimum_potential)
+    if goo is not None:
+        grid = Goo(count=goo or DEFAULT_COUNT, across=args.across, weight=None, seed=int(arm["seed"]),
+                   permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
+                   scale_with_fan_in=scale)
+    else:
+        grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
+                             omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
+                             threshold=args.threshold, minimum_potential=args.minimum_potential)
     grid.coding, grid.population = args.coding, args.population
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.interval, grid.drive = args.interval, args.drive
@@ -101,7 +115,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility = job
+    arm, problem, epochs, trace_every, name, eligibility, goo, scale = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
 
@@ -109,19 +123,27 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
-    grid, args = grid_of(problem, arm, eligibility)
+    grid, args = grid_of(problem, arm, eligibility, goo, scale)
     patterns = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"]))  # drawn up front, §4.5: every arm at this
     started = time.perf_counter()                                           # seed sees the same epochs in the same order
-    mean, trace, _ = fast.train(grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every,
-                                patterns=patterns, eligibility=args.eligibility, sigma=args.sigma,
-                                seed=int(arm["seed"]))
+    mean, trace, _, report = fast.train(
+        grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns,
+        eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
+        homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
+        unstick_target=args.unstick_target, threshold_range=tuple(args.threshold_range),
+    )
     elapsed = time.perf_counter() - started
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["epoch", "score"])
         for k, score in enumerate(trace, start=1):
             writer.writerow([k * trace_every, f"{score:.6g}"])
-    return {"arm": arm_name(arm), "mean": mean, "seconds": round(elapsed), "epochs_per_second": round(epochs / elapsed)}
+    result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
+              "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
+              "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility,
+              "container": repr(grid) if goo is not None else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
+    path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
+    return result
 
 
 def grid_and_arms(args):
@@ -147,7 +169,8 @@ def summarise(args) -> None:
         print("nothing on disk yet")
         return
     axes = [k for k in swept if k != "seed"]
-    lines = [f"# {args.name}: {args.problem}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
+    container = ("goo" + (f" {args.goo}" if args.goo else "") + ("" if args.scale else ", flat")) if args.goo is not None else "hex grid"
+    lines = [f"# {args.name}: {args.problem} on the {container}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
              f"{args.eligibility} eligibility", ""]
     if len(axes) == 2:
         x, y = axes
@@ -182,7 +205,8 @@ def main() -> int:
         workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 2) - 1))
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
-        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility) for arm in arms]
+        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility, args.goo, args.scale)
+                for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)
