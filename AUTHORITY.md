@@ -894,6 +894,58 @@ less than 1, which would make "fully connected" one end of a density axis
 rather than the whole of goo, and whether the two zones should default to
 disjoint at all. Both are sweeps, and neither has been run.
 
+**Escape noise on this network — the $\Delta$ sweep (Byron, September 15,
+2026: "Please build and sweep Delta in {0.7 1.05 1.4} across 10 seeds for
+100000 intervals").** The rule is §5.2, the eligibility §6.7, the network
+the default of the paragraph above — goo 60 at P 0.2, GOO_THRESHOLD 0.2 —
+with ELIGIBILITY = hazard, $\sigma = 0$, LR and everything else at the
+constants, the same ten seeds and input streams as the default run, so the
+arms pair with it epoch by epoch (`docs/goo60-hazard-delta.md`,
+`goo60-hazard-delta-score.png`; the trace of seed 5 at 0.7 in
+`goo60-hazard-delta-delta0.7-goo60-trace-seed5.png`):
+
+| $\Delta$ | last tenth | sd | worst | best | seeds > 0.60 | stuck on / off | against hebb, paired on the seed |
+|---|---|---|---|---|---|---|---|
+| 0.7 | **0.658** | 0.032 | 0.601 | 0.705 | 10 | 0 / 0 | **+0.032**, $t = 3.3$, better on 8 of 10 |
+| 1.05 | 0.620 | 0.048 | 0.562 | 0.687 | 5 | 0 / 0 | −0.006, $t = -0.4$, 3 of 10 |
+| 1.4 | 0.567 | 0.030 | 0.523 | 0.614 | 2 | 0 / 0 | −0.058, $t = -5.0$, 0 of 10 |
+| hebb, the default run above | 0.626 | 0.026 | 0.600 | 0.688 | 10 | 0.1 / 0.0 | — |
+
+Three things, in order of weight.
+
+1. **The gradient rule learns, and at $\Delta = 0.7$ it beats the rule that
+   abandoned the gradient.** Every earlier form of REINFORCE on this
+   substance sat at chance (§6.1; perturb 0.514 on goo 60 under the count
+   read, above). The hazard eligibility at 0.7 is 0.658, above hebb's 0.626
+   on eight seeds of ten, every seed above 0.60 where hebb's floor was
+   0.600. The difference is the one §6.7 derived: the score is zero in
+   expectation at every margin and credits every decision, where perturb
+   kept one unit-variance draw per epoch.
+2. **Narrower is better, monotonically, across the whole sweep** —
+   $0.7 > 1.05 > 1.4$, each step significant paired on the seed ($t$ = 3.1
+   and 4.7) — and the best level is the edge of the range. The plateau, if
+   there is one, lies below 0.7. §5.2's table says why the wide levels
+   lose: at 1.4 an output held at the floor still shows a stray spike in
+   nearly half of epochs, and the count read scores that as on.
+3. **Nothing ends stuck.** Every hazard arm ends with no neuron stuck on
+   or off. The un-sticking of §1.3 still fired along the way — 72,520
+   nudges an arm at 0.7 against hebb's 102,254 — so a hazard neuron can
+   pin near 0 or 1 for a hundred epochs, but the draw and the nudge between
+   them always bring it back, where hebb's arms end with 0.1 stuck
+   on and 0.0 stuck off apiece.
+
+The best seed's trace (5 at 0.7, 0.705): its rolling mean crosses 0.55 at
+16,000 epochs, reaches 0.74 by 25,000, and holds between 0.65 and 0.83 for
+the rest of the run — learned in the first quarter and living after (§4.2).
+3,000–3,200 epochs a second an arm, 34 s a run: a third of hebb's 9,900 on
+the same goo, since the network is busier and every decision settles the
+traces of its synapses.
+
+*Not measured, and the next questions:* $\Delta$ below 0.7 (0.35, 0.5),
+where the trend points; LR under the hazard, left at hebb's 0.03 and never
+chosen for a score of this scale; and the bored clock (BORED_AFTER $> 0$) on
+top of the hazard, which §5.4 says composes and which no arm here ran.
+
 ## 4. Signalling — kept, on a schedule
 
 ### 4.1 The clock
@@ -2055,8 +2107,13 @@ conditional mean of §6.1's $\xi_j$ given the outcome) and the hebb rule
 centred on the neuron's own rate, Williams §8.4's $y - \bar y$, were the
 two smaller experiments proposed alongside this one; neither is built.
 
-*Measured:* the sweep of $\Delta \in \{0.7, 1.05, 1.4\}$ on copy, goo 60,
-ten seeds, 100,000 epochs (Byron, September 15, 2026), recorded in §3.4.
+*Measured (§3.4, September 15, 2026; Byron: "build and sweep Delta in {0.7
+1.05 1.4} across 10 seeds for 100000 intervals").* $\Delta = 0.7$ scores
+0.658 over ten seeds, **+0.032 on hebb** paired on the seed ($t = 3.3$, 8 of
+10), every seed above 0.60 and no neuron stuck or un-stuck; 1.05 ties hebb
+and 1.4 loses. It is the first gradient form on this substance to learn at
+all, and narrower is better across the range, so the next sweep is below
+0.7.
 
 ### 6.8 Earned activity — decided for now
 
