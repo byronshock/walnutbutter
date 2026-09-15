@@ -473,9 +473,17 @@ following at the grid's ratio (`docs/goo-count-threshold.md`, 300 arms):
 0.609, goo 80 0.524, t 6.5 -- **but the best cell of all is goo 80 at
 THRESHOLD 0.5**: 0.634, nine seeds of ten learning, not one neuron stuck on.
 The count was never the problem; the threshold for the fan-in was, and the
-linear scaling of §5.2 under-corrects by about 2x at eighty neurons. The
-axis stops where the big goos come alive, so the optimum is at 0.5 or past
-it.
+linear scaling of §5.2 under-corrects by about 2x at eighty neurons.
+
+Past that edge (`docs/goo-count-threshold-high.md`, goo 64 to 120 against
+THRESHOLD 0.5 to 2) there is **no optimum at all**: twenty cells at 0.56 to
+0.64 whose spread is the seed noise, over a sevenfold range of theta and a
+twofold range of count. The threshold's only job is to get a goo out of
+saturation. At goo 120 most of the goo can be silent -- 55 to 77 of 120
+neurons stuck off -- and the copy survives on the eight inputs projecting
+straight onto the eight outputs. Everything that escapes saturation lands at
+0.60-0.64, where the hebb eligibility also lands on reaching_copy: the
+ceiling is the rule's, not the network's.
 
 ## Learning
 

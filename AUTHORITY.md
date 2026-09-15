@@ -444,10 +444,72 @@ seed that ends at chance is not one that never caught: it learned with the
 others and held for 70,000 epochs, then lost it in the last 15,000. What
 "caught" means here is a state the network can also leave.
 
-*The next sweep, if it is wanted:* THRESHOLD in {0.5, 0.75, 1.0, 1.5} for
-$N$ in {48, 64, 80}, the floor following — 120 arms, about five minutes on
-the Rust loop. It would locate the optimum for the big goos and put a number
-on the exponent. Not run.
+**Swept past the edge (Byron, September 14, 2026: "sweep goo in {64, 80,
+100, 120} x threshold (and resulting floor) in {0.5 .75 1 1.5 2} for 100000
+epochs across 10 seeds").** The same conventions, 200 arms in 490 seconds;
+goo 120 at THRESHOLD 2 starts at $\theta$ 13.2 and a floor of −53.
+`docs/goo-count-threshold-high.md`, `goo-count-threshold-high-score.png`.
+
+| goo \ THRESHOLD | 0.5 | 0.75 | 1 | 1.5 | 2 |
+|---|---|---|---|---|---|
+| 64 | 0.572 | 0.632 | **0.643** | 0.605 | 0.612 |
+| 80 | 0.634 | 0.612 | 0.597 | 0.638 | 0.580 |
+| 100 | 0.632 | 0.563 | 0.603 | 0.615 | 0.587 |
+| 120 | 0.620 | 0.618 | 0.617 | 0.623 | 0.637 |
+| *stuck off, of 120* | 2 | 77 | 66 | 66 | 55 |
+
+**A plateau, and no optimum to find.** Twenty cells with a grand mean of
+0.612; the standard deviation of the cell means is 0.023 and the mean
+standard error within a cell is 0.020 — the spread between cells is the
+spread within them. Row means run 0.600 to 0.623 over 64 to 120 neurons,
+column means 0.604 to 0.620 over $\theta$ from 1.75 to 13.2. Paired on the
+seed, the best cell here (goo 64 at 1) against the best of the last sweep
+(goo 80 at 0.5) is +0.010, $t = 0.3$; goo 120 at 2 against goo 64 at 1 is
+−0.006, $t = −0.2$; the biggest goo at its best against the smallest at its
+best is +0.028, $t = 1.1$. Once a goo is past the saturation edge, neither
+its count nor its threshold moves the score, over a twofold range of one
+and a sevenfold range of the other. (Goo 80 at 0.5 ran in both sweeps, on
+the same seeds and streams, and landed on the same ten numbers to the last
+bit.)
+
+So the exponent question above has its answer, and the answer is not a
+number: **the threshold's only job is to get a goo out of saturation, and
+any threshold that does is as good as any other.** What §5.2's linear rule
+got wrong at 80 neurons was not a slope but an offset — 1.10 is below the
+edge and 2.19 above it — and above the edge the plateau is flat. Read from
+the stuck-on counts, the edge sits near $\theta \approx 0.025\,d$ for
+$d \ge 63$ (between 1.3 and 1.75 at 63 incoming synapses, 1.3 and 2.2 at 79,
+at or below 2.75 at 99 and 3.3 at 119), against the rule's
+$0.25/18 = 0.014\,d$; a goo of 40 or fewer sits below its edge at every
+threshold tried. So the rule's shape is right from 64 up and its slope is
+about half what the edge wants, and the edge, not an optimum, is the thing
+worth a rule. §5.2 stands until Byron moves it.
+
+**The goo can go dark and the copy survives.** At goo 120 the stuck-*off*
+count runs 2, 77, 66, 66, 55 of 120 as THRESHOLD goes 0.5 to 2 — from 0.75
+up, most of the goo is silent through the whole last tenth — and the score
+holds at 0.617–0.637 regardless. Copy on goo needs no interior: eight inputs
+project straight onto eight outputs, one hop, and the un-sticking keeps
+those eight alive while the other hundred-odd fall quiet. On this task the
+interior neurons are passengers, which is what a one-hop task on an
+all-to-all network ought to show, and it is why this plateau sits where
+reaching_copy's does (0.64, §4.3): that is the grid's own one-hop
+configuration.
+
+**The ceiling is the rule's, not the network's.** Every configuration that
+escapes saturation — 24 neurons or 120, $\theta$ 0.32 or 13 — lands at
+0.60–0.64 at 100,000 epochs, where the hebb eligibility also lands on
+reaching_copy, and its shape over the run is a fast catch and a long drift.
+That is what the reinforce rule with the hebb eligibility does on a one-hop
+copy, whatever it is given to do it with. Moving past it is a question about
+the rule (§6.7), not about the container, the count or the threshold — and
+the container has now done the one thing it was built to do, which is to
+say so with the geometry out of the way.
+
+*The one cell that drops*, goo 100 at 0.75 at 0.563, is inside the seed
+range of its neighbours (0.498–0.666 against 0.570–0.663 and 0.500–0.668),
+and is the sweep's reminder that a cell is ten seeds of which some catch,
+some do not, and some catch and let go.
 
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
@@ -1039,12 +1101,17 @@ two hex rings at REACH 2. A neuron wired like that cell keeps both exactly.
 The rule is linear because that is what "scales with fan-in" says without
 further instruction.
 
-*Measured, September 14, 2026 (§3.4, the count × threshold sweep):* linear
-under-corrects. On copy under hebb, goo 80 saturates at every THRESHOLD up
-to 0.3 — $\theta$ up to 1.32 — and comes alive at 0.5, $\theta$ 2.19,
-twice what this rule gives it, scoring 0.634 with nothing stuck; at every
-count measured the threshold that stops a goo saturating grows faster than
-its fan-in. The rule stands as written until Byron moves it.
+*Measured, September 14, 2026 (§3.4, two count × threshold sweeps):* the
+rule's shape is right and its slope is about half what is needed. On copy
+under hebb, goo 80 saturates at every THRESHOLD up to 0.3 — $\theta$ up to
+1.32 — and comes alive at 0.5, $\theta$ 2.19; read from the stuck-on counts
+the saturation edge sits near $\theta \approx 0.025\,d$ from 63 incoming
+synapses up, against this rule's $0.014\,d$, and a goo of 40 or fewer never
+reaches its edge. Above the edge nothing moves: from $\theta$ 1.75 to 13.2
+and 64 to 120 neurons the score is a flat 0.60–0.64, so there is no optimum
+to scale toward, only an edge to clear. The rule stands as written until
+Byron moves it; what it would move to is a slope near 0.025, or a threshold
+set from the edge rather than from the grid.
 
 **The floor moves because it is not a second decision.** $\theta$ and
 $p^{\min}$ are two points on one axis, and it is the axis being rescaled.
