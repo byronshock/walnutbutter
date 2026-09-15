@@ -477,13 +477,16 @@ number: **the threshold's only job is to get a goo out of saturation, and
 any threshold that does is as good as any other.** What §5.2's linear rule
 got wrong at 80 neurons was not a slope but an offset — 1.10 is below the
 edge and 2.19 above it — and above the edge the plateau is flat. Read from
-the stuck-on counts, the edge sits near $\theta \approx 0.025\,d$ for
-$d \ge 63$ (between 1.3 and 1.75 at 63 incoming synapses, 1.3 and 2.2 at 79,
-at or below 2.75 at 99 and 3.3 at 119), against the rule's
-$0.25/18 = 0.014\,d$; a goo of 40 or fewer sits below its edge at every
-threshold tried. So the rule's shape is right from 64 up and its slope is
-about half what the edge wants, and the edge, not an optimum, is the thing
-worth a rule. §5.2 stands until Byron moves it.
+the stuck-on counts, the edge sits near $\theta \approx 0.028\,d$ for
+$d \ge 63$ — at that slope 79, 99 and 119 incoming synapses leave 0, 0 and
+11 of their neurons stuck on and 63 leaves 14 of 64, against 44 of 64 and
+61 of 80 one step below it — against the rule's $0.25/18 = 0.014\,d$. So the
+rule's shape is right from 64 up and its slope is half what the edge wants,
+and the edge, not an optimum, is the thing worth a rule. The small goos say
+what the edge costs: 24 and 40 are 15–40% stuck on at every threshold tried
+and score 0.55–0.61 regardless, so partial saturation is cheap and it is the
+wholesale saturation of the big goos at the default — 60–76% on — that
+costs everything. §5.2 stands until Byron moves it.
 
 **The goo can go dark and the copy survives.** At goo 120 the stuck-*off*
 count runs 2, 77, 66, 66, 55 of 120 as THRESHOLD goes 0.5 to 2 — from 0.75
@@ -506,10 +509,12 @@ the rule (§6.7), not about the container, the count or the threshold — and
 the container has now done the one thing it was built to do, which is to
 say so with the geometry out of the way.
 
-*The one cell that drops*, goo 100 at 0.75 at 0.563, is inside the seed
-range of its neighbours (0.498–0.666 against 0.570–0.663 and 0.500–0.668),
-and is the sweep's reminder that a cell is ten seeds of which some catch,
-some do not, and some catch and let go.
+*The one cell that drops*, goo 100 at 0.75 at 0.563, is real and isolated:
+−0.069 against its neighbour at 0.5 paired on the seed, $t = 2.6$, four
+seeds of ten above 0.55 against ten of ten — and 0.603 on its other side at
+1. One cell of twenty separates from its neighbours, and it is the sweep's
+reminder that a cell is ten seeds of which some catch, some do not, and
+some catch and let go.
 
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
@@ -1105,13 +1110,14 @@ further instruction.
 rule's shape is right and its slope is about half what is needed. On copy
 under hebb, goo 80 saturates at every THRESHOLD up to 0.3 — $\theta$ up to
 1.32 — and comes alive at 0.5, $\theta$ 2.19; read from the stuck-on counts
-the saturation edge sits near $\theta \approx 0.025\,d$ from 63 incoming
-synapses up, against this rule's $0.014\,d$, and a goo of 40 or fewer never
-reaches its edge. Above the edge nothing moves: from $\theta$ 1.75 to 13.2
-and 64 to 120 neurons the score is a flat 0.60–0.64, so there is no optimum
-to scale toward, only an edge to clear. The rule stands as written until
-Byron moves it; what it would move to is a slope near 0.025, or a threshold
-set from the edge rather than from the grid.
+the saturation edge sits near $\theta \approx 0.028\,d$ from 63 incoming
+synapses up, against this rule's $0.014\,d$; a goo of 24 or 40 is 15–40%
+stuck on at every threshold tried and scores well regardless, so what costs
+is wholesale saturation, not partial. Above the edge nothing moves: from
+$\theta$ 1.75 to 13.2 and 64 to 120 neurons the score is a flat 0.60–0.64,
+so there is no optimum to scale toward, only an edge to clear. The rule
+stands as written until Byron moves it; what it would move to is a slope
+near 0.028, or a threshold set from the edge rather than from the grid.
 
 **The floor moves because it is not a second decision.** $\theta$ and
 $p^{\min}$ are two points on one axis, and it is the axis being rescaled.
