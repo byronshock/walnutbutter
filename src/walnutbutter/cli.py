@@ -24,6 +24,7 @@ from .constants import (
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
+    THRESHOLD_FAN_IN,
     THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
 )
@@ -100,6 +101,25 @@ def build_parser() -> argparse.ArgumentParser:
         f"size). The first --across neurons are the input zone and the last --across the output, because with "
         f"no rows there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is "
         f"no geometry to draw, so it cannot be shown",
+    )
+    parser.add_argument(
+        "--scale-with-fan-in",
+        "--scale_with_fan_in",
+        dest="scale_with_fan_in",
+        action="store_true",
+        default=None,
+        help="rescale each neuron's potential axis by its in-degree over THRESHOLD_FAN_IN (AUTHORITY.md §5.2): "
+        "--threshold and --minimum-potential are quoted at an interior hex cell's 18 incoming synapses, so a "
+        "neuron with four times the fan-in starts four times as far from zero in both directions. On by default "
+        "for goo and off for every other container, because turning it on for the grid would move every "
+        "threshold every result to date was measured at",
+    )
+    parser.add_argument(
+        "--no-scale-with-fan-in",
+        "--no_scale_with_fan_in",
+        dest="scale_with_fan_in",
+        action="store_false",
+        help="run goo at a flat --threshold and --minimum-potential, as every other container does",
     )
     parser.add_argument(
         "--engine",
@@ -803,8 +823,22 @@ def _run(args: argparse.Namespace) -> int:
                     count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
                     permute=not args.no_permute, weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
+                    scale_with_fan_in=args.scale_with_fan_in is not False,
                 )
                 print(f"{grid!r}: {grid.mean_out_degree():.0f} outgoing per neuron, every one of them", file=sys.stderr)
+                first = grid.all_neurons()[0]
+                if grid.scale_with_fan_in_on:
+                    print(
+                        f"fan-in scaling (§5.2): x{grid.fan_in_scale():.2f} on the potential axis, so threshold "
+                        f"{first.threshold:.3f} and floor {first.minimum_potential:.3f}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"fan-in scaling off: a flat threshold {first.threshold:g} and floor "
+                        f"{first.minimum_potential:g} at {grid.count - 1} incoming synapses",
+                        file=sys.stderr,
+                    )
                 if grid.zones_overlap():
                     print("goo: the input and output zones overlap -- it is reading what it writes", file=sys.stderr)
             elif args.layers is not None:
@@ -825,6 +859,13 @@ def _run(args: argparse.Namespace) -> int:
                 grid.connect_within(reach=args.reach, weight=args.weight)
             else:
                 grid = GridOfNeurons(**settings, reach=args.grid_reach)
+            if args.scale_with_fan_in and args.goo is None and not loaded:
+                grid.scale_with_fan_in(args.threshold, args.minimum_potential)
+                print(
+                    f"fan-in scaling (§5.2): every threshold and floor rescaled by in-degree / "
+                    f"{THRESHOLD_FAN_IN:g}",
+                    file=sys.stderr,
+                )
             if args.input_cells and not loaded:
                 grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
@@ -1069,6 +1110,7 @@ def _seed_worker(job: dict) -> dict:
             count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
             seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
             minimum_potential=settings["minimum_potential"],
+            scale_with_fan_in=job.get("scale_with_fan_in") is not False,
         )
     elif job.get("lattice"):
         settings = job["settings"]
@@ -1084,6 +1126,8 @@ def _seed_worker(job: dict) -> dict:
             grid.set_input_cells(job["input_cells"])
     if job.get("layers") and job.get("goo") is None:
         grid = HexColumns(layers=job["layers"], **job["settings"], seed=seed)
+    if job.get("scale_with_fan_in") and job.get("goo") is None:
+        grid.scale_with_fan_in(job["settings"]["threshold"], job["settings"]["minimum_potential"])
     if job.get("ecc"):
         grid.use_ecc(job["ecc"])
     Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
@@ -1184,6 +1228,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
                      "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "scale_with_fan_in": args.scale_with_fan_in,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,

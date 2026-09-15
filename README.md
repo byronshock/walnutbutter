@@ -432,13 +432,24 @@ even when it was built without a seed. `--omega`, `--reach` and `--rows` do
 not reach it, and it has no geometry, so it runs headless and cannot be
 shown.
 
-**It saturates at the grid's constants, and that is the point of building
-it.** Each neuron gets 79 incoming synapses on [-1, 1] against a threshold
-of 0.25, where the grid gives it about 18: 97% of neurons fire every epoch
-and the output zone is stuck on, so the read carries nothing. Goo has not
-been given a threshold of its own yet, and comparing it with the grid before
-it has one would compare a tuned network with an untuned one. AUTHORITY.md
-§3.4 sets out the choice and leaves it open.
+**Its potential axis scales with fan-in**, and nothing else's does
+(AUTHORITY.md §5.2). THRESHOLD and MINIMUM_POTENTIAL are quoted at an
+interior hex cell's 18 incoming synapses; a goo neuron has 79, so it starts
+at a threshold of 0.25 x 79/18 = 1.097 and a floor of -4.389, the ratio
+between them held at the grid's -4.
+
+Both move, because they are two points on one axis and it is the axis being
+rescaled. Unscaled, goo's output zone is on 100% of the time whatever the
+input and the read carries nothing at all. Scaling the threshold alone
+barely helps -- still 99% on -- because the recurrence sustains the activity,
+and raising the threshold against an unmoved floor caps inhibition while
+excitation piles up. Moving both lands it: the output zone varies, and goo
+then produces more distinct output words than the grid does.
+
+That is activity, not learning. Whether the rescaled goo actually *learns*
+is unmeasured -- 1,500 epochs leaves the grid at chance too -- and it is the
+sweep this container was built to run. `--no-scale-with-fan-in` runs goo
+flat, and `--scale-with-fan-in` offers the rule to any other container.
 
 ## Learning
 

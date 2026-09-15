@@ -8,6 +8,7 @@ from walnutbutter.cli import build_parser
 from walnutbutter.columns import HexColumns
 from walnutbutter.dopamine import Dopamine
 from walnutbutter.goo import DEFAULT_COUNT, Goo
+from walnutbutter.network import Network
 from walnutbutter.grid import GridOfNeurons
 from walnutbutter.learning import Teacher, reinforce
 from walnutbutter.monitor import main
@@ -60,6 +61,17 @@ def test_goo_reads_across_as_its_zone_width_and_across_times_rows_as_its_count()
     assert d["count"] == DEFAULT_COUNT == C.ACROSS * C.ROWS  # the default network's count, so the two compare
     assert build_parser().parse_args(["--goo"]).goo == C.ACROSS * C.ROWS
     assert build_parser().parse_args([]).goo is None  # no goo unless asked for
+
+
+def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
+    """§5.2: THRESHOLD and MINIMUM_POTENTIAL are quoted per THRESHOLD_FAN_IN incoming synapses."""
+    assert C.THRESHOLD_FAN_IN == 18.0  # an interior hex cell's two rings at REACH 2
+    assert defaults_of(Network.scale_with_fan_in)["reference"] == C.THRESHOLD_FAN_IN
+    assert defaults_of(Goo)["scale_with_fan_in"] is True  # goo scales; nothing else does yet
+    args = build_parser().parse_args([])
+    assert args.scale_with_fan_in is None  # unset: goo scales, every other container does not
+    assert build_parser().parse_args(["--scale-with-fan-in"]).scale_with_fan_in is True
+    assert build_parser().parse_args(["--no-scale-with-fan-in"]).scale_with_fan_in is False
 
 
 def test_the_teacher_and_the_rule_read_the_constants():

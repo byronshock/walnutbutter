@@ -73,6 +73,8 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "shortcuts": [] if lattice else [[c.source.name, c.target.name] for c in grid.small_world_connections()],
         "weights": [grid.connections[i].weight for i in range(1, len(grid.connections) + 1)],
         "thresholds": [n.threshold for n in grid.all_neurons()],
+        # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
+        "floors": [n.minimum_potential for n in grid.all_neurons()],
         "rates": [n.rate for n in grid.all_neurons()],
         # the state the clock leaves behind, so a resumed run continues rather than restarts
         "potentials": [n.potential for n in grid.all_neurons()],
@@ -88,6 +90,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
     }
     if goo:
         data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
+        data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -189,6 +192,7 @@ def _restore_goo(data: dict) -> Goo:
         permute=False,
         weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
         minimum_potential=data.get("minimum_potential", -1.0),
+        scale_with_fan_in=data.get("scale_with_fan_in", True),
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)
@@ -300,6 +304,8 @@ def _restore_clock(grid, data: dict) -> None:
     grid.interval = data.get("interval", grid.interval)
     grid.horizon = data.get("horizon", grid.time)
     neurons = list(grid.all_neurons())
+    for neuron, floor in zip(neurons, data.get("floors", [])):
+        neuron.minimum_potential = floor  # older checkpoints have none and keep the scalar they were built with
     for neuron, potential in zip(neurons, data.get("potentials", [])):
         neuron.potential = potential
     for neuron, fired_at in zip(neurons, data.get("fired_at", [])):

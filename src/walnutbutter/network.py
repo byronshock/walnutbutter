@@ -15,7 +15,7 @@ from typing import Iterable
 
 from .constants import (
     EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
-    RATE_ON, SYNAPSE_TAU,
+    RATE_ON, SYNAPSE_TAU, THRESHOLD_FAN_IN,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
@@ -103,6 +103,34 @@ class Network:
 
     def get_neuron_at(self, place: int, row: int) -> Neuron | None:  # pragma: no cover - overridden
         raise NotImplementedError
+
+    def scale_with_fan_in(
+        self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN
+    ) -> None:
+        """Rescale each neuron's potential axis by its in-degree (AUTHORITY.md §5.2).
+
+        THRESHOLD and MINIMUM_POTENTIAL are quoted at `reference` incoming
+        synapses -- an interior hex cell's two rings -- so a neuron wired like
+        that cell keeps 0.25 and -1 exactly and one with four times the fan-in
+        starts four times as far from zero in both directions.
+
+        The floor moves with the threshold because it is not a second
+        decision: the two are points on one axis and it is the axis being
+        rescaled. Scaling the threshold alone squeezes the usable negative
+        range from four times the threshold to 0.91 times it, so inhibition
+        hits its cap while excitation keeps piling up -- which is most of what
+        saturates goo (§3.4).
+
+        Call it after the wiring, because it reads the in-degree. These are
+        starting values only: homeostasis and un-sticking move a threshold
+        from here.
+        """
+        if reference <= 0:
+            raise ValueError(f"the reference fan-in must be positive, got {reference}")
+        for neuron in self.all_neurons():
+            scale = len(neuron.incoming) / reference
+            neuron.threshold = threshold * scale
+            neuron.minimum_potential = minimum_potential * scale
 
     def clip_weight(self, weight: float) -> float:
         """Keep a weight inside the network's weight_range."""

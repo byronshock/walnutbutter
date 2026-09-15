@@ -23,7 +23,11 @@ WEIGHT_RANGE = (-1.0, 1.0)  # random weights are drawn from this range, and lear
 WEIGHT_EPSILON = 0.001  # --epsilon: the smallest weight allowed under --positive-weights, range (epsilon, 1)
 
 # --- the neuron: activation and the clock (nominal milliseconds) ----------------
-THRESHOLD = 0.25  # total weighted input a neuron needs before it fires
+THRESHOLD = 0.25  # total weighted input a neuron needs before it fires, quoted at THRESHOLD_FAN_IN incoming synapses
+THRESHOLD_FAN_IN = 18.0  # the in-degree THRESHOLD is quoted at: an interior hex cell's two rings at REACH 2 (AUTHORITY.md
+# §5.2, Byron, September 14, 2026). A container that scales starts neuron j at THRESHOLD * d_j / THRESHOLD_FAN_IN, so a
+# neuron wired like that cell keeps 0.25 exactly and goo's 79 incoming synapses ask proportionally more. Goo scales;
+# nothing else does yet, because turning it on for the grid would move every threshold every result was measured at.
 MINIMUM_POTENTIAL = -1.0  # floor on a potential: inhibition and carried-over charge can go no lower
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal

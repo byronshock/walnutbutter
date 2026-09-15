@@ -5,7 +5,7 @@ import json
 import pytest
 
 from walnutbutter.cli import cli_main
-from walnutbutter.constants import ACROSS, ROWS, WEIGHT_RANGE
+from walnutbutter.constants import ACROSS, ROWS, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -216,3 +216,70 @@ def test_goo_is_a_container_of_its_own_and_will_not_be_mixed_with_another(capsys
     assert "cannot be combined with --nodes" in capsys.readouterr().err
     assert cli_main(["--goo", "--layers", "3", "--headless", "--epochs", "2", "--no-save"]) == 2
     assert "cannot be combined with --layers" in capsys.readouterr().err
+
+
+# --- the potential axis scales with fan-in (AUTHORITY.md §5.2) ------------
+
+def test_goo_rescales_its_potential_axis_by_fan_in_and_keeps_the_grids_ratio():
+    goo = Goo(seed=1)
+    scale = 79 / THRESHOLD_FAN_IN  # in-degree 79 over the in-degree THRESHOLD is quoted at
+    assert goo.fan_in_scale() == pytest.approx(scale) and goo.scale_with_fan_in_on
+    thetas = {n.threshold for n in goo.all_neurons()}
+    floors = {n.minimum_potential for n in goo.all_neurons()}
+    assert len(thetas) == len(floors) == 1  # homogeneous: every goo neuron has the same fan-in
+    assert thetas.pop() == pytest.approx(0.25 * scale) and floors.pop() == pytest.approx(-1.0 * scale)
+    # the floor is not a second decision: it is the same axis, so the ratio is the grid's -4 exactly
+    assert all(n.minimum_potential / n.threshold == pytest.approx(-4.0) for n in goo.all_neurons())
+
+
+def test_the_scaling_can_be_switched_off_and_then_goo_is_flat():
+    goo = Goo(seed=1, scale_with_fan_in=False)
+    assert not goo.scale_with_fan_in_on
+    assert {n.threshold for n in goo.all_neurons()} == {0.25}
+    assert {n.minimum_potential for n in goo.all_neurons()} == {-1.0}
+
+
+def test_a_neuron_wired_like_an_interior_grid_cell_is_left_exactly_where_it_was():
+    """§5.2: THRESHOLD and MINIMUM_POTENTIAL are quoted at THRESHOLD_FAN_IN, so that fan-in is a fixed point."""
+    goo = Goo(count=int(THRESHOLD_FAN_IN) + 1, across=4, seed=1)  # in-degree exactly THRESHOLD_FAN_IN
+    assert goo.fan_in_scale() == pytest.approx(1.0)
+    assert all(n.threshold == pytest.approx(0.25) for n in goo.all_neurons())
+    assert all(n.minimum_potential == pytest.approx(-1.0) for n in goo.all_neurons())
+
+
+def test_the_rule_is_available_to_any_container_and_reads_each_neurons_own_fan_in():
+    """Off by default everywhere but goo, because turning it on moves every threshold results were measured at."""
+    from walnutbutter.grid import GridOfNeurons
+    grid = GridOfNeurons(seed=1, weight=None)
+    assert {n.threshold for n in grid.all_neurons()} == {0.25}  # untouched until asked
+    grid.scale_with_fan_in(0.25, -1.0)
+    degrees = {len(n.incoming) for n in grid.all_neurons()}
+    assert len(degrees) > 1  # a grid is not homogeneous: corners have fewer neighbours than the interior
+    assert len({round(n.threshold, 9) for n in grid.all_neurons()}) == len(degrees)
+    for n in grid.all_neurons():
+        assert n.threshold == pytest.approx(0.25 * len(n.incoming) / THRESHOLD_FAN_IN)
+        assert n.minimum_potential / n.threshold == pytest.approx(-4.0)
+    with pytest.raises(ValueError, match="reference fan-in must be positive"):
+        grid.scale_with_fan_in(0.25, -1.0, reference=0)
+
+
+def test_both_engines_see_the_scaled_axis():
+    pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from walnutbutter.arrays import ArrayNetwork
+    mesh = Goo(count=30, across=6, seed=2, weight=None)
+    net = ArrayNetwork(mesh)
+    assert net.threshold_v.tolist() == [n.threshold for n in mesh.all_neurons()]
+    assert net.floor.tolist() == [n.minimum_potential for n in mesh.all_neurons()]
+
+
+def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
+    assert cli_main(["--goo", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "fan-in scaling (§5.2): x4.39 on the potential axis, so threshold 1.097 and floor -4.389" in capsys.readouterr().err
+    assert cli_main(["--goo", "--no-scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "fan-in scaling off: a flat threshold 0.25 and floor -1" in capsys.readouterr().err
+
+
+def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):
+    assert cli_main(["--scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "every threshold and floor rescaled by in-degree / 18" in capsys.readouterr().err

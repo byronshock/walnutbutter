@@ -137,10 +137,24 @@ def test_checkpoint_without_a_floor_restores_without_one(tmp_path):
     grid = GridOfNeurons(across=6, rows=4, seed=1)
     path = tmp_path / "w.json"
     data = checkpoint(grid, path)
-    del data["minimum_potential"]
+    del data["minimum_potential"], data["floors"]  # a file old enough to lack the scalar lacks the per-neuron list too (§5.2)
     path.write_text(json.dumps(data))
     restored, _ = restore(path)
     assert all(n.minimum_potential == float("-inf") for n in restored.neurons.values())
+
+
+def test_a_checkpoint_carries_a_floor_per_neuron_once_a_container_scales_with_fan_in(tmp_path):
+    """§5.2: the floor stopped being one scalar when goo started rescaling its potential axis."""
+    from walnutbutter.goo import Goo
+    goo = Goo(count=24, across=6, seed=1, weight=None)
+    path = tmp_path / "goo.json"
+    data = checkpoint(goo, path)
+    assert data["scale_with_fan_in"] is True
+    assert data["floors"] == [n.minimum_potential for n in goo.all_neurons()]
+    assert data["floors"][0] == pytest.approx(-1.0 * 23 / 18)  # in-degree 23 over the reference
+    restored, _ = restore(path)
+    assert [n.minimum_potential for n in restored.all_neurons()] == data["floors"]
+    assert [n.threshold for n in restored.all_neurons()] == data["thresholds"]
 
 
 def test_checkpoint_records_the_unstick_settings(tmp_path):

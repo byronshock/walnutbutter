@@ -26,6 +26,13 @@ permits rather than prevents.
 
 Nothing is drawn to decide the topology: `count` fixes it completely, and
 the seeded stream is spent only on the weights and the permutation.
+
+Goo is the one container that rescales its potential axis by fan-in
+(AUTHORITY.md §5.2): THRESHOLD and MINIMUM_POTENTIAL are quoted at an
+interior hex cell's eighteen incoming synapses, and goo neurons have far
+more, so a goo neuron starts proportionally harder to fire and proportionally
+harder to silence. The floor moves with the threshold because the two are
+points on one axis; §3.4 records what that does and does not buy.
 """
 
 from __future__ import annotations
@@ -33,7 +40,7 @@ from __future__ import annotations
 import random
 from typing import Iterator
 
-from .constants import ACROSS, MINIMUM_POTENTIAL, ROWS, THRESHOLD, WEIGHT_RANGE
+from .constants import ACROSS, MINIMUM_POTENTIAL, ROWS, THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from .connection import Connection
 from .network import Network
 from .neuron import Neuron
@@ -55,6 +62,7 @@ class Goo(Network):
         permute: bool = True,
         weight_range: tuple[float, float] = WEIGHT_RANGE,
         minimum_potential: float = MINIMUM_POTENTIAL,
+        scale_with_fan_in: bool = True,
     ):
         """Make the goo and wire it.
 
@@ -71,6 +79,12 @@ class Goo(Network):
         of the input zone shows, once and for the life of the goo. There are
         no shortcuts to draw and no positions to place, so `seed` reaches
         only those weights, that permutation and the inputs.
+
+        `scale_with_fan_in` rescales each neuron's potential axis by its
+        in-degree over THRESHOLD_FAN_IN (AUTHORITY.md §5.2) -- the threshold
+        and the floor together -- which is on here and off in every other
+        container: goo's 79 incoming synapses are not asking the same question
+        of 0.25 and -1 that an interior grid cell's 18 are.
         """
         if across < 1:
             raise ValueError(f"goo needs an input zone at least one neuron wide, got {across}")
@@ -90,6 +104,9 @@ class Goo(Network):
         self._init_network(across, weight_range)
         self._make(count)
         self._wire()
+        self.scale_with_fan_in_on = scale_with_fan_in
+        if scale_with_fan_in:
+            self.scale_with_fan_in(threshold, minimum_potential)  # after the wiring: it reads the in-degree
         if permute:
             self._rng.shuffle(self.permutation)
 
@@ -164,6 +181,10 @@ class Goo(Network):
 
     def __getitem__(self, index: int) -> Neuron:
         return self.neurons[index]
+
+    def fan_in_scale(self) -> float:
+        """How far the potential axis is stretched: (count - 1) / THRESHOLD_FAN_IN, the same for every goo neuron."""
+        return (self.count - 1) / THRESHOLD_FAN_IN
 
     def __repr__(self) -> str:
         zones = f"{self.across} in, {self.across} out"

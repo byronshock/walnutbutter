@@ -71,9 +71,10 @@ REACH do not reach it at all.
 
 | constant | value | meaning |
 |---|---|---|
-| THRESHOLD | 0.25 | $\theta$ every neuron starts with |
+| THRESHOLD | 0.25 | $\theta$ every neuron starts with, quoted at THRESHOLD_FAN_IN incoming synapses (§5.2) |
+| THRESHOLD_FAN_IN | 18 | the in-degree THRESHOLD and MINIMUM_POTENTIAL are quoted at: an interior hex cell's two rings at REACH 2. A container that scales rescales neuron $j$'s whole potential axis by $d_j / \text{THRESHOLD\_FAN\_IN}$ (§5.2); goo does, nothing else does yet |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
-| MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower |
+| MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
@@ -241,32 +242,46 @@ count differ in exactly two things — locality and depth — and whatever the
 grid scores above goo is what those two are worth. If it scores nothing
 above goo, the lattice has been decoration.
 
-**Goo saturates at the grid's constants, and the first thing to sweep is
-not goo** *(measured on building it, September 14, 2026: 50 epochs at the
-defaults, seed 7, one run each — a check on the container, not a result).*
-Each neuron now has 79 incoming synapses drawn uniformly from [−1, 1]
-against a THRESHOLD of 0.25, where the grid gives it about 18. The
-arithmetic is not subtle and neither is the outcome:
+**Goo saturated at the grid's constants, and the fix was the whole potential
+axis** *(September 14, 2026; 120 epochs, 5 seeds, no learning — a check on
+the container, not a result).* Each goo neuron has 79 incoming synapses drawn
+uniformly from [−1, 1] against a THRESHOLD of 0.25, where the grid gives it
+about 18. "Distinct words" counts how many different patterns the output zone
+produced across a run, per seed: 1 means the output never changed at all,
+whatever the input.
 
-| | fires per epoch | output zone on |
-|---|---|---|
-| hex grid, 8 × 10 | 73.4% of neurons | 51.7% |
-| goo, 80 neurons | 97.2% of neurons | **100%** |
+| | fires per epoch | output zone on | distinct words |
+|---|---|---|---|
+| hex grid, 8 × 10 | 87.0% | 76.4% | 2.8 |
+| goo, no scaling | 98.0% | **100%** | **1.0** |
+| goo, threshold scaled only | 98.9% | 99.1% | 2.8 |
+| goo, threshold and floor (§5.2) | 90.4% | 91.3% | **8.2** |
 
-The output zone is stuck on every epoch whatever the input, so the read
-carries no information and accuracy sits at chance. That is not goo failing
-the comparison — it is goo never having been given a threshold. Every
-constant in §1.2 was chosen against the grid's fan-in, and the one goo
-changes most is fan-in: comparing the two as they stand compares a tuned
-network with an untuned one, and would say nothing about locality or depth.
+Unscaled, goo's output zone is on every epoch whatever the input, and the
+read carries nothing whatsoever. **Scaling the threshold alone barely helps**
+— still 99% on — because what sustains the activity is the recurrence rather
+than the size of any single arrival, and raising $\theta$ against an unmoved
+floor caps inhibition while excitation keeps piling up. Moving both is what
+lands it: the output zone varies, and at 8.2 distinct words goo produces more
+variety in its read than the grid does in its own.
 
-So the honest comparison needs the drive matched before it is run. The two
-obvious ways are a threshold that scales with fan-in and a weight range that
-scales as $1/\sqrt{N}$, and there is a third reading — that goo is telling
-us THRESHOLD was never a constant of the substance but a constant of the
-grid, and belongs to the container. **Left open on purpose**: it is a change
-to §1.2 and §5.2, which is substance, and substance is not Claude's to
-settle.
+Byron chose the threshold out of the three alternatives, then the floor with
+it once the measurement showed the threshold alone was not the lever. **FOR
+NOW**, in his words: §5.2 records the rule, and the exponent is linear
+because that is the plain reading of "scales with fan-in", not because it was
+fitted. Sweeping the floor's exponent found 1 to be where the gain arrives
+and 1.5 and 2 to add nothing (8.2 words against 8.4), which is what holding
+$p^{\min}/\theta$ fixed predicts: once inhibition is no longer capped, a
+deeper floor is never reached.
+
+*What the measurement does not say.* It is activity, not learning. 1,500
+epochs of the teacher leaves scaled goo, unscaled goo and the grid all three
+at chance (0.497–0.507) — which is what 1,500 epochs does to this system,
+since the grid's own results needed 50,000 to 100,000 — so **whether the
+rescaled goo learns is unmeasured**, and that is the sweep this container was
+built to run. The two rejected alternatives are still on the table if it does
+not: a weight range scaling as $1/\sqrt{N}$, and the reading that THRESHOLD
+was never a constant of the substance but a constant of the grid.
 
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
@@ -820,6 +835,44 @@ $$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t_{\text{fired}}, \qquad t_{
 
 A forced input neuron fires at its input's time regardless of $p$ and
 $\theta$, refractory period permitting.
+
+**The potential axis scales with fan-in — decided for now (Byron,
+September 14, 2026: the threshold out of §3.4's three, then the floor with
+it).** THRESHOLD is one number, but a neuron with 79 incoming synapses is
+not being asked the same question as one with 18: the $\theta$ that makes an
+interior grid cell selective makes a goo neuron (§3.4) fire on nearly
+anything. So the potential axis is quoted *per unit of fan-in*, and both of
+the points on it move together. A container that scales starts neuron $j$,
+of in-degree $d_j$, at
+
+$$\theta_j = \text{THRESHOLD} \cdot \frac{d_j}{F}, \qquad
+p^{\min}_j = \text{MINIMUM\_POTENTIAL} \cdot \frac{d_j}{F}, \qquad
+F = \text{THRESHOLD\_FAN\_IN} = 18,$$
+
+the in-degree the 0.25 and the −1 were chosen against: an interior cell's
+two hex rings at REACH 2. A neuron wired like that cell keeps both exactly.
+The rule is linear because that is what "scales with fan-in" says without
+further instruction.
+
+**The floor moves because it is not a second decision.** $\theta$ and
+$p^{\min}$ are two points on one axis, and it is the axis being rescaled.
+Scaling $\theta$ alone silently squeezes the usable negative range from four
+times the threshold to 0.91 times it, so inhibition hits its cap while
+excitation keeps piling up — and §3.4 measures that asymmetry to be most of
+what saturates goo. Holding $p^{\min}/\theta$ at the grid's −4 keeps the
+shape and changes only the units.
+
+These are **starting** values only. Homeostasis and un-sticking (§1.3) move a
+threshold from wherever it starts, §5.4's boredom clock reads it as before,
+and a checkpoint stores the thresholds and floors a run actually reached
+rather than recomputing them.
+
+**Goo scales; nothing else does yet.** Turning it on for the grid would move
+every threshold every result to date was measured at, and that is its own
+decision — `--scale-with-fan-in` makes the rule available to any container
+so the question can be asked without a code change. On the grid it is not a
+no-op even in principle: in-degree runs from 7 at a corner to 24, so
+seventeen distinct thresholds replace the one.
 
 ### 5.3 Refractory period
 
