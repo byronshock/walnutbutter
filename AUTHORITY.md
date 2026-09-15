@@ -784,6 +784,21 @@ themselves and from the outputs back onto the inputs, so its plateau and
 the 0.20 it chose are figures for that goo; the first thing to do on this
 one is to run the working point again.
 
+*Run again, the same day, on the rule.* Goo 60 at $P = 1$, GOO_THRESHOLD
+0.2 — the interior at $\theta$ 0.656, the zones at 0.489 — copy, hebb, the
+count read at one spike, every neuron un-sticking, ten seeds, 100,000
+epochs: **0.519** over the last tenth, 0.501–0.609, one seed of ten above
+0.55, six neurons stuck on and seventeen off; the whole-run mean, 0.544, is
+higher than the last tenth, and the trace says why — the mean climbs to
+about 0.58 by epoch 60,000 and then drifts back to chance, eight seeds
+ending there (`goo60-zones-goo60-trace.png`). On the old wiring the same
+level gave 0.588 with every seed above 0.55. So the projections the rule
+removed — within the zones, and from the outputs back onto the inputs —
+were carrying part of what the fine sweep measured, and 0.20 is not the
+stable value *of this goo*. The plateau has to be found again on the rule:
+the same sweep, THRESHOLD by 0.01 with every neuron un-sticking, on this
+wiring, and $P$ beside it since it is now a knob. Not run; Byron's to call.
+
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
 rather than the whole of goo, and whether the two zones should default to
