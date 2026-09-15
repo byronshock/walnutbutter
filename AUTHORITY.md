@@ -564,6 +564,30 @@ figures from here to the end of this section, and the TEACHER_THRESHOLD
 sweep of §4.3, stand as what was measured on the task as it was, not as
 findings, until the bug is found and the runs redone.*
 
+**The bug, and the test of it (Byron, September 14, 2026).** *"The
+count-read figures are not incorrect, but the task specifies a fully
+connected network. This means inputs wire directly to outputs. I think what
+the network is learning is the direct connection (1 spike) modulated by
+noise (the other spike we require when we set the threshold higher). We are
+going to modify the task so INPUT NEURONS DO NOT PROJECT DIRECTLY ONTO
+OUTPUT NEURONS to show whether this is the case."* In goo every ordered
+pair connects, so output $i$ has a synapse straight from input $i$ and the
+copy is one weight away: one spike is the wiring, the second is noise. So
+goo gains one exception to "every ordered pair", asked for by the task:
+`direct = False` leaves out every connection from an input-zone neuron to
+an output-zone neuron — $\text{ACROSS}^2$ of them, 3,540 − 64 = 3,476 left
+at sixty — and nothing else: the output zone still projects back onto the
+inputs, ids stay contiguous, and every engine and checkpoint is untouched.
+The fan-in scaling of §5.2 reads each neuron's *own* in-degree, so the
+outputs, hearing ACROSS fewer synapses, start lower — $51/18$ at sixty
+against the interior's $59/18$ — which keeps the threshold *per synapse*
+where it was; the interior and the inputs are unchanged. A copy then has to
+go through the interior, two hops at least.
+Copy (§8) asks for it; `--direct-projection` puts the synapses back for the
+comparison; a container that cannot be built so refuses. If the score falls
+to chance without the direct projection, the reading above was right and
+what the rule had learned was one synapse.
+
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
 eligibility").** The working network as it now stands — goo 60 at $\theta$
@@ -2128,6 +2152,22 @@ them off, the CV sweep of §4.3 included. `docs/rust-sweep.py` builds goo
 any sweep: the array engine is the fallback when Rust cannot run a
 configuration, and a gap is closed in Rust rather than run around.
 
+*A wave-stamp bug, found and fixed September 14, 2026.* The loop marks the
+neurons a wave touched with the epoch's wave number, and `reset()` zeroed
+that number each epoch, so a neuron last touched in wave $k$ of an earlier
+epoch still carried the stamp $k$ and, in wave $k$ of a later epoch, passed
+for already touched and was never asked whether it fired. `propagation.py`
+uses a counter that never repeats; the loop now does too. It only bit when a
+neuron went a whole epoch untouched — rare with goo's direct projection,
+where an output is touched nearly every wave, and it surfaced the moment the
+projection was cut (§3.4): three of fifteen seed–count pairs parted from the
+object engine with learning switched off. Sixty trials agree bit for bit
+since. **Every Rust sweep before the fix could have missed a firing this
+way** — reproducibly, so bit-identical reruns did not catch it, but not the
+object engine's bits. The count-read figures of §3.4 and §4.3 are being
+redone in any case; the goo sweeps of §3.4 before them were on the array
+engine or on a direct goo, where the case is rare, and stand as recorded.
+
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
 as the eligibility they earn, LATE other than count, and the leaky trace on
@@ -2179,7 +2219,10 @@ the layout, the inputs, and whether anything outside the network trains it.
   taught to show coded bit $i$ — exactly the input, place for place — by the
   reinforce rule with the row critic, **read by count** (§4.3, the same day:
   spikes counted over the epoch, a rate estimated, on above
-  TEACHER_THRESHOLD). *Byron, the same day, on why there is
+  TEACHER_THRESHOLD), and with **no direct projection** from the input
+  neurons to the output neurons (§3.4, the same day again: the copy must go
+  through the interior, or the one synapse from input $i$ to output $i$ is
+  the whole task). *Byron, the same day, on why there is
   no permutation: "Permuting patterns should no longer matter. All neurons
   are first-class citizens of the population." And on the target: "I don't
   think asking for the target reversed should matter either, frankly."* On

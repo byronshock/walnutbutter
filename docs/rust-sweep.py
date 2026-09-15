@@ -118,7 +118,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     if "goo" in arm:
         grid = Goo(count=int(arm["goo"]), across=args.across, weight=None, seed=int(arm["seed"]),
                    permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
-                   scale_with_fan_in=scale)
+                   scale_with_fan_in=scale, direct=args.direct_projection is not False)
     else:
         grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,

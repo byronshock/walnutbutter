@@ -92,6 +92,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
     if goo:
         data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
         data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
+        data["direct_projection"] = grid.direct  # whether the input zone projects straight onto the output zone (§3.4)
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -193,6 +194,7 @@ def _restore_goo(data: dict) -> Goo:
         weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
         minimum_potential=data.get("minimum_potential", -1.0),
         scale_with_fan_in=data.get("scale_with_fan_in", True),
+        direct=data.get("direct_projection", True),
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)
