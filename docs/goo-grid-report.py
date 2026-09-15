@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import date
 import statistics
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def main() -> None:
     best = max(((y, x) for (y, x), v in cells.items() if len(v) == len(seeds)),
                key=lambda k: statistics.fmean(r["last_tenth"] for r in cells[k].values()), default=None)
     lines = [
-        f"# Sweep {args.name} (September 14, 2026)",
+        f"# Sweep {args.name} ({date.today().strftime('%B %-d, %Y')})",
         "",
         f"{label.get(args.y, args.y)} × {label.get(args.x, args.x)}, {len(seeds)} seeds, the copy problem (AUTHORITY.md §8), "
         f"the reinforce rule with the {one['eligibility']} eligibility, the Rust wave loop (§6.15), homeostasis and "
@@ -167,7 +168,7 @@ def plot(args, cells, ys, xs, seeds, label) -> None:
     cb.ax.tick_params(colors=INK2, labelsize=7, length=0)
     cb.outline.set_visible(False)
     cb.set_label("accuracy, last tenth (0.5 = chance)", color=INK2, fontsize=8)
-    fig.suptitle(f"Hebbian goo on copy: {label.get(args.y, args.y)} × {label.get(args.x, args.x)}",
+    fig.suptitle(f"Goo on copy: {label.get(args.y, args.y)} × {label.get(args.x, args.x)}",
                  x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(ROOT / "docs" / f"{args.name}-score.png", facecolor=SURFACE)
