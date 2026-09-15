@@ -99,6 +99,30 @@ def main() -> None:
         lines.append(f"Best cell: {label.get(args.y, args.y)} {y:g}, {label.get(args.x, args.x)} {x:g}: "
                      f"{statistics.fmean(r['last_tenth'] for r in cells[best].values()):.4f} over {len(seeds)} seeds.")
         lines.append("")
+    # stability, row by row: a plateau is a band, and a stable cell is one where every seed learned
+    full = {k: v for k, v in cells.items() if len(v) == len(seeds)}
+    lines += [f"**Stability by {label.get(args.y, args.y)}** (full cells only): the mean over every {label.get(args.x, args.x)}, "
+              "the five-level band with the highest rolling mean, how many cells had every seed above 0.55, and the cell with "
+              "the highest worst seed", "",
+              f"| {label.get(args.y, args.y)} | mean | best band | every seed > 0.55 | worst-seed leader |", "|---|---|---|---|---|"]
+    for y in ys:
+        row = [x for x in xs if (y, x) in full]
+        if len(row) < 5:
+            continue
+        means = {x: statistics.fmean(r["last_tenth"] for r in full[(y, x)].values()) for x in row}
+        bands = [(statistics.fmean(means[u] for u in row[i:i + 5]), row[i], row[i + 4]) for i in range(len(row) - 4)]
+        bm, lo, hi = max(bands)
+        every = sum(1 for x in row if all(r["last_tenth"] > 0.55 for r in full[(y, x)].values()))
+        lead = max(row, key=lambda x: (min(r["last_tenth"] for r in full[(y, x)].values()), means[x]))
+        worst = min(r["last_tenth"] for r in full[(y, lead)].values())
+        lines.append(f"| {y:g} | {statistics.fmean(means.values()):.4f} | {lo:g}–{hi:g}: {bm:.4f} | {every} of {len(row)} | "
+                     f"{label.get(args.x, args.x)} {lead:g}: {means[lead]:.4f}, worst {worst:.3f} |")
+    lines.append("")
+    every_cells = sorted((y, x) for (y, x), v in full.items() if all(r["last_tenth"] > 0.55 for r in v.values()))
+    if every_cells:
+        lines.append("Cells where every seed learned (above 0.55): " + ", ".join(
+            f"{label.get(args.y, args.y)} {y:g} / {label.get(args.x, args.x)} {x:g}" for y, x in every_cells))
+        lines.append("")
     (ROOT / "docs" / f"{args.name}.md").write_text("\n".join(lines) + "\n")
     plot(args, cells, ys, xs, seeds, label)
     print("\n".join(lines))
