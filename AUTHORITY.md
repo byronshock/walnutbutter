@@ -941,10 +941,59 @@ the rest of the run — learned in the first quarter and living after (§4.2).
 the same goo, since the network is busier and every decision settles the
 traces of its synapses.
 
-*Not measured, and the next questions:* $\Delta$ below 0.7 (0.35, 0.5),
-where the trend points; LR under the hazard, left at hebb's 0.03 and never
-chosen for a score of this scale; and the bored clock (BORED_AFTER $> 0$) on
-top of the hazard, which §5.4 says composes and which no arm here ran.
+*Not measured then, and asked for within the hour:* $\Delta$ below 0.7 and
+LR under the hazard, both below. Still open: the bored clock (BORED_AFTER
+$> 0$) on top of the hazard, which §5.4 says composes and which no arm has
+run.
+
+**The $\Delta \times$ LR grid (Byron, September 15, 2026: "sweep Delta in
+{0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7} x LR in {0.005 0.01 0.015
+0.02 0.025 0.03} across 10 seeds for 100000 epochs").** 660 arms, the same
+goo, seeds and input streams as above; twelve minutes on 31 cores
+(`docs/goo60-hazard-delta-lr.md`, the heatmap `goo60-hazard-delta-lr-score.png`,
+rows `goo60-hazard-delta-lr-rows.png`). The $\Delta$ 0.7 × LR 0.03 cell
+reproduces the sweep above to the bit, seed by seed. Last tenth, mean over
+ten seeds, with the worst seed beneath:
+
+| LR \ $\Delta$ | 0.2 | 0.25 | 0.3 | 0.35 | 0.4 | 0.45 | 0.5 | 0.55 | 0.6 | 0.65 | 0.7 | over $\Delta$ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0.005 | 0.568 | 0.578 | 0.584 | 0.581 | 0.575 | 0.579 | 0.578 | 0.574 | 0.571 | 0.573 | 0.566 | 0.575 |
+| 0.01 | 0.594 | 0.614 | 0.613 | 0.606 | 0.621 | 0.614 | 0.628 | 0.622 | 0.614 | 0.624 | 0.603 | 0.614 |
+| 0.015 | 0.622 | 0.623 | 0.648 | 0.640 | 0.631 | 0.631 | 0.636 | 0.641 | 0.638 | 0.639 | 0.639 | 0.635 |
+| 0.02 | 0.623 | 0.633 | 0.637 | 0.648 | 0.659 | 0.656 | 0.661 | 0.657 | 0.664 | 0.639 | 0.674 | 0.650 |
+| 0.025 | 0.639 | 0.657 | 0.648 | 0.663 | 0.660 | 0.657 | 0.656 | 0.673 | 0.669 | 0.653 | 0.667 | 0.658 |
+| 0.03 | 0.641 | 0.659 | **0.672** | 0.655 | 0.664 | 0.655 | 0.666 | **0.681** | 0.649 | 0.647 | 0.658 | 0.659 |
+| worst seed at 0.03 | 0.577 | 0.618 | **0.631** | 0.604 | 0.615 | 0.576 | 0.617 | 0.619 | 0.603 | 0.605 | 0.601 | |
+| over LR | 0.615 | 0.627 | 0.634 | 0.632 | 0.635 | 0.632 | 0.637 | 0.642 | 0.634 | 0.629 | 0.634 | |
+
+1. **LR is the lever and $\Delta$ is a plateau.** Averaged over $\Delta$, the
+   score climbs with LR from 0.575 at 0.005 to 0.659 at 0.03 and is still
+   climbing, though flattening (0.650, 0.658, 0.659 over the last three
+   rows). Averaged over LR, $\Delta$ from 0.25 to 0.7 sits between 0.627
+   and 0.642 with no trend, and 0.2 is a little lower at 0.615. Put with
+   the first sweep: the plateau in $\Delta$ runs from about 0.25 to 0.7,
+   the fall from 0.7 to 1.4 above is its right edge, and the left edge is
+   near 0.2, where §5.2's hazard is so sharp that the decision is nearly
+   the threshold again and there is little to explore.
+2. **The best cells are LR 0.03 at $\Delta$ 0.55 (0.681, worst 0.619) and
+   $\Delta$ 0.3 (0.672, worst 0.631, the highest floor on the grid).** They
+   are not distinguishable from each other or from their neighbours in the
+   two top rows, which run 0.64–0.68 with a seed sd of 0.03. Against hebb
+   paired on the seed, 0.55 at 0.03 is **+0.056** ($t = 3.4$, better on 9
+   of 10); against $\Delta$ 0.7 at 0.03 it is +0.023 ($t = 1.8$, 6 of 10),
+   within noise. At LR 0.02 and above every $\Delta$ from 0.25 up has every
+   seed above 0.58; at 0.01 and above every cell but one has every seed
+   above 0.55; at 0.005 nothing does, the rate being too slow for the run.
+3. **Nothing sticks, at any cell:** 0 to 3 stuck neurons of 600 per cell,
+   against hebb's un-sticking keeping the interior alive. The hazard arms
+   run at 2,500–3,000 epochs a second, and the slower ones are the
+   low-LR arms, whose networks learn less and stay busier.
+
+*Claude's recommendation:* ESCAPE_DELTA 0.55 with LR left at 0.03: the best
+mean, the best column averaged over LR, nine seeds of ten over hebb, and a
+floor within noise of the grid's best. 0.3 is the choice by the floor
+alone. The next question is LR above 0.03, which the grid's top row has not
+closed, and after it the bored clock on top of the hazard.
 
 ## 4. Signalling — kept, on a schedule
 
@@ -2110,10 +2159,11 @@ two smaller experiments proposed alongside this one; neither is built.
 *Measured (§3.4, September 15, 2026; Byron: "build and sweep Delta in {0.7
 1.05 1.4} across 10 seeds for 100000 intervals").* $\Delta = 0.7$ scores
 0.658 over ten seeds, **+0.032 on hebb** paired on the seed ($t = 3.3$, 8 of
-10), every seed above 0.60 and no neuron stuck or un-stuck; 1.05 ties hebb
-and 1.4 loses. It is the first gradient form on this substance to learn at
-all, and narrower is better across the range, so the next sweep is below
-0.7.
+10), every seed above 0.60 and no neuron stuck; 1.05 ties hebb and 1.4
+loses. It is the first gradient form on this substance to learn at all.
+The $\Delta \times$ LR grid that followed (§3.4, 660 arms) puts the plateau
+in $\Delta$ at 0.25–0.7 and makes LR the lever: 0.03 × 0.55 scores 0.681,
+**+0.056 on hebb** (9 of 10), and LR has not stopped climbing at 0.03.
 
 ### 6.8 Earned activity — decided for now
 
