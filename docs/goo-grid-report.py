@@ -29,7 +29,9 @@ def main() -> None:
     args = parser.parse_args()
     runs = ROOT / "runs" / args.name
     num = r"[-0-9.e+]+"
-    pattern = re.compile(rf"^(?:{args.y}(?P<y>{num})-{args.x}(?P<x>{num})|{args.x}(?P<x2>{num})-{args.y}(?P<y2>{num}))-seed(?P<seed>\d+)\.json$")
+    other = r"(?:-[a-z_]+[-0-9.e+]+)*"  # knobs the sweep held fixed (goo60, say), anywhere between the two swept ones
+    pattern = re.compile(rf"^(?:{args.y}(?P<y>{num}){other}-{args.x}(?P<x>{num})|{args.x}(?P<x2>{num}){other}-{args.y}(?P<y2>{num}))"
+                         rf"{other}-seed(?P<seed>\d+)\.json$")
     cells: dict[tuple[float, float], dict[int, dict]] = {}
     for path in sorted(runs.glob("*.json")):
         m = pattern.match(path.name)
@@ -44,7 +46,7 @@ def main() -> None:
     xs = sorted({x for _, x in cells})
     seeds = sorted({s for v in cells.values() for s in v})
     one = next(iter(next(iter(cells.values())).values()))
-    label = {"goo": "goo neurons", "threshold": "THRESHOLD"}
+    label = {"goo": "goo neurons", "threshold": "THRESHOLD", "projection": "projection P", "lr": "LR"}
 
     def stat(y, x, key):
         rows = cells.get((y, x), {})
