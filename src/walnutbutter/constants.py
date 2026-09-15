@@ -56,6 +56,8 @@ INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is
 BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms of silence after which a neuron's
 # threshold has fallen to zero and it fires on its own (§5.4, Byron, September 12, 2026). Swept below the epoch it
 # floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
+# Superseded by ESCAPE_DELTA (Byron, September 15, 2026: "The hazard is buying us what the bored clock was supposed to
+# buy us, and much much more cleanly"): not run on top of the hazard; the mechanism stays, the configuration does not.
 ESCAPE_DELTA = 0.0  # off. Positive, the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15,
 # 2026: "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a
 # wave with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this
