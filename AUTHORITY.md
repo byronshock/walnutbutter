@@ -435,7 +435,14 @@ best cell is the last one, so the optimum is at 0.5 or past it, and no
 exponent can be read off five points that stop there. And the seed spread is
 wide everywhere, 0.50 to 0.70 in most cells: a cell's mean is ten seeds of
 which some catch and some do not, and goo 80 at 0.5 is the one cell where
-nearly all of them catch.
+nearly all of them catch. Drawn over the run, every seed
+(`goo-count-threshold-threshold0.5-goo80-trace.png`, Byron asking to see it):
+the mean is past 0.55 by epoch 6,000 and peaks near 0.66 at 13,000, then
+drifts down and wanders between 0.61 and 0.65 for the remaining 85,000 — a
+network that keeps living rather than one that converges (§7). And the one
+seed that ends at chance is not one that never caught: it learned with the
+others and held for 70,000 epochs, then lost it in the last 15,000. What
+"caught" means here is a state the network can also leave.
 
 *The next sweep, if it is wanted:* THRESHOLD in {0.5, 0.75, 1.0, 1.5} for
 $N$ in {48, 64, 80}, the floor following — 120 arms, about five minutes on
