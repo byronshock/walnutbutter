@@ -799,6 +799,57 @@ stable value *of this goo*. The plateau has to be found again on the rule:
 the same sweep, THRESHOLD by 0.01 with every neuron un-sticking, on this
 wiring, and $P$ beside it since it is now a knob. Not run; Byron's to call.
 
+**Swept by Byron on the rule (September 14, 2026): THRESHOLD 0.10 to 0.50
+by 0.01 × projection $P$ in {0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1}, ten
+seeds, 100,000 epochs — 3,280 arms in an hour on the Rust loop.**
+`docs/goo60-zones-threshold.md`; the heatmap `goo60-zones-threshold-score.png`
+and, one line a row, `goo60-zones-threshold-rows.png`.
+
+| $P$ | mean over the 41 thresholds | best five-level band | thresholds where every seed learned, of 41 |
+|---|---|---|---|
+| 0.5 | **0.602** | 0.37–0.41: 0.615 | **14** |
+| 0.6 | 0.589 | 0.42–0.46: 0.607 | 7 |
+| 0.7 | 0.576 | 0.43–0.47: 0.589 | 1 |
+| 0.8 | 0.571 | 0.33–0.37: 0.587 | 1 |
+| 0.85 | 0.559 | 0.20–0.24: 0.571 | 0 |
+| 0.9 | 0.564 | 0.18–0.22: 0.574 | 0 |
+| 0.95 | 0.553 | 0.13–0.17: 0.565 | 0 |
+| 1 | 0.543 | 0.34–0.38: 0.554 | 0 |
+
+**Projection is the lever, and sparser is better, monotonically.** $P$ 0.5
+beats $P$ 1 by 0.059 paired on threshold and seed over 410 pairs,
+$t = 21$, and beats 0.7 by 0.026, $t = 8.8$; the fully connected goo is
+the worst row of the eight. And the best $P$ is the sweep's *lower edge*:
+as with the first threshold sweep, the axis is truncated where it matters,
+and the optimum is at 0.5 or below it.
+
+**At $P$ 0.5 the threshold nearly stops mattering.** 0.598 over 0.10–0.30
+and 0.606 over 0.31–0.50; fourteen thresholds, from 0.13 to 0.50, where
+every seed learned — the broad, high plateau the fine sweep on the old
+wiring did not have, and nothing stuck on or off in any of them. The
+cells that stand out: $P$ 0.6 at 0.44 (0.623, worst seed 0.603 — the
+highest floor anywhere, spread 0.017), $P$ 0.5 at 0.26 (0.624, worst
+0.557), $P$ 0.5 at 0.47 (0.611, worst 0.591, spread 0.012, the tightest).
+At $P \ge 0.85$ no threshold has every seed learn. The current default
+sits on the plateau: $P$ 0.5 at THRESHOLD 0.20 is 0.594, worst seed
+0.533, seven of ten above 0.55 — against 0.519 at $P$ 1, the run above —
+though 0.21 and 0.24–0.29 beside it have every seed learning.
+
+*Why sparser helps — a reading, not a measurement.* Fewer projections
+means fewer synapses sharing one scalar reward, the synapses-per-bit count
+of this section now applied to the interior; and a zone neuron hearing
+about 22 synapses rather than 44 starts, by §5.2, at a lower $\theta$. It
+is the count sweep's story again, told by the wiring instead of the count.
+A sparser goo is also a faster one: 1,642 projections against 3,300, and 4,700 epochs a second against 1,800.
+
+*What this decides, and does not.* GOO_PROJECTION = 1 is the wrong value
+on this evidence — 0.5 is better at every threshold and on nearly every
+seed — and at 0.5 GOO_THRESHOLD 0.2 sits on a plateau, so it need not
+move. What it does not decide is where below 0.5 the projection's optimum
+lies: the axis wants extending, $P$ in {0.1 … 0.5} at a handful of
+thresholds, before the value is called stable. The constant and the next
+sweep are Byron's.
+
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
 rather than the whole of goo, and whether the two zones should default to
