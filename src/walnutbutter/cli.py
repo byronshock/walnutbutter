@@ -1254,6 +1254,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
+    shape += f", {args.rule} rule" + (f" with the {args.eligibility} eligibility" if args.rule == "reinforce" else "")
     print(
         f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,

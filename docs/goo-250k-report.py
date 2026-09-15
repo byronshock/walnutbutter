@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read the goo-250k arms off disk and write docs/goo-250k.md and docs/goo-250k-score.png.
+"""Read a goo-250k sweep's arms off disk and write docs/<name>.md and docs/<name>-score.png.
 
-    .venv/bin/python docs/goo-250k-report.py
+    .venv/bin/python docs/goo-250k-report.py                    # runs/goo-250k, the perturb eligibility
+    .venv/bin/python docs/goo-250k-report.py --name goo-250k-hebb --eligibility hebb
 
 Three arms, ten seeds each, paired on the input stream (AUTHORITY.md §4.5):
 the shipped goo (threshold and floor scaled with fan-in, §5.2), the same goo
@@ -17,8 +18,10 @@ import math
 import statistics
 from pathlib import Path
 
+import argparse
+
 ROOT = Path(__file__).resolve().parent.parent
-RUNS = ROOT / "runs" / "goo-250k"
+RUNS = ROOT / "runs" / "goo-250k"  # overridden by --name
 SEEDS = range(1, 11)
 ARMS = [  # file stem -> how it is named in the report, and its colour in the figure
     ("scaled", "goo, threshold and floor scaled", "#2a78d6"),
@@ -81,22 +84,31 @@ def paired_t(a: list[float], b: list[float]) -> tuple[float, float]:
 
 
 def main() -> None:
+    global RUNS
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--name", default="goo-250k", help="runs/<name> in, docs/<name>.md and docs/<name>-score.png out")
+    parser.add_argument("--eligibility", default="perturb", choices=("perturb", "hebb"), help="for the report's text only")
+    args = parser.parse_args()
+    RUNS = ROOT / "runs" / args.name
+    sigma = "σ 0.1" if args.eligibility == "perturb" else "σ 0, as the Teacher sets it"
     arms = {stem: load(stem) for stem, _, _ in ARMS}
     recent = {stem: [r["last_tenth"] for r in rows] for stem, rows in arms.items()}
     to_date = {stem: [r["accuracy_to_date"] for r in rows] for stem, rows in arms.items()}
     epochs = arms["scaled"][0]["epochs"]
 
     lines = [
-        f"# Sweep goo-250k (September 14, 2026)",
+        f"# Sweep {args.name} (September 14, 2026)",
         "",
         f"Does goo learn once its potential axis is scaled with fan-in (AUTHORITY.md §5.2)? "
         f"Three arms, {len(list(SEEDS))} seeds each, {epochs:,} epochs per run, the reversal problem, "
-        f"the array engine, everything else at the defaults in `constants.py`. Every arm at seed *s* is "
-        f"given the same input stream (§4.5), so the arms are paired epoch by epoch and not merely on average.",
+        f"the reinforce rule with the **{args.eligibility}** eligibility ({sigma}), the array engine, "
+        f"everything else at the defaults in `constants.py`. Every arm at seed *s* is given the same "
+        f"input stream (§4.5), so the arms are paired epoch by epoch and not merely on average.",
         "",
-        "Driver: `walnutbutter --goo --seeds 10 --seed 1 --input-seed 1 --epochs 250000 --engine arrays`, "
-        "once per arm; report: `docs/goo-250k-report.py`; figure: `goo-250k-score.png`. Every run's "
-        "checkpoint and log is under `runs/goo-250k/` (not in git).",
+        f"Driver: `walnutbutter --goo --eligibility {args.eligibility} --seeds 10 --seed 1 --input-seed 1 "
+        f"--epochs 250000 --engine arrays`, once per arm; report: `docs/goo-250k-report.py --name {args.name} "
+        f"--eligibility {args.eligibility}`; figure: `{args.name}-score.png`. Every run's checkpoint and log "
+        f"is under `runs/{args.name}/` (not in git).",
         "",
         "| arm | accuracy, last 25,000 epochs | range over seeds | accuracy, to date | stuck on | stuck off |",
         "|---|---|---|---|---|---|",
@@ -122,12 +134,12 @@ def main() -> None:
         lines.append(f"| {seed} | " + " | ".join(f"{recent[s][i]:.3f}" for s, _, _ in ARMS) + " |")
     lines.append("")
 
-    (ROOT / "docs" / "goo-250k.md").write_text("\n".join(lines) + "\n")
-    plot(arms)
+    (ROOT / "docs" / f"{args.name}.md").write_text("\n".join(lines) + "\n")
+    plot(arms, args.name, args.eligibility)
     print("\n".join(lines))
 
 
-def plot(arms: dict) -> None:
+def plot(arms: dict, name: str, eligibility: str) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -158,9 +170,10 @@ def plot(arms: dict) -> None:
     ax.set_xlabel("epoch", color=INK2, fontsize=9)
     ax.set_ylabel("accuracy, 200-epoch moving average at each report", color=INK2, fontsize=9)
     ax.legend(loc="upper left", frameon=False, fontsize=8, labelcolor=INK2)
-    fig.suptitle("Goo at 250,000 epochs: does the rescaled axis learn?", x=0.01, ha="left", color=INK, fontsize=12)
+    fig.suptitle(f"Goo at 250,000 epochs, {eligibility} eligibility: does the rescaled axis learn?",
+                 x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(ROOT / "docs" / "goo-250k-score.png", facecolor=SURFACE)
+    fig.savefig(ROOT / "docs" / f"{name}-score.png", facecolor=SURFACE)
     plt.close(fig)
 
 

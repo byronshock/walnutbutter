@@ -288,8 +288,10 @@ def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):
 def test_a_seed_batchs_header_says_which_axis_the_arm_ran_on(capsys):
     """A sweep's own log should identify its arm without cross-referencing the command that made it."""
     assert cli_main(["--goo", "20", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
-    assert "fully connected goo, 8 in and 8 out, fan-in scaled" in capsys.readouterr().err
-    assert cli_main(["--goo", "20", "--no-scale-with-fan-in", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
-    assert "flat threshold and floor" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "fully connected goo, 8 in and 8 out, fan-in scaled, reinforce rule with the perturb eligibility" in err
+    assert cli_main(["--goo", "20", "--no-scale-with-fan-in", "--eligibility", "hebb", "--seeds", "2", "--seed", "1",
+                     "--epochs", "5", "--no-save"]) == 0
+    assert "flat threshold and floor, reinforce rule with the hebb eligibility" in capsys.readouterr().err
     assert cli_main(["--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     assert "hex grid, omega 0.2, flat threshold and floor" in capsys.readouterr().err
