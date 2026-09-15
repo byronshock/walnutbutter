@@ -452,7 +452,8 @@ others and held for 70,000 epochs, then lost it in the last 15,000. What
 **Swept past the edge (Byron, September 14, 2026: "sweep goo in {64, 80,
 100, 120} x threshold (and resulting floor) in {0.5 .75 1 1.5 2} for 100000
 epochs across 10 seeds").** The same conventions, 200 arms in 490 seconds;
-goo 120 at THRESHOLD 2 starts at $\theta$ 13.2 and a floor of −53.
+goo 120 at THRESHOLD 2 starts at $\theta$ 13.2 and a floor of −53 — and is
+clipped to $\theta$ 5 from its second epoch, as the clamp below explains.
 `docs/goo-count-threshold-high.md`, `goo-count-threshold-high-score.png`.
 
 | goo \ THRESHOLD | 0.5 | 0.75 | 1 | 1.5 | 2 |
@@ -467,13 +468,14 @@ goo 120 at THRESHOLD 2 starts at $\theta$ 13.2 and a floor of −53.
 0.612; the standard deviation of the cell means is 0.023 and the mean
 standard error within a cell is 0.020 — the spread between cells is the
 spread within them. Row means run 0.600 to 0.623 over 64 to 120 neurons,
-column means 0.604 to 0.620 over $\theta$ from 1.75 to 13.2. Paired on the
+column means 0.604 to 0.620 over $\theta$ from 1.75 to 5 (not 13.2: see the
+clamp). Paired on the
 seed, the best cell here (goo 64 at 1) against the best of the last sweep
 (goo 80 at 0.5) is +0.010, $t = 0.3$; goo 120 at 2 against goo 64 at 1 is
 −0.006, $t = −0.2$; the biggest goo at its best against the smallest at its
 best is +0.028, $t = 1.1$. Once a goo is past the saturation edge, neither
 its count nor its threshold moves the score, over a twofold range of one
-and a sevenfold range of the other. (Goo 80 at 0.5 ran in both sweeps, on
+and a threefold range of the other. (Goo 80 at 0.5 ran in both sweeps, on
 the same seeds and streams, and landed on the same ten numbers to the last
 bit.)
 
@@ -493,6 +495,25 @@ and score 0.55–0.61 regardless, so partial saturation is cheap and it is the
 wholesale saturation of the big goos at the default — 60–76% on — that
 costs everything. §5.2 stands until Byron moves it.
 
+*A clamp the sweep did not know about (found on September 14, 2026, while
+summarising what the Teacher does).* The Teacher's homeostasis and
+un-sticking clip every threshold they touch to THRESHOLD_RANGE = [−5, 5]
+(§1.3), a constant set for a grid that starts at 0.25 and never scaled with
+fan-in. Nine of these twenty cells start above 5 — goo 64 at 1.5 and 2, goo
+80 at 1.5 and 2, goo 100 from 1 up, goo 120 from 1 up — and every neuron
+homeostasis touches is at exactly 5 from its second epoch, while the floor
+stays where the fan-in put it: goo 80 at THRESHOLD 2 ran at $\theta$ 5 over a
+floor of −35, a ratio of −7, and goo 120 at 2 at 5 over −53, a ratio of
+−10.6. So the $\theta$ axis of this sweep runs 1.75 to 5 and not to 13.2,
+and above 5 it was the *floor* that kept moving. That the nine clamped cells
+score the same 0.58–0.64 as the rest is more evidence for the plateau, not
+less — the ratio ran from −4 to −11 and nothing moved either — but the
+sentence "over $\theta$ from 1.75 to 13.2" was wrong and is corrected above.
+The working point of the decision below, $\theta$ 3.28, sits inside the
+range, with a ceiling of 5 a factor of 1.5 above it; whether THRESHOLD_RANGE
+should scale with fan-in as the threshold does, or be goo's own, is open and
+is Byron's.
+
 **The goo can go dark and the copy survives.** At goo 120 the stuck-*off*
 count runs 2, 77, 66, 66, 55 of 120 as THRESHOLD goes 0.5 to 2 — from 0.75
 up, most of the goo is silent through the whole last tenth — and the score
@@ -505,7 +526,7 @@ reaching_copy's does (0.64, §4.3): that is the grid's own one-hop
 configuration.
 
 **The ceiling is the rule's, not the network's.** Every configuration that
-escapes saturation — 24 neurons or 120, $\theta$ 0.32 or 13 — lands at
+escapes saturation — 24 neurons or 120, $\theta$ 0.32 or 5 — lands at
 0.60–0.64 at 100,000 epochs, where the hebb eligibility also lands on
 reaching_copy, and its shape over the run is a fast catch and a long drift.
 That is what the reinforce rule with the hebb eligibility does on a one-hop
@@ -1131,7 +1152,8 @@ the saturation edge sits near $\theta \approx 0.028\,d$ from 63 incoming
 synapses up, against this rule's $0.014\,d$; a goo of 24 or 40 is 15–40%
 stuck on at every threshold tried and scores well regardless, so what costs
 is wholesale saturation, not partial. Above the edge nothing moves: from
-$\theta$ 1.75 to 13.2 and 64 to 120 neurons the score is a flat 0.60–0.64,
+$\theta$ 1.75 to 5 and 64 to 120 neurons the score is a flat 0.60–0.64
+(cells set higher ran at 5, the Teacher's THRESHOLD_RANGE clamp, §3.4),
 so there is no optimum to scale toward, only an edge to clear. The rule
 stands as written until Byron moves it; what it would move to is a slope
 near 0.028, or a threshold set from the edge rather than from the grid.
