@@ -3212,4 +3212,54 @@ the layout, the inputs, and whether anything outside the network trains it.
   test split. please unfetch it."*): §7 says the network keeps living and
   there is no evaluation run, so there is no held-out set either; the
   score is what the living network does on the stream it is given, and the
-  loader knows one split. Nothing is measured yet.
+  loader knows one split.
+
+  *The first sweep (Byron, September 15, 2026: "Please sweep for projection
+  in {0.2 0.3 0.4 0.5} across 5 seeds for 100000 epochs. This will take a
+  while--how long?").* Timed on 200 epochs first: 8 epochs a second at
+  $P = 0.2$ (41,949 projections) and 2 a second at 0.5 (104,310), so 3.5
+  and 14 hours an arm, and the sweep the slowest arm; launched 16:47 MDT,
+  twenty arms in parallel, and **stopped at 16:50 at Byron's word** before
+  any arm finished: "Please stop the sweep. Let's instead run this network
+  for 25000 epochs with projection = 0.05. I want to see what happens."
+  What the 200 epochs had shown, before any learning could: an interior
+  neuron spiking 3–4 times an epoch, every class's three outputs at 10–17
+  spikes between them whatever the digit, the reward at 0.05–0.07 — the
+  network running hot at the fan-in-scaled defaults, as goo 300 did and goo
+  60 did before its threshold sweep (§3.4).
+
+  *What happened, twice (`docs/mnist-p005-rules.png`,
+  `docs/mnist-run-report.py`).* The run at $P = 0.05$ showed an output
+  hearing 9 synapses where an interior neuron heard 31, Byron predicted
+  that would destroy the learning, and the equal-fan-in rule of §3.4
+  followed; the run was then made again under it, same seed, same images.
+  One seed, 25,000 epochs, everything else at the defaults:
+
+  | | one probability, outputs hear 9 | equal fan-in, outputs hear 30 |
+  |---|---|---|
+  | projections | 10,367 | 19,555 |
+  | reward, whole run / last tenth | 0.075 / 0.090 | 0.074 / 0.076 |
+  | first non-zero reward | after epoch 12,000 | after epoch 10,000 |
+  | label won outright, 30 epochs learning off | 5 (9 ties) | 2 (14 ties) |
+  | interior: θ at start → end, rate at end | 0.34 → 1.11, 0.29 | 0.34 → 1.15, 0.26 |
+  | outputs: θ at start → end, rate at end | 0.10 → 0.55, 0.20 | 0.33 → 1.08, 0.17 |
+  | un-stick nudges | 772,000 | 851,000 |
+  | epochs a second | 22 | 15 |
+
+  Both at chance (a little under a tenth, since a tie loses), and both by
+  the same road. For the first 10,000–12,000 epochs the reward is exactly
+  zero: the network is saturated, every class's three outputs fire alike,
+  and every epoch is a tie. The un-sticking of §1.3 then drives the
+  thresholds up threefold until the network goes quiet — an interior
+  neuron at a third of a spike an epoch, the outputs at a fifth — and from
+  there the odd epoch scores while most are ties again, now at zero. The
+  fan-in rule did what it was meant to, an output starts where an interior
+  neuron does, and it did not change the outcome, because the outcome is
+  set by two things the rule does not touch: the network's saturation at
+  these constants, which erases the reward for ten thousand epochs, and a
+  reward that is 1 or 0 with ties losing, which is silent whenever the
+  outputs are either all loud or all quiet. Nothing here says the task
+  cannot be learned; it says the read gets no signal until the network
+  sits between those two states, and the un-sticking overshoots past it.
+  What to move is Byron's call: the threshold (§3.4's first lesson on goo
+  60), the un-sticking's target, or a critic with a margin in it.
