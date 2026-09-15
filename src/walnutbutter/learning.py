@@ -91,6 +91,7 @@ TARGETS: dict[str, Target] = {
     "complement": lambda pattern: [not b for b in pattern],  # the same problem, only NOT (§8, Byron, September 14, 2026)
     "all-off": lambda pattern: [False] * len(pattern),
     "all-on": lambda pattern: [True] * len(pattern),
+    "label": None,  # the label's population code over the output zone (§8, mnist): expected_outputs reads it off the grid
 }
 
 RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
@@ -112,12 +113,38 @@ def output_row(grid: GridOfNeurons) -> list[Neuron]:
 
 def expected_outputs(grid: GridOfNeurons, target: str = "reversed") -> list[bool]:
     """What the read should show for the grid's current input: the clean pattern, which flips (§4.3) may differ from."""
+    if target == "label":
+        return label_code(grid)
     pattern = getattr(grid, "target_pattern", None)
     if pattern is None:
         pattern = grid.input_pattern
     if pattern is None:
         raise ValueError("no input pattern set")
     return TARGETS[target](pattern)
+
+
+def label_code(grid: GridOfNeurons) -> list[bool]:
+    """The label as the output zone should show it: class c owns outputs c * population to (c + 1) * population - 1, all on."""
+    if grid.input_label is None:
+        raise ValueError("the label target needs a stream that carries labels (a dataset, §8)")
+    classes = grid.output_width() // grid.population
+    return [c == grid.input_label for c in range(classes) for _ in range(grid.population)]
+
+
+def class_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
+    """The class critic (§8, mnist; Byron, September 15, 2026: population per class, the most active wins).
+
+    Each class owns `population` output neurons in a row. Their spikes this
+    epoch are summed, and the reward is 1 when the label's class out-spikes
+    every other class, else 0: a tie loses, and so does silence.
+    """
+    if grid.input_label is None:
+        raise ValueError("the class critic needs a stream that carries labels (a dataset, §8)")
+    counts = grid.output_counts()
+    pop = grid.population
+    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    mine = groups[grid.input_label]
+    return 1.0 if all(mine > g for c, g in enumerate(groups) if c != grid.input_label) else 0.0
 
 
 def output_fired(grid: GridOfNeurons) -> list[bool]:
@@ -316,6 +343,7 @@ CRITICS = {
     "decoded": decoded_accuracy,  # fraction of data bits right after reading and error-correcting the row
     "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
+    "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
 }
 
 
@@ -567,8 +595,10 @@ class Teacher:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic not in ("row", "population") and target not in ("reversed", "copy"):
+        if critic not in ("row", "population", "class") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
+        if critic == "class" and target != "label":
+            raise ValueError("the class critic scores a dataset's label (§8): its target is label")
         self.critic = critic
         if late not in LATE_RULES:
             raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")

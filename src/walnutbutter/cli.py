@@ -31,6 +31,7 @@ from .constants import (
 )
 from .dopamine import ORDERS, Dopamine
 from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
+from .problems import dataset_stream
 from .monitor import main, run_epoch
 from .network import input_stream
 from .neuron import Neuron
@@ -754,6 +755,10 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
+    args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8)
+    args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
+    if args.goo is None and problem.goo is not None and args.nodes is None and not args.layers:
+        args.goo = problem.goo  # the problem is posed on goo of this many neurons unless a grid was asked for
     if args.rows == ROWS and problem.rows != ROWS:
         args.rows = problem.rows  # the problem's rows, unless --rows was given (a value equal to the default is taken as not given)
 
@@ -854,10 +859,10 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             elif args.goo is not None:
-                if args.goo <= 2 * args.across:
+                if args.goo <= args.across + (args.outputs or args.across):
                     print(
-                        f"error: goo needs an interior for its zones to talk through: --goo must exceed twice "
-                        f"--across, got {args.goo} for {args.across} across",
+                        f"error: goo needs an interior for its zones to talk through: --goo must exceed the zones "
+                        f"together, got {args.goo} for {args.across} in and {args.outputs or args.across} out",
                         file=sys.stderr,
                     )
                     return 2
@@ -869,7 +874,7 @@ def _run(args: argparse.Namespace) -> int:
                     permute=not args.no_permute, weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
                     scale_with_fan_in=args.scale_with_fan_in is not False,
-                    projection=args.projection,
+                    projection=args.projection, outputs=args.outputs,
                 )
                 print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; the zones talk only through "
                       f"the {len(grid.interior())} interior neurons", file=sys.stderr)
@@ -927,7 +932,13 @@ def _run(args: argparse.Namespace) -> int:
             grid.teacher_threshold = args.teacher_threshold
             grid.population = args.population
             Neuron.rate_tau = args.rate_tau
-            if args.input_seed is not None:
+            if args.data is not None:
+                patterns, labels = dataset_stream(args.data, args.input_seed if args.input_seed is not None else seed)
+                grid.use_input_stream(patterns, labels)
+                print(f"inputs: the {len(patterns):,} images of {args.data} in the shuffle of seed "
+                      f"{args.input_seed if args.input_seed is not None else seed}, with their labels, going round "
+                      f"again when the run outlasts them (§4.5, §8)", file=sys.stderr)
+            elif args.input_seed is not None:
                 grid.use_input_stream(input_stream(max(1, args.epochs), grid.raw_bit_count(), args.input_seed))
                 print(f"inputs: {max(1, args.epochs):,} patterns drawn up front from input seed {args.input_seed} "
                       f"(§4.5), the same for any network run at this input seed", file=sys.stderr)
@@ -1160,7 +1171,7 @@ def _seed_worker(job: dict) -> dict:
             seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
             minimum_potential=settings["minimum_potential"],
             scale_with_fan_in=job.get("scale_with_fan_in") is not False,
-            projection=job.get("projection", GOO_PROJECTION),
+            projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
         )
     elif job.get("lattice"):
         settings = job["settings"]
@@ -1198,7 +1209,9 @@ def _seed_worker(job: dict) -> dict:
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
     grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
-    if job.get("input_seed") is not None:
+    if job.get("data") is not None:
+        grid.use_input_stream(*dataset_stream(job["data"], job["input_seed"] if job.get("input_seed") is not None else seed))
+    elif job.get("input_seed") is not None:
         grid.use_input_stream(input_stream(epochs, grid.raw_bit_count(), job["input_seed"]))
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
@@ -1291,6 +1304,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "teacher_threshold": args.teacher_threshold, "delta": args.delta,
+                     "outputs": args.outputs, "data": args.data,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:
@@ -1304,7 +1318,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
               else f"hex grid, omega {args.omega:g}")
     shape = f"{args.across}x{args.rows} {wiring}"
     if args.goo is not None:
-        shape = f"{args.goo} neurons of goo at projection {args.projection:g}, {args.across} in and {args.across} out"
+        shape = (f"{args.goo} neurons of goo at projection {args.projection:g}, {args.across} in and "
+                 f"{args.outputs or args.across} out")
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"

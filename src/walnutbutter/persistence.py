@@ -99,6 +99,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
         data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
         data["projection"] = grid.projection  # the zone rule's probability (§3.4); below 1 the seed decided the wiring
+        data["outputs"] = grid.outputs  # the output zone's width, when it differs from the input's (§8, mnist)
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -206,6 +207,7 @@ def _restore_goo(data: dict) -> Goo:
         minimum_potential=data.get("minimum_potential", -1.0),
         scale_with_fan_in=data.get("scale_with_fan_in", True),
         projection=data.get("projection", 1.0),
+        outputs=data.get("outputs"),
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)

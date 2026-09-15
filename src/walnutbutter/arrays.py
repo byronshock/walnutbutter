@@ -95,6 +95,7 @@ class ArrayNetwork(Network):
         self._rng = random.Random()
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
         self.input_stream, self.input_at = mesh.input_stream, mesh.input_at  # and the same attached stream (§4.5)
+        self.input_labels, self.input_label = mesh.input_labels, mesh.input_label  # with its labels, when a dataset gave them (§8)
         for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(self, name, getattr(mesh, name))
 
@@ -449,6 +450,13 @@ class ArrayNetwork(Network):
         self.horizon = now + self.interval if until is None else float(until)
         return self._run(self.horizon)
 
+    def output_width(self) -> int:
+        return len(self.output_index)
+
+    def output_counts(self) -> list[int]:
+        """Each output neuron's spikes this epoch, as Network.output_counts."""
+        return (self.spikes[self.output_index] - self.spikes_at_reset[self.output_index]).tolist()
+
     def output_rates(self) -> list[float]:
         """Each output neuron's firing rate at the read, in Hz (see Network.output_rates)."""
         now, out = self.horizon, self.output_index
@@ -689,6 +697,7 @@ class ArrayNetwork(Network):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
         mesh.input_stream, mesh.input_at = self.input_stream, self.input_at
+        mesh.input_labels, mesh.input_label = self.input_labels, self.input_label
 
     def __repr__(self) -> str:
         return f"ArrayNetwork({self.mesh!r}, {len(self.neurons_list)} neurons, {len(self.weight)} connections)"

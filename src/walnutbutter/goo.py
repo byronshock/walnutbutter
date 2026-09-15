@@ -27,7 +27,9 @@ With no rows there is no bottom row to be the input, so the zones go by
 index and are addressed the way every other container's rows are --
 `get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out -- so `rows` is
 2 because it is counting those two zones, not any depth. A goo needs an
-interior for its zones to talk through, so `count` must exceed 2 x `across`.
+interior for its zones to talk through, so `count` must exceed the two zones
+together; the output zone is `across` wide unless `outputs` says otherwise
+(196 in and 30 out for the digits of §8).
 
 Goo rescales its potential axis by each neuron's own fan-in (§5.2): an
 interior neuron hears every other neuron, a zone neuron only the interior,
@@ -65,13 +67,16 @@ class Goo(Network):
         minimum_potential: float = GOO_MINIMUM_POTENTIAL,
         scale_with_fan_in: bool = True,
         projection: float = GOO_PROJECTION,
+        outputs: int | None = None,
     ):
         """Make the goo and wire it by the zone rule.
 
         `count` is how many neurons (GOO_COUNT, sixty); `across` the width of
-        the input and output zones, the first and last `across` neurons, and
-        `count` must exceed twice it so there is an interior for the zones to
-        talk through. `projection` is the probability an ordered pair with an
+        the input zone, the first `across` neurons, and `outputs` the width of
+        the output zone, the last `outputs` (the same as `across` unless
+        given: a task with more inputs than classes, §8's mnist, asks for
+        different widths). `count` must exceed the two together so there is
+        an interior for the zones to talk through. `projection` is the probability an ordered pair with an
         interior end projects; pairs with both ends in a zone never do. At 1
         the topology is fixed by `count`; below 1 the seed decides it.
 
@@ -83,16 +88,18 @@ class Goo(Network):
         shows. The seed's stream is spent, in order, on the projection draws
         and weights pair by pair, then the permutation, then the inputs.
         """
-        if across < 1:
-            raise ValueError(f"goo needs an input zone at least one neuron wide, got {across}")
-        if count <= 2 * across:
+        outputs = across if outputs is None else outputs
+        if across < 1 or outputs < 1:
+            raise ValueError(f"goo needs zones at least one neuron wide, got {across} in and {outputs} out")
+        if count <= across + outputs:
             raise ValueError(
-                f"goo needs an interior for its zones to talk through: count must exceed 2 x across, "
-                f"got {count} for {across} across"
+                f"goo needs an interior for its zones to talk through: count must exceed the zones together, "
+                f"got {count} for {across} in and {outputs} out"
             )
         if not 0.0 < projection <= 1.0:
             raise ValueError(f"the projection probability must be in (0, 1], got {projection}")
-        self.across = across  # the width of each zone, not a count of cells: goo has no cells
+        self.across = across  # the width of the input zone, not a count of cells: goo has no cells
+        self.outputs = outputs  # the width of the output zone
         self.rows = ZONES  # row 1 is the input zone and row 0 the output zone; there is nothing in between
         self.count = count
         self.projection = projection  # P(i projects onto j) for a pair with an interior end
@@ -123,7 +130,7 @@ class Goo(Network):
 
     def zone_indices(self) -> set[int]:
         """The indices of every neuron in the input zone or the output zone."""
-        return set(range(self.across)) | set(range(self.count - self.across, self.count))
+        return set(range(self.across)) | set(range(self.count - self.outputs, self.count))
 
     def _wire(self) -> None:
         """The zone rule, pair by pair in (i, j) order: a draw where one is needed, then the weight."""
@@ -145,18 +152,19 @@ class Goo(Network):
     # --- the zones --------------------------------------------------------
 
     def get_neuron_at(self, place: int, row: int) -> Neuron | None:
-        """Row 1 is the input zone (the first `across` neurons), row 0 the output zone (the last `across`).
+        """Row 1 is the input zone (the first `across` neurons), row 0 the output zone (the last `outputs`).
 
         Nothing else is addressable: the goo between the zones has no place
         and no row, which is the whole of what makes it goo.
         """
-        if not 0 <= place < self.across:
-            return None
-        if row == 1:
+        if row == 1 and 0 <= place < self.across:
             return self.neurons[place]
-        if row == 0:
-            return self.neurons[self.count - self.across + place]
+        if row == 0 and 0 <= place < self.outputs:
+            return self.neurons[self.count - self.outputs + place]
         return None
+
+    def output_width(self) -> int:
+        return self.outputs
 
     def interior(self) -> list[Neuron]:
         """Every neuron in neither zone: the only route from the input zone to the output zone."""
@@ -206,4 +214,4 @@ class Goo(Network):
 
     def __repr__(self) -> str:
         return (f"Goo({self.count} neurons, {len(self.connections)} projections at P {self.projection:g}; "
-                f"{self.across} in, {self.across} out, zones apart)")
+                f"{self.across} in, {self.outputs} out, zones apart)")

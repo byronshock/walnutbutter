@@ -178,7 +178,7 @@ def test_teacher_with_seed_is_reproducible():
 
 
 def test_targets_registry_has_the_builtin_targets():
-    assert set(learning.TARGETS) == {"reversed", "copy", "complement", "all-off", "all-on"}
+    assert set(learning.TARGETS) == {"reversed", "copy", "complement", "all-off", "all-on", "label"}
     assert learning.TARGETS["complement"]([True, False]) == [False, True]  # shallow_not (§8)
 
 
