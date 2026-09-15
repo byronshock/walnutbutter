@@ -488,6 +488,13 @@ straight onto the eight outputs. Everything that escapes saturation lands at
 0.60-0.64, where the hebb eligibility also lands on reaching_copy: the
 ceiling is the rule's, not the network's.
 
+Under the count read (§4.3) the working network -- goo 60 at its own
+constants, copy -- scores **0.556** with the hebb eligibility and 0.514
+(chance) with perturb over ten seeds and 100,000 epochs
+(`docs/goo60-count.md`, `docs/goo60-count-perturb.md`), at 7,000 epochs a
+second: the read that stops counting a stray spike as a one moves the
+ceiling down, not up.
+
 ## Learning
 
 **Dopamine** (AUTHORITY.md §6, the default, `--rule dopamine`). A neuron

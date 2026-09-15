@@ -557,6 +557,41 @@ THRESHOLD = 0.25 and every result measured with it; this is the third of the
 three readings §3.4 opened with — that THRESHOLD was a constant of the grid
 and belongs to the container — taken for goo and not for the substance.
 
+**Benchmarked under the count read (Byron, September 14, 2026: "Please run
+on 10 seeds for 100000 epochs", and "also benchmark with the perturb
+eligibility").** The working network as it now stands — goo 60 at $\theta$
+3.28 and a floor of −13.1, copy, read by count at 40 Hz (§4.3) — ten seeds,
+100,000 epochs, the Rust loop, both eligibilities of §6.7.
+`docs/goo60-count.md`, `docs/goo60-count-perturb.md`, and each arm's trace
+over the run, `goo60-count-goo60-trace.png` and
+`goo60-count-perturb-goo60-trace.png`.
+
+| eligibility | last 10,000 epochs | over seeds | seeds above 0.55 | stuck on / off, of 60 | epochs a second |
+|---|---|---|---|---|---|
+| hebb | **0.556** | 0.511–0.630 | 5 of 10 | 4.5 / 16.2 | 7,449 |
+| perturb, $\sigma$ 0.1 | 0.514 | 0.493–0.553 | 2 of 10 | 3.3 / 23.0 | 5,021 |
+
+Paired on the seed hebb beats perturb by 0.043, $t = 3.8$, on nine seeds
+of ten: the perturb rule at chance again, as §6.1 and §6.7 have found it
+everywhere it has been tried, and the hebb eligibility the one that learns.
+It learns *less* under this read than under the old one — 0.556 against
+the 0.63–0.64 the same goo scored when one stray spike counted as a one —
+and that is the read doing its job: an output must now fire at least twice
+in the epoch to be on, and the rule had been getting credit for background.
+The ceiling moved down, not up. Over the run hebb reaches 0.55 at epoch
+15,000 rather than 6,000, peaks near 0.60 at 45,000, dips to 0.52 at 57,000
+and wanders between 0.53 and 0.59 to the end, one seed finishing at chance;
+the whole-run means, 0.559 and 0.511, sit on the last-tenth figures, so
+neither arm is still climbing. And at $\theta$ 3.28 goo 60 runs at seven
+thousand epochs a second on the Rust loop — a hundred thousand epochs in
+thirteen seconds. "Speed everything up" is done.
+
+*What this hands back.* On the read Byron specified, the rule that learns
+lands at 0.556 on a one-hop copy of eight bits. Where TEACHER_THRESHOLD
+should sit is a sweep (§4.3, and cheap now); what the rule would do with a
+per-neuron signal rather than a row's scalar is the question §6.7 leaves
+open; both are Byron's to call.
+
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
