@@ -31,7 +31,8 @@ def test_the_command_line_defaults_are_the_constants():
     assert (args.target, args.eligibility, args.late) == (C.TARGET, C.ELIGIBILITY, C.LATE)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
     assert (args.lr, args.sigma, args.homeostasis, args.target_rate) == (C.LR, C.SIGMA, C.HOMEOSTASIS, C.TARGET_RATE)
-    assert (args.unstick, args.unstick_target, tuple(args.threshold_range)) == (C.UNSTICK, C.UNSTICK_TARGET, C.THRESHOLD_RANGE)
+    assert (args.unstick, args.unstick_target) == (C.UNSTICK, C.UNSTICK_TARGET)
+    assert args.teacher_threshold == C.TEACHER_THRESHOLD and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
 
 def test_the_neuron_and_its_clock_read_the_constants():
@@ -88,7 +89,7 @@ def test_the_teacher_and_the_rule_read_the_constants():
     d = defaults_of(Teacher)
     assert (d["target"], d["critic"], d["eligibility"], d["late"]) == (C.TARGET, C.CRITIC, C.ELIGIBILITY, C.LATE)
     assert (d["lr"], d["sigma"], d["baseline_rate"], d["window"]) == (C.LR, C.SIGMA, C.BASELINE_RATE, C.WINDOW)
-    assert (d["homeostasis"], d["target_rate"], d["threshold_range"]) == (C.HOMEOSTASIS, C.TARGET_RATE, C.THRESHOLD_RANGE)
+    assert (d["homeostasis"], d["target_rate"]) == (C.HOMEOSTASIS, C.TARGET_RATE) and "threshold_range" not in d
     assert (d["unstick"], d["unstick_target"]) == (C.UNSTICK, C.UNSTICK_TARGET)
     r = defaults_of(reinforce)
     assert (r["lr"], r["sigma"], r["eligibility"], r["late"]) == (C.LR, C.SIGMA, C.ELIGIBILITY, C.LATE)

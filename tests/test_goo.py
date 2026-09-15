@@ -297,3 +297,59 @@ def test_a_seed_batchs_header_says_which_axis_the_arm_ran_on(capsys):
     assert "flat threshold and floor, reinforce rule with the hebb eligibility" in capsys.readouterr().err
     assert cli_main(["--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     assert "hex grid, omega 0.2, flat threshold and floor" in capsys.readouterr().err
+
+
+
+# --- the count read (AUTHORITY.md §4.3): count, estimate a rate, threshold it ----------
+
+def test_the_count_read_counts_the_epochs_spikes_and_thresholds_the_rate():
+    from walnutbutter.constants import TEACHER_THRESHOLD
+    goo = Goo(count=20, across=4, seed=1, permute=False)
+    goo.read = "count"
+    assert goo.teacher_threshold == TEACHER_THRESHOLD == 40.0
+    run_epoch(goo, bits=[True, False], verbose=False)
+    per_ms = 1000.0 / goo.interval
+    for neuron, hz, on in zip(goo.output_row(), goo.output_counts_hz(), goo.output_fired()):
+        assert hz == neuron.epoch_spikes * per_ms and on == (hz >= 40.0)
+    # at 35 ms one spike is 28.6 Hz and reads off; two are 57 and read on: a stray background spike is not a one
+    a, b = goo.output_row()[0], goo.output_row()[1]
+    a.spikes_at_reset, a.spikes = 10, 11
+    b.spikes_at_reset, b.spikes = 10, 12
+    assert goo.output_fired()[:2] == [False, True]
+    assert goo.output_levels()[:2] == [0.0, 1.0]  # a bit, as the row critic wants it
+    goo.reset()
+    assert a.epoch_spikes == b.epoch_spikes == 0  # the next epoch starts its count afresh
+
+
+def test_the_count_read_is_the_same_in_all_three_engines():
+    pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter import fast
+    from walnutbutter.learning import Teacher
+    mesh, twin = Goo(count=30, across=6, seed=5, weight=None, permute=False), Goo(count=30, across=6, seed=5, weight=None, permute=False)
+    for g in (mesh, twin):
+        g.read, g.rule, g.drive = "count", "reinforce", "rate"
+    net = ArrayNetwork(twin)
+    for _ in range(20):
+        run_epoch(mesh, verbose=False)
+        run_epoch(net, verbose=False)
+        assert net.output_counts_hz() == mesh.output_counts_hz() and net.output_fired() == mesh.output_fired()
+    if fast.available():
+        goo = Goo(count=30, across=6, seed=5, weight=None, permute=False)
+        goo.read, goo.rule, goo.drive = "count", "reinforce", "rate"
+        teacher = Teacher(goo, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+        parted = fast.compare(goo, epochs=40, teacher=teacher)  # the reward is the count read on both sides
+        assert parted == [], parted
+        goo.read = "window"
+        with pytest.raises(ValueError, match="reads 'fired' or 'count'"):
+            fast.compare(goo, epochs=1, teacher=Teacher(goo, seed=7, rule="reinforce", target="copy", homeostasis=0.0, unstick=0.0))
+
+
+def test_copy_is_read_by_count_and_the_threshold_reaches_the_command_line(tmp_path, capsys):
+    from walnutbutter.problems import PROBLEMS
+    assert PROBLEMS["copy"].read == "count"
+    save = tmp_path / "count.json"
+    assert cli_main(["--problem", "copy", "--goo", "--teacher-threshold", "60", "--headless", "--epochs", "3", "--seed", "1",
+                     "--save-weights", str(save)]) == 0
+    assert json.loads(save.read_text())["teacher_threshold"] == 60.0
+    assert cli_main(["--load-weights", str(save), "--headless", "--epochs", "2", "--no-save"]) == 0

@@ -58,7 +58,8 @@ alone: their firing was not the network's doing. An unforced input neuron
 is an ordinary neuron and is treated as one. The default
 rate of 1e-6 toward a target of 0.5 is a very slow drift (a fully stuck
 neuron moves its threshold by about 0.0006 per thousand epochs, so the
-effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thresholds may go negative, within `THRESHOLD_RANGE`.
+effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thresholds may go negative, and nothing clips them:
+the [-5, 5] range that once did was eliminated on September 14, 2026 as artificial (AUTHORITY.md §1.3).
 """
 
 from __future__ import annotations
@@ -71,7 +72,7 @@ from .grid import GridOfNeurons
 from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
 from .constants import (
     BASELINE_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
-    TARGET, TARGET_RATE, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WINDOW,
+    TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
 from .dopamine import Dopamine, apply_teacher
 from .monitor import run_epoch
@@ -345,23 +346,21 @@ def stuck_neurons(grid: GridOfNeurons) -> tuple[list[Neuron], list[Neuron]]:
 
 
 def homeostasis(
-    grid: GridOfNeurons, rate: float, target: float = TARGET_RATE, threshold_range: tuple[float, float] = THRESHOLD_RANGE
+    grid: GridOfNeurons, rate: float, target: float = TARGET_RATE
 ) -> int:
     """Nudge each neuron's threshold toward its target firing rate, except those forced this epoch.
 
     Returns the number of neurons moved.
     """
     if arrays(grid):
-        return grid.homeostasis(rate, target, threshold_range)
+        return grid.homeostasis(rate, target)
     if rate <= 0:
         return 0
-    low, high = threshold_range
     moved = 0
     for neuron in grid.all_neurons():
         if forced(neuron):
             continue
-        threshold = neuron.threshold + rate * (neuron.rate - target)
-        neuron.threshold = max(low, min(high, threshold))
+        neuron.threshold = neuron.threshold + rate * (neuron.rate - target)  # nothing clips it
         moved += 1
     return moved
 
@@ -370,7 +369,6 @@ def unstick_outputs(
     grid: GridOfNeurons,
     rate: float,
     target: float = 0.5,
-    threshold_range: tuple[float, float] = THRESHOLD_RANGE,
 ) -> list[Neuron]:
     """Nudge the threshold of every *stuck* output neuron toward a target firing rate.
 
@@ -382,14 +380,13 @@ def unstick_outputs(
     nothing else in the mesh is disturbed. Returns the neurons nudged (indices, for the array engine).
     """
     if arrays(grid):
-        return grid.unstick_outputs(rate, target, threshold_range)
+        return grid.unstick_outputs(rate, target)
     if rate <= 0:
         return []
-    low, high = threshold_range
     nudged = []
     for neuron in output_row(grid):
         if neuron.rate > STUCK_ABOVE or neuron.rate < STUCK_BELOW:
-            neuron.threshold = max(low, min(high, neuron.threshold + rate * (neuron.rate - target)))
+            neuron.threshold = neuron.threshold + rate * (neuron.rate - target)
             nudged.append(neuron)
     return nudged
 
@@ -521,7 +518,6 @@ class Teacher:
         seed: int | None = None,
         homeostasis: float = HOMEOSTASIS,
         target_rate: float = TARGET_RATE,
-        threshold_range: tuple[float, float] = THRESHOLD_RANGE,
         discharge: bool = False,
         unstick: float = UNSTICK,
         unstick_target: float = UNSTICK_TARGET,
@@ -562,12 +558,8 @@ class Teacher:
         self.history: list[dict] = []  # one entry per progress report; saved in checkpoints
         if not 0.0 < target_rate < 1.0:
             raise ValueError(f"target firing rate must be between 0 and 1, got {target_rate}")
-        low, high = threshold_range
-        if not low < high:
-            raise ValueError(f"threshold range must run from low to high, got {threshold_range}")
         self.homeostasis = homeostasis
         self.target_rate = target_rate
-        self.threshold_range = (float(low), float(high))
         self.discharge = discharge  # zero every potential between inputs instead of letting it leak
         self.grid = grid
         self.target = target
@@ -618,8 +610,8 @@ class Teacher:
         elif self.rule == "reinforce":
             reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.grid)
-        homeostasis(self.grid, self.homeostasis, self.target_rate, self.threshold_range)
-        self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target, self.threshold_range))
+        homeostasis(self.grid, self.homeostasis, self.target_rate)
+        self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target))
         self.baseline += self.baseline_rate * (reward - self.baseline)
         self.epochs += 1
         if self._trace is not None:
@@ -677,8 +669,7 @@ class Teacher:
         if self.late != "count":
             settings += f", late signals {self.late}d"
         if self.homeostasis:
-            low, high = self.threshold_range
-            settings += f", homeostasis {self.homeostasis:g} toward {self.target_rate:g} in [{low:g}, {high:g}]"
+            settings += f", homeostasis {self.homeostasis:g} toward {self.target_rate:g}"
         if self.unstick:
             settings += f", unstick {self.unstick:g}"
         if self.discharge:

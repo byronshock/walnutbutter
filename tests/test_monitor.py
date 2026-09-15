@@ -195,7 +195,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
             "--lr", "0.1", "--epochs", "200", "--rule", "reinforce"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "learning all-off (perturb, lr 0.1, sigma 0.1, homeostasis 1e-06 toward 0.5 in [-5, 5], unstick 0.001): accuracy" in err
+    assert "learning all-off (perturb, lr 0.1, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err
     assert "after 200 epochs:" in err and "to date over 200 epochs" in err
     final = float(err.rsplit("% recent", 1)[0].rsplit(" ", 1)[1])
     assert 0 <= final <= 100  # the factored-out rule runs and reports; no performance claim under the schedule
@@ -223,7 +223,7 @@ def test_cli_eligibility_and_sigma_options(capsys):
     args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--eligibility", "hebb",
             "--sigma", "0.3", "--lr", "0.02", "--epochs", "20", "--rule", "reinforce"]
     assert cli_main(args) == 0
-    assert "learning reversed (hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5 in [-5, 5], unstick 0.001)" in capsys.readouterr().err
+    assert "learning reversed (hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001)" in capsys.readouterr().err
 
 
 def test_cli_saves_and_loads_weights(tmp_path, capsys):
@@ -279,14 +279,14 @@ def test_cli_homeostasis_options(capsys):
             "--homeostasis", "0.01", "--target-rate", "0.3"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "homeostasis 0.01 toward 0.3 in [-5, 5]" in err and "stuck" not in err
+    assert "homeostasis 0.01 toward 0.3" in err and "stuck" not in err
 
 
-def test_cli_threshold_range_option(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5",
-            "--threshold-range", "0", "3"]
-    assert cli_main(args) == 0
-    assert "in [0, 3]" in capsys.readouterr().err
+def test_cli_has_no_threshold_range_option():
+    """The clamp was eliminated (Byron, September 14, 2026); the flag went with it."""
+    with pytest.raises(SystemExit):
+        cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5",
+                  "--threshold-range", "0", "3"])
 
 
 def test_run_epoch_keeps_unfired_potentials_by_default_and_can_discharge(capsys):

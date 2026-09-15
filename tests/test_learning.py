@@ -160,7 +160,7 @@ def test_teacher_validates_tracks_and_reports():
     second = teacher.epoch(verbose=False)
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
-    assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5 in [-5, 5], unstick 0.001): accuracy" in teacher.status()
+    assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
     hebb = Teacher(grid, eligibility="hebb")
     assert hebb.sigma == 0.0  # no exploration noise for the Hebbian variant
 
@@ -235,8 +235,8 @@ def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_input
     assert unforced_input.threshold == pytest.approx(thresholds[unforced_input] + 0.05)
 
 
-def test_homeostasis_moves_thresholds_toward_the_target_rate_and_stays_in_range():
-    from walnutbutter.learning import THRESHOLD_RANGE, homeostasis
+def test_homeostasis_moves_thresholds_toward_the_target_rate_and_nothing_clips_them():
+    from walnutbutter.learning import homeostasis
     grid = GridOfNeurons(across=4, rows=3, omega=0)
     hot, cold = grid.get_neuron_at(0, 0), grid.get_neuron_at(1, 0)
     hot.rate, cold.rate = 1.0, 0.0
@@ -255,7 +255,9 @@ def test_homeostasis_moves_thresholds_toward_the_target_rate_and_stays_in_range(
     assert homeostasis(grid, rate=0.0) == 0
     for _ in range(500):
         homeostasis(grid, rate=1.0)
-    assert hot.threshold == THRESHOLD_RANGE[1] and cold.threshold == THRESHOLD_RANGE[0]
+    # no range: the [-5, 5] clamp was eliminated as artificial (Byron, September 14, 2026)
+    # (the last 0.1 step above was not reset, so the loop began 0.05 from `before`)
+    assert hot.threshold == pytest.approx(before[hot] + 0.05 + 250.0) and cold.threshold == pytest.approx(before[cold] - 0.05 - 250.0)
 
 
 def test_teacher_homeostasis_reduces_stuck_neurons():
@@ -278,7 +280,7 @@ def test_teacher_validates_homeostasis_and_reports_it():
         Teacher(grid, target_rate=1.5)
     teacher = Teacher(grid, homeostasis=0.01, target_rate=0.4, seed=1)
     teacher.step()
-    assert "homeostasis 0.01 toward 0.4 in [-5, 5]" in teacher.status() and "stuck" not in teacher.status()
+    assert "homeostasis 0.01 toward 0.4" in teacher.status() and "stuck" not in teacher.status()
     default = Teacher(grid, seed=1)
     default.step()
     assert "homeostasis 1e-06 toward 0.5" in default.status() and "sigma 0.1" in default.status()
@@ -288,18 +290,22 @@ def test_teacher_validates_homeostasis_and_reports_it():
     assert "homeostasis" not in off.status()
 
 
-def test_threshold_range_is_configurable_and_validated():
+def test_there_is_no_threshold_range_anywhere():
+    """Byron, September 14, 2026: eliminate threshold clipping, it's artificial. A threshold goes where the rules take it."""
     from walnutbutter.learning import homeostasis
     grid = GridOfNeurons(across=4, rows=3, omega=0)
     hot = grid.get_neuron_at(0, 0)
     hot.rate = 1.0
     for _ in range(200):
+        homeostasis(grid, rate=1.0)
+    assert hot.threshold == pytest.approx(0.25 + 100.0)  # far past the 5 that once stopped it
+    with pytest.raises(TypeError):
         homeostasis(grid, rate=1.0, threshold_range=(0.0, 1.5))
-    assert hot.threshold == 1.5
-    teacher = Teacher(grid, threshold_range=(0, 2), seed=1)
-    assert teacher.threshold_range == (0.0, 2.0) and "in [0, 2]" in teacher.status() or teacher.average is None
-    with pytest.raises(ValueError):
-        Teacher(grid, threshold_range=(3, 1))
+    with pytest.raises(TypeError):
+        Teacher(grid, threshold_range=(0, 2), seed=1)
+    teacher = Teacher(grid, seed=1, homeostasis=0.01)
+    teacher.epoch(verbose=False)
+    assert not hasattr(teacher, "threshold_range") and "in [" not in teacher.status()
 
 
 def test_the_leak_is_the_default_and_discharge_is_available():
@@ -330,17 +336,17 @@ def test_unstick_touches_only_stuck_output_neurons():
     assert unstick_outputs(grid, rate=0.0) == []
 
 
-def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_respects_the_range():
+def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_nothing_clips_it():
     from walnutbutter.learning import unstick_outputs
     grid = GridOfNeurons(across=6, rows=4, omega=0)
     hot = output_row(grid)[0]
     hot.rate = 1.0
     for _ in range(300):
-        unstick_outputs(grid, rate=1.0, threshold_range=(-2.0, 2.0))
-    assert hot.threshold == 2.0
+        unstick_outputs(grid, rate=1.0)
+    assert hot.threshold == pytest.approx(0.25 + 150.0)  # no range to stop at
     hot.rate = 0.6  # out of the stuck band: nothing more happens
     assert unstick_outputs(grid, rate=1.0) == []
-    assert hot.threshold == 2.0
+    assert hot.threshold == pytest.approx(0.25 + 150.0)  # and stays there: nothing more happened
 
 
 def test_teacher_applies_unsticking_and_reports_it():

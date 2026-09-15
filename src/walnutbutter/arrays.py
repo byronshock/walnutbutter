@@ -86,6 +86,7 @@ class ArrayNetwork(Network):
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
         self.rate_on = mesh.rate_on
+        self.teacher_threshold = mesh.teacher_threshold  # Hz: the count read's line (§4.3)
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
@@ -118,6 +119,7 @@ class ArrayNetwork(Network):
         self.rate_level = np.array([x.rate_level for x in neurons], dtype=float)  # Hz, brought up to rate_at (§4.3)
         self.rate_at = np.array([x.rate_at for x in neurons], dtype=float)
         self.spikes = np.array([x.spikes for x in neurons], dtype=np.int64)
+        self.spikes_at_reset = np.array([x.spikes_at_reset for x in neurons], dtype=np.int64)  # the count read's start (§4.3)
         self.last_update = np.array([x.last_update for x in neurons], dtype=float)  # the lazy leak's bookkeeping
 
         e = len(mesh.connections)
@@ -335,6 +337,7 @@ class ArrayNetwork(Network):
             self.eligibility[:] = 0.0  # a new epoch earns its own credit
         self.noise[:] = 0.0
         self.delivered_wave[:] = -1
+        self.spikes_at_reset = self.spikes.copy()  # Neuron.reset snapshots the count
         self.waves = []
 
     def leak(self, now: float, which=None) -> None:
@@ -424,7 +427,13 @@ class ArrayNetwork(Network):
             return (fired_at > self.time + slack(self.time)).tolist()
         if self.read == "window" and self.read_window is not None:
             return (fired_at + slack_v(fired_at) >= self.horizon - self.read_window).tolist()
+        if self.read == "count":  # §4.3: the epoch's count as a rate, against TEACHER_THRESHOLD
+            return [hz >= self.teacher_threshold for hz in self.output_counts_hz()]
         return (self.fired_wave[self.output_index] >= 0).tolist()
+
+    def output_counts_hz(self) -> list[float]:
+        idx = self.output_index
+        return ((self.spikes[idx] - self.spikes_at_reset[idx]) * (1000.0 / self.interval)).tolist()
 
     # --- learning: dopamine ---------------------------------------------------------
 
@@ -568,21 +577,19 @@ class ArrayNetwork(Network):
         fired = (self.fired_wave[unforced] >= 0).astype(float)
         self.rate[unforced] += RATE_MEMORY * (fired - self.rate[unforced])
 
-    def homeostasis(self, rate: float, target: float, threshold_range: tuple[float, float]) -> int:
+    def homeostasis(self, rate: float, target: float) -> int:
         if rate <= 0:
             return 0
         unforced = ~self.forced
-        low, high = threshold_range
-        self.threshold_v[unforced] = np.clip(self.threshold_v[unforced] + rate * (self.rate[unforced] - target), low, high)
+        self.threshold_v[unforced] = self.threshold_v[unforced] + rate * (self.rate[unforced] - target)  # nothing clips it
         return int(unforced.sum())
 
-    def unstick_outputs(self, rate: float, target: float, threshold_range: tuple[float, float]) -> list[int]:
+    def unstick_outputs(self, rate: float, target: float) -> list[int]:
         if rate <= 0:
             return []
         idx = self.output_index
         stuck = idx[(self.rate[idx] > STUCK_ABOVE) | (self.rate[idx] < STUCK_BELOW)]
-        low, high = threshold_range
-        self.threshold_v[stuck] = np.clip(self.threshold_v[stuck] + rate * (self.rate[stuck] - target), low, high)
+        self.threshold_v[stuck] = self.threshold_v[stuck] + rate * (self.rate[stuck] - target)
         return stuck.tolist()
 
     def stuck(self) -> tuple[list[int], list[int]]:
@@ -606,6 +613,7 @@ class ArrayNetwork(Network):
             neuron.previous_fired_at = None if self.previous_fired_at[i] == -np.inf else float(self.previous_fired_at[i])
             neuron.last_update = float(self.last_update[i])
             neuron.spikes = int(self.spikes[i])
+            neuron.spikes_at_reset = int(self.spikes_at_reset[i])
         connections = self.mesh.connections
         for i, (weight, last) in enumerate(zip(self.weight.tolist(), self.last_signal.tolist()), start=1):
             connections[i].weight = weight

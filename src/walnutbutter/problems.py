@@ -54,6 +54,7 @@ PROBLEMS: dict[str, Problem] = {
         "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
         "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
         ACROSS, ROWS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
+        read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3)
     ),
     "sustain_inputs": Problem(
         "sustain_inputs",

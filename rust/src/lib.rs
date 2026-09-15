@@ -162,6 +162,7 @@ pub struct Engine {
     previous_fired_at: Vec<f64>,
     last_update: Vec<f64>,
     spikes: Vec<u64>,
+    spikes_at_reset: Vec<u64>, // and at the epoch's start: the difference is the count read (§4.3)
     rate_level: Vec<f64>,
     rate_at: Vec<f64>,
     forced: Vec<bool>,
@@ -244,6 +245,7 @@ impl Engine {
             previous_fired_at: vec![f64::NEG_INFINITY; neurons],
             last_update: vec![0.0; neurons],
             spikes: vec![0; neurons],
+            spikes_at_reset: vec![0; neurons],
             rate_level: vec![0.0; neurons],
             rate_at: vec![0.0; neurons],
             forced: vec![false; neurons],
@@ -324,6 +326,7 @@ impl Engine {
         self.delivered_wave.iter_mut().for_each(|w| *w = -1);
         self.forced.iter_mut().for_each(|f| *f = false);
         self.noise.iter_mut().for_each(|x| *x = 0.0); // Neuron.reset clears it too
+        self.spikes_at_reset.copy_from_slice(&self.spikes); // Neuron.reset snapshots the count
         if clear_eligibility {
             self.eligibility.iter_mut().for_each(|e| *e = 0.0);
         }
@@ -534,6 +537,10 @@ impl Engine {
     }
     fn spike_counts(&self) -> Vec<u64> {
         self.spikes.clone()
+    }
+    /// How many times each neuron has fired since the epoch began: what the count read thresholds (§4.3).
+    fn epoch_spike_counts(&self) -> Vec<u64> {
+        self.spikes.iter().zip(&self.spikes_at_reset).map(|(s, r)| s - r).collect()
     }
     fn fired_times(&self) -> Vec<f64> {
         self.fired_at.clone()
