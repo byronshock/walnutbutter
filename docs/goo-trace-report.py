@@ -24,19 +24,20 @@ ROOT = Path(__file__).resolve().parent.parent
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--name", required=True)
-    parser.add_argument("--arm", required=True, help="the arm's name without its -seed<N>, e.g. threshold0.5-goo80")
+    parser.add_argument("--arm", default="", help="the arm's name without its -seed<N>, e.g. threshold0.5-goo80; empty for a seed-only run")
     parser.add_argument("--window", type=int, default=10, help="samples per rolling mean")
     args = parser.parse_args()
     runs = ROOT / "runs" / args.name
-    seeds = sorted(int(p.stem.rsplit("-seed", 1)[1]) for p in runs.glob(f"{args.arm}-seed*.csv"))
+    stem = f"{args.arm}-seed" if args.arm else "seed"  # a run that sweeps only the seed names its arms seed<N>
+    seeds = sorted(int(p.stem[len(stem):]) for p in runs.glob(f"{stem}*.csv"))
     if not seeds:
-        raise SystemExit(f"no {args.arm}-seed<N>.csv under {runs}")
+        raise SystemExit(f"no {stem}<N>.csv under {runs}")
     traces, finals = {}, {}
     for seed in seeds:
-        with open(runs / f"{args.arm}-seed{seed}.csv") as handle:
+        with open(runs / f"{stem}{seed}.csv") as handle:
             rows = [(int(r["epoch"]), float(r["score"])) for r in csv.DictReader(handle)]
         traces[seed] = rows
-        summary = runs / f"{args.arm}-seed{seed}.json"
+        summary = runs / f"{stem}{seed}.json"
         finals[seed] = json.loads(summary.read_text())["last_tenth"] if summary.exists() else None
     plot(args, traces, finals)
 
@@ -85,9 +86,9 @@ def plot(args, traces, finals) -> None:
     ax.plot([], [], color=BLUE, linewidth=0.8, alpha=0.6, label=note)
     ax.legend(loc="lower right", frameon=False, fontsize=7.5, labelcolor=INK2)
     ax.set_ylim(0.35, 1.0)
-    fig.suptitle(f"{args.name}: {args.arm}, score over the run", x=0.01, ha="left", color=INK, fontsize=11)
+    fig.suptitle(f"{args.name}: {args.arm or 'every seed'}, score over the run", x=0.01, ha="left", color=INK, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    out = ROOT / "docs" / f"{args.name}-{args.arm}-trace.png"
+    out = ROOT / "docs" / (f"{args.name}-{args.arm}-trace.png" if args.arm else f"{args.name}-trace.png")
     fig.savefig(out, facecolor=SURFACE)
     plt.close(fig)
     print(out)

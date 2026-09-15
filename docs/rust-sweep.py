@@ -165,6 +165,7 @@ def run_arm(job: tuple) -> dict:
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
+              "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
