@@ -15,7 +15,7 @@ from typing import Iterable
 
 from .constants import (
     EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
-    RATE_ON, SYNAPSE_TAU, THRESHOLD_FAN_IN,
+    RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians
@@ -94,6 +94,7 @@ class Network:
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
         self.rate_on = RATE_ON  # Hz: the rate a target-on output is driven to, and what output_levels divides by (§4.3)
+        self.teacher_threshold = TEACHER_THRESHOLD  # Hz: the count read's line between off and on (§4.3)
         self.ecc: str | None = None  # name of the error-correcting code applied before complement coding, if any
         self.input_data: list[bool] | None = None  # the raw data bits when ecc is on
 
@@ -170,7 +171,14 @@ class Network:
         if self.read == "window" and self.read_window is not None:
             since = self.horizon - self.read_window
             return [neuron.fired_at is not None and neuron.fired_at + slack(neuron.fired_at) >= since for neuron in self.output_row()]
+        if self.read == "count":  # §4.3: count the epoch's spikes, estimate the rate, and threshold it
+            return [level >= self.teacher_threshold for level in self.output_counts_hz()]
         return [neuron.has_fired for neuron in self.output_row()]
+
+    def output_counts_hz(self) -> list[float]:
+        """Each output neuron's firing rate estimated from its count this epoch, in Hz: count over the epoch's length (§4.3)."""
+        per_ms = 1000.0 / self.interval
+        return [neuron.epoch_spikes * per_ms for neuron in self.output_row()]
 
     def output_rates(self) -> list[float]:
         """Each output neuron's firing rate at the read, in Hz (AUTHORITY.md §4.3): the exponential window of Neuron.firing_rate."""

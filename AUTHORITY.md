@@ -87,6 +87,7 @@ at all.
 | RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
+| TEACHER_THRESHOLD | 40 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz and reads off, two are 57 and read on: a stray background spike is not a one. To be swept |
 | BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods |
 
 ### 1.3 Learning
@@ -127,7 +128,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | TARGET_RATE | 0.5 | firing rate homeostasis aims for |
 | UNSTICK | 10⁻³ | per-epoch rate a stuck output's threshold moves toward UNSTICK_TARGET; 0 = off |
 | UNSTICK_TARGET | 0.5 | firing rate the un-sticking aims for |
-| THRESHOLD_RANGE | [−5, 5] | limits on where homeostasis and un-sticking may move a threshold |
+| ~~THRESHOLD_RANGE~~ | — | *eliminated, September 14, 2026 (Byron: "It's artificial"; §2, no artificial restrictions).* Homeostasis and un-sticking moved a threshold no further than [−5, 5]; now a threshold goes where the rules take it. What that clamp did to one sweep is in §3.4 |
 | RATE_MEMORY | 0.01 | per-epoch update of $r_j$: about the last 100 epochs |
 | STUCK_BELOW, STUCK_ABOVE | 0.01, 0.99 | a neuron with $r_j$ outside this band is stuck |
 | WINDOW | 200 | epochs the reported moving-average accuracy spans (reporting only) |
@@ -509,10 +510,12 @@ and above 5 it was the *floor* that kept moving. That the nine clamped cells
 score the same 0.58–0.64 as the rest is more evidence for the plateau, not
 less — the ratio ran from −4 to −11 and nothing moved either — but the
 sentence "over $\theta$ from 1.75 to 13.2" was wrong and is corrected above.
-The working point of the decision below, $\theta$ 3.28, sits inside the
-range, with a ceiling of 5 a factor of 1.5 above it; whether THRESHOLD_RANGE
-should scale with fan-in as the threshold does, or be goo's own, is open and
-is Byron's.
+**Eliminated the same day** (Byron: "Please eliminate threshold clipping.
+It's artificial" — §2's no artificial restrictions). There is no
+THRESHOLD_RANGE in any engine now; a threshold goes where homeostasis and
+un-sticking take it, and the nine cells' $\theta$ of 5 is a fact about that
+sweep that cannot recur. The working point of the decision below,
+$\theta$ 3.28, was inside the old range in any case.
 
 **The goo can go dark and the copy survives.** At goo 120 the stuck-*off*
 count runs 2, 77, 66, 66, 55 of 120 as THRESHOLD goes 0.5 to 2 — from 0.75
@@ -682,8 +685,32 @@ order, `coding = population-complement` (Byron, September 14, 2026): repeat
 each bit, then complement-code the whole run, so with POPULATION 2 the four
 bits 1001 become 11000011 and then 1100001100111100 over sixteen neurons,
 which doubled_copy does. §8. A problem also says what "on" means at the read:
-fired this epoch, spiked again after the input's moment, or fired within a
-window before the horizon.) The neurons whose bit is 1 are **forced** to fire
+fired this epoch, spiked again after the input's moment, fired within a
+window before the horizon, or **counted**, below.)
+
+**The count read — decided (Byron, September 14, 2026).** *"The teacher is
+scoring the network as if it can produce a clean signal free of spikes. A
+correctly working network is producing background noise, which hurts our
+scoring. Here's how we actually score: COUNT the number of times each neuron
+fired in the epoch. ESTIMATE the firing rate based on the count. If the
+firing rate estimate exceeds TEACHER_THRESHOLD, the output neuron is 1.
+Otherwise it is zero. The target is the coded input, 4 on and 4 off; reward
+= fraction of the 8 that match."* So `read = count`: each output neuron's
+spikes since the epoch began, over the epoch's length, is its rate; it is
+on if that exceeds TEACHER_THRESHOLD (§1.2), and the row critic scores the
+eight bits against the target as before. The count is in every engine —
+the neuron, the arrays and the Rust loop each snapshot their spike counts at
+the epoch's reset — and `tests/test_goo.py` runs the three side by side.
+Copy (§8) is read this way; the problems measured with `fired` keep it.
+
+*Why the old read was wrong, measured on the working network.* A trained
+goo of 60 is bimodal within an epoch: 31–55% of a population's neuron-epochs
+are silent and 20–32% saturated at seven spikes, with hidden neurons
+averaging 87 Hz of background — and the saturated mode is **as common for a
+target-off output as for a target-on one**, so it carries nothing. A read
+that called any spike a one was scoring that background as error, which is
+the substance working and the teacher not. 40 Hz reads one stray spike as
+off; where the line should sit is a sweep. The neurons whose bit is 1 are **forced** to fire
 at $t_e$, refractory period permitting. A neuron forced this epoch is marked as such, which only
 the reinforce rule (§6.7) consults.
 
@@ -1153,7 +1180,7 @@ synapses up, against this rule's $0.014\,d$; a goo of 24 or 40 is 15–40%
 stuck on at every threshold tried and scores well regardless, so what costs
 is wholesale saturation, not partial. Above the edge nothing moves: from
 $\theta$ 1.75 to 5 and 64 to 120 neurons the score is a flat 0.60–0.64
-(cells set higher ran at 5, the Teacher's THRESHOLD_RANGE clamp, §3.4),
+(cells set higher ran at 5, a clamp since eliminated, §3.4),
 so there is no optimum to scale toward, only an edge to clear. The rule
 stands as written until Byron moves it; what it would move to is a slope
 near 0.028, or a threshold set from the edge rather than from the grid.
@@ -1407,7 +1434,10 @@ swept.
 
 ### 6.7 The reinforce rule — factored out
 
-RULE = reinforce is the rule of the pre-alpha, kept for comparison and run
+RULE = reinforce is REINFORCE (Williams 1992, [1] in `BIBLIOGRAPHY.md`): a
+scalar reward, a baseline subtracted to give an advantage, and a weight
+update proportional to the advantage times an eligibility. It is the rule
+of the pre-alpha, kept for comparison and run
 by the Teacher on a trained problem (§8). One scalar reward per epoch: the
 **row** critic scores the fraction of output neurons whose fired state this
 epoch matches the target pattern (decoded critics read the row as a code
@@ -1419,8 +1449,9 @@ $e_j = \xi_j/\sigma$ (ELIGIBILITY = perturb) or $\pm 1$ by whether $j$ fired
 (hebb). LATE says what a signal arriving after its target fired earns:
 count, ignore, or depress. The Teacher also keeps each unforced neuron's
 firing rate ($r_j$, RATE_MEMORY) and drifts thresholds toward TARGET_RATE
-(HOMEOSTASIS), nudging stuck outputs faster (UNSTICK), within
-THRESHOLD_RANGE. Under RULE = dopamine the Teacher only scores and reports;
+(HOMEOSTASIS), nudging stuck outputs faster (UNSTICK); nothing clips
+where they take it (the [−5, 5] that once did was eliminated on September
+14, 2026, §1.3). Under RULE = dopamine the Teacher only scores and reports;
 the network learns by §6.2–6.6.
 
 *Byron, September 13, 2026: "I want to try the same thing with the REINFORCE
@@ -2066,7 +2097,9 @@ the layout, the inputs, and whether anything outside the network trains it.
   input neurons and eight output neurons.")* Four raw bits, complement-coded
   to eight onto the input neurons, **unpermuted**; output place $i$ is
   taught to show coded bit $i$ — exactly the input, place for place — by the
-  reinforce rule with the row critic. *Byron, the same day, on why there is
+  reinforce rule with the row critic, **read by count** (§4.3, the same day:
+  spikes counted over the epoch, a rate estimated, on above
+  TEACHER_THRESHOLD). *Byron, the same day, on why there is
   no permutation: "Permuting patterns should no longer matter. All neurons
   are first-class citizens of the population." And on the target: "I don't
   think asking for the target reversed should matter either, frankly."* On

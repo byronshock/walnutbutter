@@ -56,6 +56,7 @@ class Neuron:
         self.previous_fired_at: float | None = None  # clock time of the spike before that
         self.last_update = 0.0  # clock time the potential was last brought up to date (the lazy leak)
         self.spikes = 0  # how many times this neuron has ever fired
+        self.spikes_at_reset = 0  # and how many it had when the epoch began: the difference is the count read (§4.3)
 
     def connect(
         self, target: Neuron, connection_id: int = 0, weight: float = 1.0, kind: str = "local"
@@ -211,6 +212,12 @@ class Neuron:
         self.fired_in_wave = None
         self.forced = False
         self.noise = 0.0
+        self.spikes_at_reset = self.spikes
+
+    @property
+    def epoch_spikes(self) -> int:
+        """How many times this neuron has fired since the epoch began: what the count read thresholds (§4.3)."""
+        return self.spikes - self.spikes_at_reset
 
     def list_connections(self) -> None:
         print(f"I am {self.name}, and I send signals to:")

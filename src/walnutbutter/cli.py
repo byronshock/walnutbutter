@@ -21,12 +21,12 @@ from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
-    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
+    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
-    THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
+    THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
 )
 from .dopamine import ORDERS, Dopamine
@@ -327,11 +327,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--read",
-        choices=("fired", "again", "window", "rate"),
+        choices=("fired", "again", "window", "rate", "count"),
         default=None,
         help="what the teacher reads at the end of an epoch (AUTHORITY.md §4.3): fired this epoch, spiked again after "
-        "the input's moment, fired within the read window, or rate, the exponential-window firing-rate estimate scored "
-        "against RATE_ON and RATE_OFF (default: the problem's)",
+        "the input's moment, fired within the read window, rate (the exponential-window firing-rate estimate scored "
+        "against RATE_ON and RATE_OFF), or count: the epoch's spikes counted, a rate estimated from the count, and the "
+        "neuron on if that exceeds --teacher-threshold (default: the problem's)",
+    )
+    parser.add_argument(
+        "--teacher-threshold",
+        "--teacher_threshold",
+        dest="teacher_threshold",
+        type=float,
+        default=TEACHER_THRESHOLD,
+        metavar="HZ",
+        help=f"the count read's line between off and on, in Hz (default: {TEACHER_THRESHOLD:g}: at a 35 ms epoch one spike "
+        f"is 28.6 Hz and reads off, two are 57 and read on)",
     )
     parser.add_argument(
         "--read-window",
@@ -515,14 +526,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSTICK_TARGET,
         help=f"firing rate the output un-sticking aims for (default: {UNSTICK_TARGET:g})",
-    )
-    parser.add_argument(
-        "--threshold-range",
-        type=float,
-        nargs=2,
-        metavar=("LOW", "HIGH"),
-        default=THRESHOLD_RANGE,
-        help=f"limits homeostasis may move a threshold to (default: {THRESHOLD_RANGE[0]:g} {THRESHOLD_RANGE[1]:g})",
     )
     parser.add_argument(
         "--minimum-potential",
@@ -893,6 +896,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
             grid.explore, grid.rate_on = args.explore, args.rate_on
+            grid.teacher_threshold = args.teacher_threshold
             grid.population = args.population
             Neuron.rate_tau = args.rate_tau
             if args.input_seed is not None:
@@ -986,7 +990,6 @@ def _run(args: argparse.Namespace) -> int:
                     seed=seed,
                     homeostasis=args.homeostasis,
                     target_rate=args.target_rate,
-                    threshold_range=tuple(args.threshold_range),
                     discharge=args.discharge,
                     unstick=args.unstick,
                     unstick_target=args.unstick_target,
@@ -1163,6 +1166,7 @@ def _seed_worker(job: dict) -> dict:
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
+    grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job.get("input_seed") is not None:
         grid.use_input_stream(input_stream(epochs, grid.raw_bit_count(), job["input_seed"]))
@@ -1220,7 +1224,6 @@ def _run_seeds(args: argparse.Namespace) -> int:
         eligibility=args.eligibility,
         homeostasis=args.homeostasis,
         target_rate=args.target_rate,
-        threshold_range=tuple(args.threshold_range),
         discharge=args.discharge,
         unstick=args.unstick,
         unstick_target=args.unstick_target,
@@ -1255,6 +1258,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
+                     "teacher_threshold": args.teacher_threshold,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:

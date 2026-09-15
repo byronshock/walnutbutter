@@ -54,6 +54,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "drive": grid.drive,  # how a bit becomes spikes (§4.3)
         "explore": grid.explore,  # when the exploration draw is taken (§6.1)
         "rate": [grid.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
+        "teacher_threshold": grid.teacher_threshold,  # the count read's line in Hz (§4.3)
         "input_rate": [grid.input_rate, grid.input_rate_off],  # per ms, under rate drive
         "input_cells": grid.input_cells,  # an input zone, or None for the bottom row
         "grid_reach": getattr(grid, "reach", None) if not lattice else None,  # hex steps the grid's local wiring covers
@@ -111,7 +112,6 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
             "epochs": teacher.epochs,
             "homeostasis": teacher.homeostasis,
             "target_rate": teacher.target_rate,
-            "threshold_range": list(teacher.threshold_range),
             "unstick": teacher.unstick,
             "unstick_target": teacher.unstick_target,
             "critic": teacher.critic,
@@ -325,6 +325,7 @@ def _restore_clock(grid, data: dict) -> None:
         grid.dopamine = Dopamine.from_state(data["dopamine"])
     grid.rule = data.get("rule", "dopamine")
     grid.population = data.get("population", grid.population)
+    grid.teacher_threshold = data.get("teacher_threshold", grid.teacher_threshold)
     if data.get("quash"):
         grid.quash_rate, grid.quash_k = data["quash"]
     grid.flip = data.get("flip", grid.flip)

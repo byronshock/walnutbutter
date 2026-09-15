@@ -91,6 +91,11 @@ RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate ov
 RATE_ON = 200.0  # Hz: the rate an output the target says should be on is driven to. 200 Hz is 1/REFRACTORY, the fastest
 # the absolute refractory period allows: FOR NOW the teacher aims at saturation, not at a middling set point (§6.9).
 RATE_OFF = 0.0  # Hz: and one that should be off is driven to silence.
+TEACHER_THRESHOLD = 40.0  # Hz: the "count" read (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
+# times each neuron fired in the epoch. ESTIMATE the firing rate based on the count. If the firing rate estimate exceeds
+# TEACHER_THRESHOLD, the output neuron is 1. Otherwise it is zero"). The rate is the epoch's count over its length, so
+# at 35 ms one spike is 28.6 Hz and two are 57: 40 Hz reads a single background spike as off and two as on. A working
+# network makes background, and a read that counted any spike as "on" was scoring that background as error.
 READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only counting spikes this recently before the
 # epoch's end (Byron, September 14, 2026, going forward with bit reading and a five-millisecond window)
 
@@ -147,6 +152,7 @@ HOMEOSTASIS = 1e-6  # per-epoch rate at which a threshold moves toward the targe
 TARGET_RATE = 0.5  # firing rate homeostasis aims for, 0 to 1
 UNSTICK = 1e-3  # per-epoch rate at which a stuck output neuron's threshold moves toward UNSTICK_TARGET; 0 = off
 UNSTICK_TARGET = 0.5  # firing rate the output un-sticking aims for
-THRESHOLD_RANGE = (-5.0, 5.0)  # limits on what homeostasis may move a threshold to
+# THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
+# (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.
 RATE_MEMORY = 0.01  # per-epoch update of a neuron's running firing rate (about the last 100 epochs)
 STUCK_BELOW, STUCK_ABOVE = 0.01, 0.99  # a neuron firing less or more often than this is "stuck"

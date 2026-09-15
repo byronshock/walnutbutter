@@ -154,7 +154,7 @@ def run_arm(job: tuple) -> dict:
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns,
         eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
-        unstick_target=args.unstick_target, threshold_range=tuple(args.threshold_range),
+        unstick_target=args.unstick_target,
     )
     elapsed = time.perf_counter() - started
     with open(path, "w", newline="") as handle:

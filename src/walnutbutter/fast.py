@@ -17,8 +17,8 @@ the same bits. `compare()` is the harness for that.
 from __future__ import annotations
 
 from .constants import (
-    HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, THRESHOLD_RANGE,
-    UNSTICK, UNSTICK_TARGET, WEIGHT_RANGE,
+    HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK, UNSTICK_TARGET,
+    WEIGHT_RANGE,
 )
 from .neuron import Neuron
 
@@ -94,6 +94,18 @@ def sync_explore(engine, explore_rng) -> None:
         explore_rng.setstate((3, tuple(state), None))
 
 
+def _outputs_on(engine, grid, out) -> list[bool]:
+    """The read (§4.3) from the engine's arrays: fired this epoch, or the count read's rate against TEACHER_THRESHOLD."""
+    if grid.read == "count":
+        counts = engine.epoch_spike_counts()
+        per_ms = 1000.0 / grid.interval
+        return [counts[i] * per_ms >= grid.teacher_threshold for i in out]
+    if grid.read == "fired":
+        fired = engine.fired_this_epoch()
+        return [fired[i] for i in out]
+    raise ValueError(f"the Rust loop reads 'fired' or 'count'; {grid.read!r} is read in Python -- use the array engine")
+
+
 class _Thresholds:
     """Teacher.step's bookkeeping after the update, mirrored: learning.update_rates, homeostasis and unstick_outputs.
 
@@ -102,14 +114,12 @@ class _Thresholds:
     is cheap and keeps the arithmetic in the same order as the object engine's.
     """
 
-    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, threshold_range,
-                 rate_memory=RATE_MEMORY):
+    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, rate_memory=RATE_MEMORY):
         self.engine, self.out = engine, out
         self.rates = [n.rate for n in neurons]
         self.thresholds = [n.threshold for n in neurons]
         self.homeostasis, self.target_rate = homeostasis, target_rate
         self.unstick, self.unstick_target = unstick, unstick_target
-        self.low, self.high = threshold_range
         self.rate_memory = rate_memory
         self.unstuck = 0
 
@@ -123,12 +133,12 @@ class _Thresholds:
         if self.homeostasis > 0:
             for i in range(len(rates)):
                 if not forced[i]:
-                    thresholds[i] = max(self.low, min(self.high, thresholds[i] + self.homeostasis * (rates[i] - self.target_rate)))
+                    thresholds[i] = thresholds[i] + self.homeostasis * (rates[i] - self.target_rate)  # nothing clips it
             moved = True
         if self.unstick > 0:
             for i in self.out:
                 if rates[i] > STUCK_ABOVE or rates[i] < STUCK_BELOW:
-                    thresholds[i] = max(self.low, min(self.high, thresholds[i] + self.unstick * (rates[i] - self.unstick_target)))
+                    thresholds[i] = thresholds[i] + self.unstick * (rates[i] - self.unstick_target)
                     self.unstuck += 1
                     moved = True
         if moved:
@@ -175,8 +185,7 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     book = None
     if teacher is not None:
         book = _Thresholds(engine, neurons, out, homeostasis=teacher.homeostasis, target_rate=teacher.target_rate,
-                           unstick=teacher.unstick, unstick_target=teacher.unstick_target,
-                           threshold_range=teacher.threshold_range)
+                           unstick=teacher.unstick, unstick_target=teacher.unstick_target)
     baseline = None
     parted = []
     for epoch in range(epochs):
@@ -190,9 +199,9 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
         engine.run(grid.horizon)
 
         if teacher is not None:
-            fired = engine.fired_this_epoch()
+            on = _outputs_on(engine, grid, out)
             want = TARGETS[teacher.target](grid.target_pattern)
-            mine = sum(1 for i, w in zip(out, want) if fired[i] == w) / len(want)
+            mine = sum(1 for o, w in zip(on, want) if o == w) / len(want)
             if mine != reward:
                 parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
             if baseline is None:
@@ -261,7 +270,7 @@ def benchmark(grid, epochs=200, bits=None):
 
 def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
-          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, threshold_range=THRESHOLD_RANGE):
+          unstick=UNSTICK, unstick_target=UNSTICK_TARGET):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -316,7 +325,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     at = [index[neuron] for neuron in places]
     want_of = TARGETS[target]
     book = _Thresholds(engine, neurons, out, homeostasis=homeostasis, target_rate=target_rate, unstick=unstick,
-                       unstick_target=unstick_target, threshold_range=threshold_range)
+                       unstick_target=unstick_target)
 
     baseline = None
     total = tail = 0.0
@@ -334,9 +343,9 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
             engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
         engine.run(grid.horizon)
 
-        fired = engine.fired_this_epoch()
+        on = _outputs_on(engine, grid, out)
         want = want_of(grid.target_pattern)
-        reward = sum(1 for i, w in zip(out, want) if fired[i] == w) / len(want)
+        reward = sum(1 for o, w in zip(on, want) if o == w) / len(want)
         if baseline is None:
             baseline = reward
         if sigma > 0.0:
