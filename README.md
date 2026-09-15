@@ -28,9 +28,10 @@ is the substance the neurons are made of: spread it on the plane in smears of
 a given density and neurons appear at that density, and butter spread near
 other butter connects, so where you put it and how thick decides the whole
 architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
-(`--goo`) is the control: the same eighty neurons with no positions at all
-and every ordered pair connected, so whatever the geometry is worth is what
-goo is missing.
+(`--goo`) began as the control -- the same eighty neurons with no positions
+at all and every ordered pair connected, so whatever the geometry is worth is
+what goo is missing -- and is the working network since September 14, 2026:
+sixty neurons at its own threshold of 1 (AUTHORITY.md §1.2, §3.4).
 
 ## Setup (once)
 
@@ -415,9 +416,9 @@ The plane taken away (AUTHORITY.md §3.4). Every container above has to say
 what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
 the only wiring that needs no ruler: **every ordered pair**. `--goo` makes
-80 neurons, the default network's count, and 80 x 79 = 6,320 one-way
-connections against the grid's 1,395 -- the same neurons, four and a half
-times the wiring.
+60 neurons (GOO_COUNT; it was the grid's 80 while the two were compared) and
+60 x 59 = 3,540 one-way connections; goo 80, against the grid's 1,395, was
+the same neurons with four and a half times the wiring.
 
 With no rows there is no bottom row to be the input, so the zones go by
 index: the first `--across` neurons are the input zone and the last
@@ -441,10 +442,12 @@ not reach it, and it has no geometry, so it runs headless and cannot be
 shown.
 
 **Its potential axis scales with fan-in**, and nothing else's does
-(AUTHORITY.md §5.2). THRESHOLD and MINIMUM_POTENTIAL are quoted at an
-interior hex cell's 18 incoming synapses; a goo neuron has 79, so it starts
-at a threshold of 0.25 x 79/18 = 1.097 and a floor of -4.389, the ratio
-between them held at the grid's -4.
+(AUTHORITY.md §5.2), and since September 14, 2026 it scales **its own
+constants**: GOO_THRESHOLD 1 and GOO_MINIMUM_POTENTIAL -4, the grid's ratio
+kept. Quoted at an interior hex cell's 18 incoming synapses; a goo neuron of
+60 has 59, so it starts at a threshold of 59/18 = 3.28 and a floor of -13.1,
+past the saturation edge the sweeps below found. (At the grid's 0.25 and 80
+neurons it started at 1.097 and -4.389, which is where those sweeps began.)
 
 Both move, because they are two points on one axis and it is the axis being
 rescaled. Unscaled, goo's output zone is on 100% of the time whatever the

@@ -16,6 +16,7 @@ from .butter import CELL_AREA
 from .cartesian import CartesianNodes
 from .columns import HexColumns
 from .goo import DEFAULT_COUNT as GOO_COUNT, Goo
+from .constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
@@ -97,10 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="N",
         help=f"goo: N neurons with no positions at all, every ordered pair connected, no neighbourhood and no "
-        f"shortcuts (default: {GOO_COUNT}, the default network's count, so goo and the grid compare at equal "
-        f"size). The first --across neurons are the input zone and the last --across the output, because with "
-        f"no rows there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is "
-        f"no geometry to draw, so it cannot be shown",
+        f"shortcuts (default: {GOO_COUNT}, the working network since September 14, 2026). Goo has its own "
+        f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
+        f"--threshold and --minimum-potential override (a value equal to the grid's default is taken as not given). "
+        f"The first --across neurons are the input zone and the last --across the output, because with no rows "
+        f"there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is no geometry "
+        f"to draw, so it cannot be shown",
     )
     parser.add_argument(
         "--scale-with-fan-in",
@@ -651,6 +654,7 @@ def cli_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    apply_container(args)
     was_verbose, was_refractory, was_hops, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau
     Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
     if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
@@ -728,6 +732,20 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.no_permute = args.no_permute or not problem.permute
     if args.rows == ROWS and problem.rows != ROWS:
         args.rows = problem.rows  # the problem's rows, unless --rows was given (a value equal to the default is taken as not given)
+
+
+def apply_container(args: argparse.Namespace) -> None:
+    """Goo's own threshold and floor (AUTHORITY.md §1.2) unless --threshold or --minimum-potential was given.
+
+    A value equal to the grid's default is taken as not given, as --rows is;
+    the sweep driver, which knows what an arm swept, decides for itself.
+    """
+    if args.goo is None:
+        return
+    if args.threshold == THRESHOLD:
+        args.threshold = GOO_THRESHOLD
+    if args.minimum_potential == MINIMUM_POTENTIAL:
+        args.minimum_potential = GOO_MINIMUM_POTENTIAL
 
 
 def _run(args: argparse.Namespace) -> int:

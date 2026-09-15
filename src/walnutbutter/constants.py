@@ -29,6 +29,15 @@ THRESHOLD_FAN_IN = 18.0  # the in-degree THRESHOLD is quoted at: an interior hex
 # neuron wired like that cell keeps 0.25 exactly and goo's 79 incoming synapses ask proportionally more. Goo scales;
 # nothing else does yet, because turning it on for the grid would move every threshold every result was measured at.
 MINIMUM_POTENTIAL = -1.0  # floor on a potential: inhibition and carried-over charge can go no lower
+
+# --- goo, the working network (AUTHORITY.md §3.4; Byron, September 14, 2026: "We will speed everything up by
+# selecting 60 units of goo, with THRESHOLD=1") -----------------------------------------------------------------
+GOO_COUNT = 60  # neurons in goo when --goo is given no number: 3,540 connections against 80's 6,320, about twice the speed
+GOO_THRESHOLD = 1.0  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN like the grid's and scaled by goo's fan-in (§5.2): a goo
+# of 60 starts at 59/18 = 3.28, well past the saturation edge of about 0.028 per incoming synapse (§3.4). The grid keeps
+# 0.25 -- the threshold belongs to the container, the third reading §3.4 named, adopted for goo on this decision
+GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # -4: the floor follows at the grid's ratio, as
+# every goo sweep ran it (§5.2, one axis, two points)
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
 REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11, 2026)

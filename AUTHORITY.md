@@ -61,18 +61,21 @@ literal of its own.
 | WEIGHT_RANGE | [−1, 1] | random weights are drawn uniformly from this range, and learning clips to it |
 | WEIGHT_EPSILON | 0.001 | under `--positive-weights` the range becomes [ε, 1]: no inhibition |
 
-Goo (§3.4) has no cells to count, so it reads these two differently: ACROSS
-is the width of its input and output zones, and ACROSS × ROWS is how many
-neurons `--goo` makes when it is given no number — the default network's
-eighty, so that a goo run and a grid run compare at equal size. OMEGA and
-REACH do not reach it at all.
+Goo (§3.4) has no cells to count, so it reads ACROSS as the width of its
+input and output zones and takes its count from GOO_COUNT (§1.2) — sixty
+since September 14, 2026; it was ACROSS × ROWS, the grid's eighty, while
+the two were being compared at equal size. OMEGA and REACH do not reach it
+at all.
 
 ### 1.2 The neuron and its clock
 
 | constant | value | meaning |
 |---|---|---|
-| THRESHOLD | 0.25 | $\theta$ every neuron starts with, quoted at THRESHOLD_FAN_IN incoming synapses (§5.2) |
+| THRESHOLD | 0.25 | $\theta$ every neuron of the grid, the columns and the lattice starts with, quoted at THRESHOLD_FAN_IN incoming synapses (§5.2); goo has its own, below |
 | THRESHOLD_FAN_IN | 18 | the in-degree THRESHOLD and MINIMUM_POTENTIAL are quoted at: an interior hex cell's two rings at REACH 2. A container that scales rescales neuron $j$'s whole potential axis by $d_j / \text{THRESHOLD\_FAN\_IN}$ (§5.2); goo does, nothing else does yet |
+| GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
+| GOO_THRESHOLD | 1 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $59/18 = 3.28$, past the saturation edge of §3.4. The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo on that decision |
+| GOO_MINIMUM_POTENTIAL | −4 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −13.1 |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -208,10 +211,12 @@ Goo is butter with the plane taken away. Its neurons have no positions, so
 no distance between two of them is defined, and neither §3.1's guaranteed
 neighbourhood nor §3.2's shortcuts has anything to measure. What is left is
 the only wiring that needs no ruler: **every ordered pair connects**. $N$
-neurons give $N(N-1)$ one-way connections, each of kind `goo`, and at the
-default $N = \text{ACROSS} \times \text{ROWS} = 80$ that is 6,320 against
-the 8 × 10 hex grid's 1,395 — the same eighty neurons, four and a half
-times the wiring.
+neurons give $N(N-1)$ one-way connections, each of kind `goo`. While goo
+and the grid were being compared its default was the grid's
+$\text{ACROSS} \times \text{ROWS} = 80$, 6,320 connections against the
+8 × 10 hex grid's 1,395 — the same eighty neurons, four and a half times
+the wiring; since the decision at the end of this section it is
+GOO_COUNT = 60 (§1.2), 3,540 connections.
 
 Everything else in §3 holds unchanged: one way, an independent weight each
 direction, no self-connection, ids from 1. The id order is source index
@@ -515,6 +520,18 @@ seeds of ten above 0.55 against ten of ten — and 0.603 on its other side at
 1. One cell of twenty separates from its neighbours, and it is the sweep's
 reminder that a cell is ten seeds of which some catch, some do not, and
 some catch and let go.
+
+**Decided (Byron, September 14, 2026): "We will speed everything up by
+selecting 60 units of goo, with THRESHOLD=1."** Goo is the working network
+from here, at sixty neurons and its own threshold of 1 — GOO_COUNT,
+GOO_THRESHOLD and GOO_MINIMUM_POTENTIAL in §1.2, the floor following at the
+grid's ratio of −4 as every sweep above ran it. Scaled by its fan-in a goo of
+60 starts at $\theta$ 3.28 and a floor of −13.1, well past the edge of about
+$0.028 \times 59 = 1.65$, on 3,540 connections against 80's 6,320: about
+twice the speed, on the plateau. The grid, the columns and the lattice keep
+THRESHOLD = 0.25 and every result measured with it; this is the third of the
+three readings §3.4 opened with — that THRESHOLD was a constant of the grid
+and belongs to the container — taken for goo and not for the substance.
 
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
@@ -1137,7 +1154,10 @@ every threshold every result to date was measured at, and that is its own
 decision — `--scale-with-fan-in` makes the rule available to any container
 so the question can be asked without a code change. On the grid it is not a
 no-op even in principle: in-degree runs from 7 at a corner to 24, so
-seventeen distinct thresholds replace the one.
+seventeen distinct thresholds replace the one. And since September 14, 2026
+goo scales its *own* constants, GOO_THRESHOLD = 1 and
+GOO_MINIMUM_POTENTIAL = −4 (§1.2, §3.4), not the grid's: the threshold
+belongs to the container.
 
 ### 5.3 Refractory period
 

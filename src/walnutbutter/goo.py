@@ -40,12 +40,12 @@ from __future__ import annotations
 import random
 from typing import Iterator
 
-from .constants import ACROSS, MINIMUM_POTENTIAL, ROWS, THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
+from .constants import ACROSS, GOO_COUNT, GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from .connection import Connection
 from .network import Network
 from .neuron import Neuron
 
-DEFAULT_COUNT = ACROSS * ROWS  # the default network's eighty, so goo and the grid compare at equal size
+DEFAULT_COUNT = GOO_COUNT  # sixty since September 14, 2026 (§1.2); it was the grid's eighty while the two were compared
 ZONES = 2  # what `rows` counts in goo: the input zone and the output zone, and no depth between them
 
 
@@ -57,17 +57,20 @@ class Goo(Network):
         count: int = DEFAULT_COUNT,
         across: int = ACROSS,
         weight: float | None = 1.0,
-        threshold: float = THRESHOLD,
+        threshold: float = GOO_THRESHOLD,
         seed: int | None = None,
         permute: bool = True,
         weight_range: tuple[float, float] = WEIGHT_RANGE,
-        minimum_potential: float = MINIMUM_POTENTIAL,
+        minimum_potential: float = GOO_MINIMUM_POTENTIAL,
         scale_with_fan_in: bool = True,
     ):
         """Make the goo and wire it.
 
-        `count` is how many neurons; the default is ACROSS x ROWS, the same
-        eighty the default grid has. `across` is the width of the input and
+        `count` is how many neurons; the default is GOO_COUNT, sixty, the
+        working network since September 14, 2026 (it was the grid's eighty
+        while the two were compared). `threshold` and `minimum_potential`
+        default to goo's own constants, GOO_THRESHOLD and
+        GOO_MINIMUM_POTENTIAL, not the grid's (§1.2). `across` is the width of the input and
         output zones: the first `across` neurons read the input and the last
         `across` are read as the output, so anything from 2 x `across`
         neurons up keeps the zones apart and smaller goo overlaps them on

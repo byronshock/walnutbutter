@@ -53,14 +53,24 @@ def test_every_container_builds_the_default_network_from_the_constants():
     assert defaults_of(CartesianNodes.connect_within)["reach"] == C.REACH
 
 
-def test_goo_reads_across_as_its_zone_width_and_across_times_rows_as_its_count():
-    """Goo has no cells to count, so §1.1's two shape constants mean something else in it -- but still mean it."""
+def test_goo_has_its_own_count_threshold_and_floor():
+    """§1.2: the threshold belongs to the container (Byron, September 14, 2026: 60 units of goo, THRESHOLD=1)."""
+    from walnutbutter.cli import apply_container
     d = defaults_of(Goo)
-    assert (d["across"], d["threshold"], d["minimum_potential"], d["weight_range"]) == (
-        C.ACROSS, C.THRESHOLD, C.MINIMUM_POTENTIAL, C.WEIGHT_RANGE)
-    assert d["count"] == DEFAULT_COUNT == C.ACROSS * C.ROWS  # the default network's count, so the two compare
-    assert build_parser().parse_args(["--goo"]).goo == C.ACROSS * C.ROWS
+    assert (d["across"], d["weight_range"]) == (C.ACROSS, C.WEIGHT_RANGE)
+    assert (d["count"], d["threshold"], d["minimum_potential"]) == (C.GOO_COUNT, C.GOO_THRESHOLD, C.GOO_MINIMUM_POTENTIAL)
+    assert DEFAULT_COUNT == C.GOO_COUNT == 60 and C.GOO_THRESHOLD == 1.0
+    assert C.GOO_MINIMUM_POTENTIAL == C.GOO_THRESHOLD * C.MINIMUM_POTENTIAL / C.THRESHOLD == -4.0  # the grid's ratio, kept
+    assert C.THRESHOLD == 0.25 and C.MINIMUM_POTENTIAL == -1.0  # the grid, the columns and the lattice keep theirs
+    assert build_parser().parse_args(["--goo"]).goo == C.GOO_COUNT
     assert build_parser().parse_args([]).goo is None  # no goo unless asked for
+    # the command line gives goo its own threshold and floor unless told otherwise
+    args = build_parser().parse_args(["--goo"]); apply_container(args)
+    assert (args.threshold, args.minimum_potential) == (C.GOO_THRESHOLD, C.GOO_MINIMUM_POTENTIAL)
+    args = build_parser().parse_args(["--goo", "--threshold", "0.5", "--minimum-potential", "-2"]); apply_container(args)
+    assert (args.threshold, args.minimum_potential) == (0.5, -2.0)
+    args = build_parser().parse_args([]); apply_container(args)
+    assert (args.threshold, args.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)  # the grid is untouched
 
 
 def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():

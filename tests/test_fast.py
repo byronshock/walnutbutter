@@ -108,7 +108,8 @@ def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine():
     teacher = Teacher(goo, seed=7, rule="reinforce", eligibility="hebb", homeostasis=0.01, unstick=0.1)
     parted = fast.compare(goo, epochs=60, teacher=teacher)
     assert parted == [], parted
-    assert goo.all_neurons()[0].threshold != goo.fan_in_scale() * 0.25  # moved by homeostasis, on both engines alike
+    from walnutbutter.constants import GOO_THRESHOLD
+    assert goo.all_neurons()[0].threshold != goo.fan_in_scale() * GOO_THRESHOLD  # moved by homeostasis, on both engines alike
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")

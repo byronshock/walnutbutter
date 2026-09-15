@@ -5,7 +5,7 @@ import json
 import pytest
 
 from walnutbutter.cli import cli_main
-from walnutbutter.constants import ACROSS, ROWS, THRESHOLD_FAN_IN, WEIGHT_RANGE
+from walnutbutter.constants import ACROSS, GOO_COUNT, GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -29,13 +29,14 @@ def wiring(goo) -> list[tuple[str, str]]:
 
 # --- what goo is ----------------------------------------------------------
 
-def test_the_default_goo_is_the_default_networks_eighty_neurons_fully_connected():
+def test_the_default_goo_is_sixty_neurons_fully_connected():
     goo = Goo(seed=1)
-    assert DEFAULT_COUNT == ACROSS * ROWS == 80  # goo and the grid compare at equal size (§1.1)
-    assert len(goo) == goo.count == 80 and len(goo.connections) == 80 * 79 == 6320
-    assert goo.mean_out_degree() == 79.0  # every neuron to every other, and nothing left over
-    assert all(len(n.incoming) == 79 for n in goo.all_neurons())
-    assert repr(goo) == "Goo(80 neurons fully connected, 6320 connections; 8 in, 8 out)"
+    assert DEFAULT_COUNT == GOO_COUNT == 60  # the working network (§1.2, Byron, September 14, 2026)
+    assert len(goo) == goo.count == 60 and len(goo.connections) == 60 * 59 == 3540
+    assert goo.mean_out_degree() == 59.0  # every neuron to every other, and nothing left over
+    assert all(len(n.incoming) == 59 for n in goo.all_neurons())
+    assert repr(goo) == "Goo(60 neurons fully connected, 3540 connections; 8 in, 8 out)"
+    assert Goo(count=ACROSS * 10, seed=1).count == 80  # the grid's eighty is still one --goo away"
 
 
 def test_every_ordered_pair_connects_once_each_way_and_nothing_connects_to_itself():
@@ -180,11 +181,11 @@ def test_the_command_line_builds_goo_learns_and_checkpoints(tmp_path, capsys):
     save = tmp_path / "goo.json"
     assert cli_main(["--goo", "--headless", "--epochs", "20", "--seed", "1", "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
-    assert "80 neurons fully connected, 6320 connections" in err
+    assert "60 neurons fully connected, 3540 connections" in err
     assert "input permutation: place i along the input zone" in err  # not "the bottom row": goo has none
     assert "omega" not in err  # omega does not reach goo, so it is not reported as if it had
     data = json.loads(save.read_text())
-    assert data["container"] == "goo" and data["count"] == 80 and data["epoch"] == 20
+    assert data["container"] == "goo" and data["count"] == 60 and data["epoch"] == 20
     assert cli_main(["--load-weights", str(save), "--headless", "--epochs", "5", "--no-save"]) == 0
 
 
@@ -222,12 +223,13 @@ def test_goo_is_a_container_of_its_own_and_will_not_be_mixed_with_another(capsys
 
 def test_goo_rescales_its_potential_axis_by_fan_in_and_keeps_the_grids_ratio():
     goo = Goo(seed=1)
-    scale = 79 / THRESHOLD_FAN_IN  # in-degree 79 over the in-degree THRESHOLD is quoted at
+    scale = 59 / THRESHOLD_FAN_IN  # in-degree 59 over the in-degree the thresholds are quoted at
     assert goo.fan_in_scale() == pytest.approx(scale) and goo.scale_with_fan_in_on
     thetas = {n.threshold for n in goo.all_neurons()}
     floors = {n.minimum_potential for n in goo.all_neurons()}
     assert len(thetas) == len(floors) == 1  # homogeneous: every goo neuron has the same fan-in
-    assert thetas.pop() == pytest.approx(0.25 * scale) and floors.pop() == pytest.approx(-1.0 * scale)
+    assert thetas.pop() == pytest.approx(GOO_THRESHOLD * scale) and floors.pop() == pytest.approx(GOO_MINIMUM_POTENTIAL * scale)
+    assert GOO_THRESHOLD * scale == pytest.approx(3.278, abs=1e-3)  # what a goo neuron starts at since September 14, 2026
     # the floor is not a second decision: it is the same axis, so the ratio is the grid's -4 exactly
     assert all(n.minimum_potential / n.threshold == pytest.approx(-4.0) for n in goo.all_neurons())
 
@@ -235,14 +237,14 @@ def test_goo_rescales_its_potential_axis_by_fan_in_and_keeps_the_grids_ratio():
 def test_the_scaling_can_be_switched_off_and_then_goo_is_flat():
     goo = Goo(seed=1, scale_with_fan_in=False)
     assert not goo.scale_with_fan_in_on
-    assert {n.threshold for n in goo.all_neurons()} == {0.25}
-    assert {n.minimum_potential for n in goo.all_neurons()} == {-1.0}
+    assert {n.threshold for n in goo.all_neurons()} == {GOO_THRESHOLD} == {1.0}  # goo's own, not the grid's 0.25
+    assert {n.minimum_potential for n in goo.all_neurons()} == {GOO_MINIMUM_POTENTIAL} == {-4.0}
 
 
 def test_a_neuron_wired_like_an_interior_grid_cell_is_left_exactly_where_it_was():
     """§5.2: THRESHOLD and MINIMUM_POTENTIAL are quoted at THRESHOLD_FAN_IN, so that fan-in is a fixed point."""
-    goo = Goo(count=int(THRESHOLD_FAN_IN) + 1, across=4, seed=1)  # in-degree exactly THRESHOLD_FAN_IN
-    assert goo.fan_in_scale() == pytest.approx(1.0)
+    goo = Goo(count=int(THRESHOLD_FAN_IN) + 1, across=4, seed=1, threshold=0.25, minimum_potential=-1.0)  # at the grid's constants
+    assert goo.fan_in_scale() == pytest.approx(1.0)  # in-degree exactly THRESHOLD_FAN_IN
     assert all(n.threshold == pytest.approx(0.25) for n in goo.all_neurons())
     assert all(n.minimum_potential == pytest.approx(-1.0) for n in goo.all_neurons())
 
@@ -275,9 +277,9 @@ def test_both_engines_see_the_scaled_axis():
 
 def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
     assert cli_main(["--goo", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "fan-in scaling (§5.2): x4.39 on the potential axis, so threshold 1.097 and floor -4.389" in capsys.readouterr().err
+    assert "fan-in scaling (§5.2): x3.28 on the potential axis, so threshold 3.278 and floor -13.111" in capsys.readouterr().err
     assert cli_main(["--goo", "--no-scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "fan-in scaling off: a flat threshold 0.25 and floor -1" in capsys.readouterr().err
+    assert "fan-in scaling off: a flat threshold 1 and floor -4" in capsys.readouterr().err  # goo's own constants
 
 
 def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):

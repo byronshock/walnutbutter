@@ -63,7 +63,8 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--problem", required=True)
     for knob in KNOBS:
         if knob != "seed":
-            parser.add_argument(f"--{knob.replace('_', '-')}", type=float, nargs="+", default=None, metavar="V")
+            parser.add_argument(f"--{knob.replace('_', '-')}", type=float, nargs="*" if knob == "goo" else "+",
+                                default=None, metavar="V")
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
@@ -75,7 +76,11 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--summary", action="store_true", help="summarise what is on disk; run nothing")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.goo == []:  # bare --goo: the working network's count
+        from walnutbutter.constants import GOO_COUNT
+        args.goo = [float(GOO_COUNT)]
+    return args
 
 
 def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None):
@@ -85,13 +90,18 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     from walnutbutter.grid import GridOfNeurons
     from walnutbutter.neuron import Neuron
 
-    from walnutbutter.constants import THRESHOLD
+    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD
 
     argv = ["--problem", problem, "--eligibility", eligibility]
+    base_threshold = GOO_THRESHOLD if "goo" in arm else THRESHOLD  # goo has its own (§1.2)
+    if "goo" in arm and "threshold" not in arm:
+        argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
     if floor_ratio is not None:
         if "minimum_potential" in arm:
             raise ValueError("--floor-ratio derives the floor from the threshold; do not also sweep --minimum-potential")
-        argv += ["--minimum-potential", f"{floor_ratio * float(arm.get('threshold', THRESHOLD)):g}"]
+        argv += ["--minimum-potential", f"{floor_ratio * float(arm.get('threshold', base_threshold)):g}"]
+    elif "goo" in arm and "minimum_potential" not in arm:
+        argv += ["--minimum-potential", f"{GOO_MINIMUM_POTENTIAL:g}"]
     for knob, value in arm.items():
         if knob in ("seed", "rows") or knob in DERIVED:
             continue
