@@ -1023,6 +1023,27 @@ so ten seeds do not tell these levels apart. LR stays at 0.03 until Byron
 moves it; the case for moving it is a tenth of the gap to hebb, and what
 would settle it is more seeds, not more levels.
 
+**LR, fine (Byron, September 15, 2026: "Welp, I swept it wrong. Please
+sweep LR in {.02625, .0275, .02875, ... .04}").** Twelve levels by
+0.00125, ten seeds, 100,000 epochs, $\Delta$ 0.455, 33 s an arm
+(`docs/goo60-hazard-lr-fine.md`, `goo60-hazard-lr-fine-score.png`); the
+two levels shared with the sweep above reproduce it to the bit.
+
+| LR | 0.02625 | 0.0275 | 0.02875 | 0.03 | 0.03125 | 0.0325 | 0.03375 | 0.035 | 0.03625 | 0.0375 | 0.03875 | 0.04 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| last tenth | 0.669 | 0.656 | 0.668 | 0.664 | 0.663 | 0.674 | **0.676** | 0.668 | 0.662 | 0.674 | 0.661 | 0.667 |
+| worst seed | 0.614 | 0.594 | 0.620 | 0.602 | 0.596 | 0.617 | 0.582 | 0.606 | 0.579 | **0.629** | 0.607 | 0.618 |
+| vs hebb, $t$ | 4.4 | 1.9 | 3.6 | 2.3 | 2.5 | 3.5 | 3.4 | 3.6 | 2.5 | 4.3 | 2.7 | 3.1 |
+
+Flat. The twelve level means span 0.656–0.676 with a standard deviation of
+0.006, less than half the 0.013 that ten seeds put on any one of them, so
+the levels differ by less than seed noise would make them differ if they
+were all the same level; the slope over the range is +0.0002 a step and
+the two ends are equal ($-0.002$, $t = -0.2$). Every level beats hebb
+paired on the seed, from $t = 1.9$ at 0.0275 to 4.4 at 0.02625, and
+nothing sticks. LR 0.03 stands: on this task and network any LR from
+0.02625 to 0.04 is the same choice, and the seed is the larger variable.
+
 ## 4. Signalling — kept, on a schedule
 
 ### 4.1 The clock
@@ -2213,7 +2234,8 @@ The $\Delta \times$ LR grid that followed (§3.4, 660 arms) puts the plateau
 in $\Delta$ at 0.25–0.7 and makes LR the lever: 0.03 × 0.55 scores 0.681,
 **+0.056 on hebb** (9 of 10). ESCAPE_DELTA is 0.455 since (Byron's word),
 and at that width LR is a plateau from 0.025 to 0.0525 at 0.66–0.68, hebb
-beaten on every seed at 0.05 (§3.4).
+beaten on every seed at 0.05, and twelve levels from 0.02625 to 0.04 by
+0.00125 are flat to within seed noise (§3.4). LR 0.03 stands.
 
 ### 6.8 Earned activity — decided for now
 
