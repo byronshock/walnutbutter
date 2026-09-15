@@ -123,7 +123,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     if "goo" in arm:
         grid = Goo(count=int(arm["goo"]), across=args.across, weight=None, seed=int(arm["seed"]),
                    permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
-                   scale_with_fan_in=scale, projection=args.projection)
+                   scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs)
     else:
         grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
@@ -148,6 +148,7 @@ def run_arm(job: tuple) -> dict:
     arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
+    from walnutbutter.problems import PROBLEMS, dataset_stream
 
     out = ROOT / "runs" / name
     path = out / f"{arm_name(arm)}.csv"
@@ -156,13 +157,17 @@ def run_arm(job: tuple) -> dict:
     grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio)
     first = grid.all_neurons()[0]
     started_at = {"theta": first.threshold, "floor": first.minimum_potential}  # what a neuron starts at, scaling applied
-    patterns = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"]))  # drawn up front, §4.5: every arm at this
-    started = time.perf_counter()                                           # seed sees the same epochs in the same order
+    data = dataset_stream(PROBLEMS[problem].data, int(arm["seed"]))  # a dataset's images with their labels (§8), or
+    if data is None:  # random bits drawn up front, §4.5: every arm at this seed sees the same epochs in the same order
+        patterns, labels = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"])), None
+    else:
+        patterns, labels = data
+    started = time.perf_counter()
     mean, trace, _, report = fast.train(
-        grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns,
+        grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
         eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
-        unstick_target=args.unstick_target,
+        unstick_target=args.unstick_target, critic=args.critic,
     )
     elapsed = time.perf_counter() - started
     with open(path, "w", newline="") as handle:
@@ -174,6 +179,7 @@ def run_arm(job: tuple) -> dict:
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
               "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
+              "critic": args.critic, "problem": problem,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}

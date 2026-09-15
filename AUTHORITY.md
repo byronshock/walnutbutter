@@ -122,7 +122,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | constant | value | meaning |
 |---|---|---|
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
-| CRITIC | row | how the reward is judged (§6.7) |
+| CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing (§8, mnist); and the decoded and population critics of §4.3 and §6.13 |
 | ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's), a Hebbian ±1 (hebb), or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
@@ -750,6 +750,12 @@ The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
+
+**Zones of two widths (September 15, 2026, for mnist, §8).** The input zone
+is the first `across` neurons and the output zone the last `outputs`, which
+is `across` unless a task says otherwise: 196 in and 30 out for the digits.
+The rule below is unchanged — a pair with both ends in either zone never
+projects — and `count` must exceed the two widths together.
 
 **The wiring is a rule (Byron, September 14, 2026).** *"I want goo to be
 constructed according to a probabilistic rule: P(Neuron i connects to
@@ -1647,8 +1653,15 @@ The Poisson arrival times of §4.3 are *not* part of the stream: they depend on
 INTERVAL and on $\lambda$, which are themselves things a sweep varies, so they
 stay drawn per epoch from the network's stream.
 
+A dataset is a stream of the same kind with labels beside it (§8, mnist,
+September 15, 2026): the split's images in a seeded shuffle of their own,
+`random.Random(f"walnutbutter mnist {split} {seed}")`, every image once
+and then round again, each with its label, which the network holds as
+`input_label` for the epoch and the class critic reads. Nothing outside the
+stream changes: the network draws from it as from any other.
+
 `network.input_stream(count, raw_bits, seed)` makes one and
-`Network.use_input_stream(patterns)` attaches it; `--input-seed` does both from
+`Network.use_input_stream(patterns, labels)` attaches it; `--input-seed` does both from
 the command line, and the drivers pass a stream to every arm. A run longer than
 its stream cycles it. Without a stream a network draws as it always did, so
 nothing that does not ask for one changes.
@@ -3131,3 +3144,31 @@ the layout, the inputs, and whether anything outside the network trains it.
   watch the quash (§6.11) work. Cycles are quashed as in population_copy, and
   `--quash 0` switches it off. The rule is the problem's default teacher;
   `--rule` picks any of the four.
+- **mnist** *(Byron, September 15, 2026: "Let's set up a new task. This one
+  will need its own data folder: mnist.")* The handwritten digits [6], the
+  four IDX files as distributed in `mnist/` (not in git; `mnist/README.md`
+  records the source, sizes and checksums, and `walnutbutter.mnist.fetch()`
+  gets them again). *The three decisions, Byron's, the same day, from the
+  choices offered:*
+  1. **Input: binary bits, 14 × 14.** Each 28 × 28 image is averaged over
+     2 × 2 blocks and each block is on iff its mean is at least half of
+     full; the 196 bits go to 196 input neurons as they are — coding raw,
+     no permutation — through the rate drive of §4.3 unchanged, so the
+     ink's weight is lost and nothing about the input path is new. (The
+     alternatives not taken: intensity as rate, at 14 × 14 or 28 × 28.)
+  2. **Output: population per class.** Ten classes on 30 output neurons,
+     three a class in a row (POPULATION), read by count.
+  3. **The critic: class.** The label's three must out-spike every other
+     class's three; the reward is then 1 and otherwise 0 — a tie loses,
+     and so does silence, which is why the row critic would not do (one-hot
+     on ten, silence scores 0.9). The score is the classification accuracy
+     itself.
+  The target is `label`, the label's population code over the output zone,
+  for any critic that wants a pattern. Posed on goo (§3.4) with zones of
+  two widths, 196 in and 30 out, **300 neurons unless `--goo` says
+  otherwise** (an interior of 74: a start, to be swept), by the reinforce
+  rule under escape noise; the train split in the seeded shuffle of §4.5,
+  cycling, so 100,000 epochs is one and two thirds of a pass. The test
+  split is in the folder and not yet used: §7 says the network keeps
+  living and there is no evaluation run, so reading it is a decision for
+  Byron, not a default. Nothing is measured yet.

@@ -594,6 +594,14 @@ eligibility is the target neuron's exploration noise (node-perturbation
 REINFORCE) or, with `--eligibility hebb`, +1 if the target fired and -1 if
 not. Forced inputs are never adjusted and weights stay within [-1, 1].
 
+The **mnist** problem (AUTHORITY.md §8) reads the handwritten digits from
+`mnist/` (four IDX files, not in git; `mnist/README.md` says where from and
+`walnutbutter.mnist.fetch()` gets them), each image averaged to 14 × 14 and
+thresholded at half onto 196 input neurons, ten classes on 30 outputs read
+by count, and the class critic: the label's three outputs out-spike every
+other class's three, or nothing. `walnutbutter --problem mnist` builds a
+goo of 300 for it; `--goo N` sizes it.
+
 With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
 itself is the draw: a neuron that is not refractory fires at a wave with
 probability `1 - exp(-m)`, `m = (dt / hop) * exp(s / delta_j)`, where `s`

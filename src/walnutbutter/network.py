@@ -61,6 +61,8 @@ class Network:
         self.input_stream: list[list[bool]] | None = None  # raw-bit patterns to present in order, in place of fresh
         # draws (§4.5); None draws from the network's own stream, as it always did
         self.input_at = 0  # how far through that stream the run has got
+        self.input_labels: list[int] | None = None  # the label of each pattern of the stream, when a dataset gave one (§8, mnist)
+        self.input_label: int | None = None  # this epoch's label, when the stream carries labels
         self.epoch = 0  # how many inputs have been presented
         self.time = 0.0  # the clock, nominal milliseconds: the time of the last input
         self.interval = INTERVAL  # default spacing of inputs when no time is given
@@ -178,11 +180,19 @@ class Network:
         self.input_cells = cells
         self.permutation = list(range(len(cells)))
 
+    def output_width(self) -> int:
+        """How many neurons are read as the output: the count across, unless a container's output zone is another width (goo, §3.4)."""
+        return self.across
+
     def output_row(self) -> list[Neuron]:
         """The network's output, left to right: the top row, or the input row when the inputs are the outputs."""
         if self.readout == "input":
             return self.input_row()
-        return [self.get_neuron_at(place, 0) for place in range(self.across)]
+        return [self.get_neuron_at(place, 0) for place in range(self.output_width())]
+
+    def output_counts(self) -> list[int]:
+        """Each output neuron's spikes this epoch: what the count read (§4.3) and the class critic (§8) work from."""
+        return [neuron.epoch_spikes for neuron in self.output_row()]
 
     def output_fired(self) -> list[bool]:
         """Whether each output neuron is on at the read: see `read`."""
@@ -329,29 +339,40 @@ class Network:
         see the same inputs (§4.5). A run longer than the stream cycles it.
         """
         if self.input_stream:
-            bits = self.input_stream[self.input_at % len(self.input_stream)]
+            k = self.input_at % len(self.input_stream)
+            bits = self.input_stream[k]
+            self.input_label = self.input_labels[k] if self.input_labels is not None else None
             self.input_at += 1
         else:
             bits = [self._rng.random() < 0.5 for _ in range(self.raw_bit_count())]
+            self.input_label = None
         self.set_input_bits(bits, time)
         return list(bits)
 
-    def use_input_stream(self, patterns) -> None:
+    def use_input_stream(self, patterns, labels=None) -> None:
         """Present these raw-bit patterns in order, instead of drawing fresh ones (AUTHORITY.md §4.5).
 
         Each pattern is one epoch's raw bits, `raw_bit_count()` of them. Pass
-        None to go back to drawing. The stream is checked here rather than at
-        the epoch that trips over it.
+        None to go back to drawing. A list of lists is checked pattern by
+        pattern here rather than at the epoch that trips over it; anything
+        else indexable (a dataset's `mnist.Patterns`, say) is checked at its
+        two ends. `labels`, one per pattern, ride with a dataset's images
+        (§8): `new_random_input` sets `input_label` from them each epoch.
         """
         if patterns is None:
-            self.input_stream, self.input_at = None, 0
+            self.input_stream, self.input_labels, self.input_at = None, None, 0
             return
         wanted = self.raw_bit_count()
-        patterns = [[bool(b) for b in pattern] for pattern in patterns]
-        wrong = next((k for k, pattern in enumerate(patterns) if len(pattern) != wanted), None)
-        if wrong is not None:
-            raise ValueError(f"input stream pattern {wrong} has {len(patterns[wrong])} bits, expected {wanted}")
-        self.input_stream, self.input_at = patterns, 0
+        if isinstance(patterns, list):
+            patterns = [[bool(b) for b in pattern] for pattern in patterns]
+            wrong = next((k for k, pattern in enumerate(patterns) if len(pattern) != wanted), None)
+            if wrong is not None:
+                raise ValueError(f"input stream pattern {wrong} has {len(patterns[wrong])} bits, expected {wanted}")
+        elif len(patterns) and (len(patterns[0]) != wanted or len(patterns[-1]) != wanted):
+            raise ValueError(f"input stream patterns have {len(patterns[0])} bits, expected {wanted}")
+        if labels is not None and len(labels) != len(patterns):
+            raise ValueError(f"{len(labels)} labels for {len(patterns)} patterns")
+        self.input_stream, self.input_labels, self.input_at = patterns, None if labels is None else list(labels), 0
 
     def input_neurons(self) -> list[Neuron]:
         """The bottom-row neurons whose input bit is 1 (empty if no pattern is set)."""
