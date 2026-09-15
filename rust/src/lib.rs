@@ -188,8 +188,9 @@ pub struct Engine {
     // --- the schedule -----------------------------------------------------------------
     heap: BinaryHeap<Event>,
     seq: u64,
-    stamp: Vec<u64>, // per neuron: the wave it was last touched in
-    wave_no: u64,
+    stamp: Vec<u64>, // per neuron: the mark of the wave it was last touched in
+    wave_no: u64,    // this epoch's wave count, for fired_wave and delivered_wave; reset each epoch
+    marks: u64,      // every wave ever, never reset: propagation.py's _wave_stamps, a stamp that never repeats
 }
 
 #[pymethods]
@@ -269,6 +270,7 @@ impl Engine {
             seq: 0,
             stamp: vec![0; neurons],
             wave_no: 0,
+            marks: 0,
         })
     }
 
@@ -441,7 +443,12 @@ impl Engine {
             let time = anchored.unwrap_or(first);
 
             self.wave_no += 1;
-            let mark = self.wave_no;
+            // The mark must never repeat across epochs: reset() zeroes wave_no, and a neuron last touched in
+            // wave k of an earlier epoch would otherwise pass for touched in wave k of this one and never be
+            // asked whether it fired (found September 14, 2026, on goo with no direct projection, where an
+            // output can go a whole epoch untouched).
+            self.marks += 1;
+            let mark = self.marks;
             touched.clear();
             forced.clear();
 

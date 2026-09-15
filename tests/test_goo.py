@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from walnutbutter.cli import cli_main
+from walnutbutter.cli import build_parser, cli_main
 from walnutbutter.constants import ACROSS, GOO_COUNT, GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.monitor import run_epoch
@@ -353,3 +353,64 @@ def test_copy_is_read_by_count_and_the_threshold_reaches_the_command_line(tmp_pa
                      "--save-weights", str(save)]) == 0
     assert json.loads(save.read_text())["teacher_threshold"] == 60.0
     assert cli_main(["--load-weights", str(save), "--headless", "--epochs", "2", "--no-save"]) == 0
+
+
+
+# --- no direct projection (AUTHORITY.md §3.4, Byron, September 14, 2026) -------------
+
+def test_goo_can_be_built_with_no_synapse_from_the_input_zone_to_the_output_zone():
+    """A copy then has to go through the interior: at least two hops, not the one synapse from input i to output i."""
+    direct, cut = Goo(seed=1), Goo(seed=1, direct=False)
+    assert direct.projects_directly() and not cut.projects_directly()
+    assert len(cut.connections) == len(direct.connections) - 8 * 8 == 3540 - 64  # exactly the input x output block
+    outputs = set(cut.output_row())
+    for n in cut.input_row():
+        assert not any(c.target in outputs for c in n.outgoing)
+    assert all(any(c.target in set(cut.input_row()) for c in n.outgoing) for n in cut.output_row())  # the way back stays
+    assert all(len(n.incoming) == 59 - 8 for n in cut.output_row())  # an output hears 51, not 59
+    assert all(len(n.incoming) == 59 for n in cut.all_neurons() if n not in outputs)  # nobody else is touched
+    assert [c.id for c in cut.connections.values()] == list(range(1, len(cut.connections) + 1))  # ids stay contiguous
+    assert "no direct projection" in repr(cut) and "no direct projection" not in repr(direct)
+    # §5.2 scales each neuron by its own in-degree: the outputs, hearing 8 fewer synapses, start lower; nobody else moves
+    assert all(n.threshold == pytest.approx(GOO_THRESHOLD * 51 / THRESHOLD_FAN_IN) for n in cut.output_row())
+    assert all(n.threshold == pytest.approx(GOO_THRESHOLD * 59 / THRESHOLD_FAN_IN) for n in cut.all_neurons() if n not in outputs)
+    assert all(n.minimum_potential / n.threshold == pytest.approx(-4.0) for n in cut.all_neurons())  # the ratio holds throughout
+
+
+def test_no_direct_projection_round_trips_and_runs_on_every_engine(tmp_path):
+    pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter import fast
+    from walnutbutter.learning import Teacher
+    goo = Goo(count=30, across=6, seed=3, weight=None, direct=False)
+    run_epoch(goo, verbose=False)
+    data = checkpoint(goo, tmp_path / "cut.json")
+    assert data["direct_projection"] is False and data["connections"] == 30 * 29 - 36
+    back, _ = restore(tmp_path / "cut.json")
+    assert not back.direct and not back.projects_directly() and len(back.connections) == data["connections"]
+    mesh, twin = Goo(count=30, across=6, seed=3, weight=None, direct=False), Goo(count=30, across=6, seed=3, weight=None, direct=False)
+    net = ArrayNetwork(twin)
+    for _ in range(10):
+        run_epoch(mesh, verbose=False)
+        run_epoch(net, verbose=False)
+        assert net.output_fired() == mesh.output_fired()
+    if fast.available():
+        g = Goo(count=30, across=6, seed=3, weight=None, direct=False)
+        g.rule, g.drive, g.read = "reinforce", "rate", "count"
+        assert fast.compare(g, epochs=30, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy",
+                                                          homeostasis=0.01, unstick=0.1)) == []
+
+
+def test_copy_asks_for_no_direct_projection_and_the_flag_overrides(capsys):
+    from walnutbutter.problems import PROBLEMS
+    from walnutbutter.cli import apply_problem
+    assert PROBLEMS["copy"].direct_projection is False and PROBLEMS["reversal"].direct_projection is True
+    args = build_parser().parse_args(["--problem", "copy"]); apply_problem(args)
+    assert args.direct_projection is False
+    args = build_parser().parse_args(["--problem", "copy", "--direct-projection"]); apply_problem(args)
+    assert args.direct_projection is True
+    assert cli_main(["--problem", "copy", "--goo", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0
+    assert "none from the input zone to the output zone" in capsys.readouterr().err
+    assert cli_main(["--problem", "copy", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 2  # the grid cannot
+    assert "only goo can be built with no direct projection" in capsys.readouterr().err
+    assert cli_main(["--problem", "copy", "--direct-projection", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0

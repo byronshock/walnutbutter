@@ -63,6 +63,7 @@ class Goo(Network):
         weight_range: tuple[float, float] = WEIGHT_RANGE,
         minimum_potential: float = GOO_MINIMUM_POTENTIAL,
         scale_with_fan_in: bool = True,
+        direct: bool = True,
     ):
         """Make the goo and wire it.
 
@@ -83,6 +84,12 @@ class Goo(Network):
         no shortcuts to draw and no positions to place, so `seed` reaches
         only those weights, that permutation and the inputs.
 
+        `direct` False leaves out every connection from an input-zone neuron
+        to an output-zone neuron (§3.4, Byron, September 14, 2026), so a copy
+        has to go through the interior -- at least two hops -- and cannot be
+        the one synapse from input i to output i. Everything else, the
+        output zone's projection back onto the inputs included, is wired.
+
         `scale_with_fan_in` rescales each neuron's potential axis by its
         in-degree over THRESHOLD_FAN_IN (AUTHORITY.md §5.2) -- the threshold
         and the floor together -- which is on here and off in every other
@@ -96,6 +103,7 @@ class Goo(Network):
         self.across = across  # the width of each zone, not a count of cells: goo has no cells
         self.rows = ZONES  # row 1 is the input zone and row 0 the output zone; there is nothing in between
         self.count = count
+        self.direct = direct  # whether the input zone projects straight onto the output zone
         self.weight = weight  # fixed weight for every connection, or None for random
         self.threshold = threshold
         self.minimum_potential = minimum_potential
@@ -124,10 +132,13 @@ class Goo(Network):
     def _wire(self) -> None:
         """Every ordered pair, source index then target index, so the count alone fixes the ids."""
         low, high = self.weight_range
-        for source in self.neurons:
-            for target in self.neurons:
+        first_output = self.count - self.across  # the output zone is the last `across` neurons (§3.4)
+        for i, source in enumerate(self.neurons):
+            for j, target in enumerate(self.neurons):
                 if target is source:
                     continue  # no neuron connects to itself (§3)
+                if not self.direct and i < self.across and j >= first_output:
+                    continue  # the input zone does not project straight onto the output zone
                 weight = self._rng.uniform(low, high) if self.weight is None else self.weight
                 connection_id = len(self.connections) + 1
                 self.connections[connection_id] = source.connect(target, connection_id, weight, kind="goo")
@@ -189,8 +200,13 @@ class Goo(Network):
         """How far the potential axis is stretched: (count - 1) / THRESHOLD_FAN_IN, the same for every goo neuron."""
         return (self.count - 1) / THRESHOLD_FAN_IN
 
+    def projects_directly(self) -> bool:
+        """Whether any connection runs from an input-zone neuron to an output-zone neuron."""
+        outputs = set(self.output_row())
+        return any(c.target in outputs for n in self.input_row() for c in n.outgoing)
+
     def __repr__(self) -> str:
-        zones = f"{self.across} in, {self.across} out"
+        zones = f"{self.across} in, {self.across} out" + ("" if self.direct else ", no direct projection")
         if self.zones_overlap():
             zones += ", overlapping"
         return f"Goo({self.count} neurons fully connected, {len(self.connections)} connections; {zones})"

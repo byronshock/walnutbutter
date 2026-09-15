@@ -43,6 +43,13 @@ command line runs them at -- so a Rust run is the run `walnutbutter --seeds` wou
 `tests/test_fast.py` checks the moved thresholds against the object engine every epoch.
 `docs/rust-sweep.py` builds goo as well as the grid. This is the default engine for a sweep.
 
+**A stamp that never repeats.** The neurons a wave touched are marked so each is checked
+once per wave; the mark was the epoch's wave number, which `reset()` zeroed, so a neuron last
+touched in wave *k* of an earlier epoch passed for touched in wave *k* of a later one and was
+never asked whether it fired. Found September 14, 2026 on goo with no direct projection, where
+an output can go a whole epoch untouched; the mark is now a counter that never resets, as
+`propagation.py`'s is. Runs before that fix could miss a firing, reproducibly.
+
 ## What it does not
 
 - **The dopamine rule's in-loop weight updates** (§6.2–6.6, mode "apply"). The teacher,

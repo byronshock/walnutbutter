@@ -118,6 +118,22 @@ def build_parser() -> argparse.ArgumentParser:
         "threshold every result to date was measured at",
     )
     parser.add_argument(
+        "--direct-projection",
+        "--direct_projection",
+        dest="direct_projection",
+        action="store_true",
+        default=None,
+        help="wire the input zone straight onto the output zone, as a fully connected goo does (AUTHORITY.md §3.4): "
+        "the default unless the problem says otherwise -- copy does, so that a copy has to go through the interior",
+    )
+    parser.add_argument(
+        "--no-direct-projection",
+        "--no_direct_projection",
+        dest="direct_projection",
+        action="store_false",
+        help="leave out every connection from an input neuron to an output neuron; only goo can be built so",
+    )
+    parser.add_argument(
         "--no-scale-with-fan-in",
         "--no_scale_with_fan_in",
         dest="scale_with_fan_in",
@@ -729,6 +745,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read_window = problem.read_window
     if args.read is None:
         args.read = problem.read  # --read overrides what the problem asks for
+    if args.direct_projection is None:
+        args.direct_projection = problem.direct_projection  # --direct-projection / --no- override the problem
     if args.read == "window" and args.read_window is None:
         args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
@@ -845,8 +863,11 @@ def _run(args: argparse.Namespace) -> int:
                     permute=not args.no_permute, weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
                     scale_with_fan_in=args.scale_with_fan_in is not False,
+                    direct=args.direct_projection is not False,
                 )
-                print(f"{grid!r}: {grid.mean_out_degree():.0f} outgoing per neuron, every one of them", file=sys.stderr)
+                print(f"{grid!r}: {grid.mean_out_degree():.1f} outgoing per neuron"
+                      + ("" if grid.direct else f" -- {len(grid.connections)} connections, none from the input zone to the output zone"),
+                      file=sys.stderr)
                 first = grid.all_neurons()[0]
                 if grid.scale_with_fan_in_on:
                     print(
@@ -880,6 +901,10 @@ def _run(args: argparse.Namespace) -> int:
                 grid.connect_within(reach=args.reach, weight=args.weight)
             else:
                 grid = GridOfNeurons(**settings, reach=args.grid_reach)
+            if args.direct_projection is False and args.goo is None and not loaded:
+                print("error: only goo can be built with no direct projection from its inputs to its outputs; use --goo, "
+                      "or --direct-projection to run this problem on the grid as wired", file=sys.stderr)
+                return 2
             if args.scale_with_fan_in and args.goo is None and not loaded:
                 grid.scale_with_fan_in(args.threshold, args.minimum_potential)
                 print(
@@ -1132,6 +1157,7 @@ def _seed_worker(job: dict) -> dict:
             seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
             minimum_potential=settings["minimum_potential"],
             scale_with_fan_in=job.get("scale_with_fan_in") is not False,
+            direct=job.get("direct_projection") is not False,
         )
     elif job.get("lattice"):
         settings = job["settings"]
@@ -1249,7 +1275,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
                      "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
-                     "scale_with_fan_in": args.scale_with_fan_in,
+                     "scale_with_fan_in": args.scale_with_fan_in, "direct_projection": args.direct_projection,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
