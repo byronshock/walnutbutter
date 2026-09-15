@@ -184,7 +184,7 @@ def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
     assert cli_main(["--headless", "--problem", "sustain_inputs", "--seeds", "2", "--seed", "1", "--epochs", "3", "--no-save"]) == 0
     assert cli_main(["--headless", "--problem", "sustain_inputs", "--rule", "reinforce", "--epochs", "3", "--no-save"]) == 0
     err = capsys.readouterr().err  # §6.7: the rule runs on an untrained problem, keeping no dopamine pool and so no decay
-    assert "rule: reinforce (perturb eligibility" in err and "no weight decay" in err
+    assert "rule: reinforce (hazard eligibility" in err and "no weight decay" in err
 
 
 def test_reversal_is_unchanged(tmp_path, capsys):

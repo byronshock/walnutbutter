@@ -604,7 +604,11 @@ rate its margin sets. That is Williams's Bernoulli unit with the noise in
 the threshold, and `--eligibility hazard` pays it with Williams's own
 eligibility: the score of each decision, summed over the epoch on each
 synapse's trace of what it still had in the potential (§6.7). It needs a
-positive D and runs in all three engines.
+positive D and runs in all three engines. Since September 15, 2026 the
+command line's default is D = 0.455 (ESCAPE_DELTA, Byron's word from the
+Δ × LR grid of AUTHORITY.md §3.4) with the hazard eligibility; `--delta 0`
+is the deterministic neuron of every earlier result, and a network built in
+the library stays deterministic until `network.set_delta(D)`.
 Under the schedule the mesh reverberates on its own, so no performance is
 claimed for this rule any more.
 

@@ -543,7 +543,7 @@ class Teacher:
         target: str = TARGET,
         lr: float = LR,
         sigma: float = SIGMA,
-        eligibility: str = ELIGIBILITY,
+        eligibility: str | None = None,
         baseline_rate: float = BASELINE_RATE,
         window: int = WINDOW,
         seed: int | None = None,
@@ -574,6 +574,8 @@ class Teacher:
             raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
         self.late = late  # what a signal arriving after its target fired earns
         self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
+        if eligibility is None:  # the eligibility follows the neuron (§1.3): the hazard's under escape noise, else the constant's
+            eligibility = "hazard" if getattr(grid, "hazard", False) else ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
         if eligibility == "hazard" and not getattr(grid, "hazard", False):

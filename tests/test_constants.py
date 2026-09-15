@@ -30,7 +30,9 @@ def test_the_command_line_defaults_are_the_constants():
     assert (args.dopamine_tau, args.release_alpha, args.release_theta, args.order) == (
         C.DOPAMINE_TAU, C.DOPAMINE_RELEASE_ALPHA, C.DOPAMINE_RELEASE_THETA, C.DOPAMINE_ORDER)
     assert args.problem == C.PROBLEM
-    assert (args.target, args.eligibility, args.late) == (C.TARGET, C.ELIGIBILITY, C.LATE)
+    assert (args.target, args.late) == (C.TARGET, C.LATE)
+    assert args.eligibility is None and C.ELIGIBILITY == "perturb"  # follows the neuron: hazard under escape noise (§1.3)
+    assert args.delta == C.ESCAPE_DELTA == 0.455  # escape noise on by default (§5.2, Byron, September 15, 2026)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
     assert (args.lr, args.sigma, args.homeostasis, args.target_rate) == (C.LR, C.SIGMA, C.HOMEOSTASIS, C.TARGET_RATE)
     assert (args.unstick, args.unstick_target) == (C.UNSTICK, C.UNSTICK_TARGET)
@@ -89,7 +91,8 @@ def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
 
 def test_the_teacher_and_the_rule_read_the_constants():
     d = defaults_of(Teacher)
-    assert (d["target"], d["critic"], d["eligibility"], d["late"]) == (C.TARGET, C.CRITIC, C.ELIGIBILITY, C.LATE)
+    assert (d["target"], d["critic"], d["late"]) == (C.TARGET, C.CRITIC, C.LATE)
+    assert d["eligibility"] is None  # resolved from the network: hazard under escape noise, else ELIGIBILITY (§1.3)
     assert (d["lr"], d["sigma"], d["baseline_rate"], d["window"]) == (C.LR, C.SIGMA, C.BASELINE_RATE, C.WINDOW)
     assert (d["homeostasis"], d["target_rate"]) == (C.HOMEOSTASIS, C.TARGET_RATE) and "threshold_range" not in d
     assert (d["unstick"], d["unstick_target"]) == (C.UNSTICK, C.UNSTICK_TARGET)

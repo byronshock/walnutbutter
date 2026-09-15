@@ -122,12 +122,11 @@ class Network:
         """
         if delta < 0.0:
             raise ValueError(f"ESCAPE_DELTA must not be negative, got {delta}")
-        neurons = self._everyone()
-        if delta > 0.0 and any(neuron.threshold <= 0.0 for neuron in neurons):
-            raise ValueError("escape noise quotes its width in units of the starting threshold, which must be positive")
         self.escape_delta = float(delta)
-        for neuron in neurons:
-            neuron.delta = delta * neuron.threshold
+        for neuron in self._everyone():
+            # a neuron whose starting threshold is not positive -- no incoming synapses under fan-in scaling (§5.2) --
+            # has a collapsed axis with no width to quote on it, and keeps the deterministic rule
+            neuron.delta = delta * neuron.threshold if neuron.threshold > 0.0 else 0.0
 
     def scale_with_fan_in(
         self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN

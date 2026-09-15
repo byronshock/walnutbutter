@@ -90,7 +90,7 @@ at all.
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
 | TEACHER_THRESHOLD | 14.3 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz, so 14.3 — the middle of the one-spike band — means *at least one spike*, the line as far from both edges as it can sit (Byron, September 14, 2026, choosing it to mean one spike and not for its score). It was 40, two spikes, for the read's first hour |
 | BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods. Superseded by ESCAPE_DELTA (Byron, September 15, 2026): the hazard buys what the clock was to buy, "and much much more cleanly"; it is not run on top of the hazard |
-| ESCAPE_DELTA | 0 (off) | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). Positive, a neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$: one expected spike per hop at threshold, $e$ times more per $\Delta_j$ above it. 0 is the deterministic threshold. Swept $\{0.7, 1.05, 1.4\}$ on copy (§3.4) |
+| ESCAPE_DELTA | 0.455 | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). A neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$: one expected spike per hop at threshold, $e$ times more per $\Delta_j$ above it; 0 is the deterministic threshold. *The value is Byron's word (September 15, 2026, after the $\Delta \times$ LR grid of §3.4): inside the plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up.* Applied by the command line and the sweep driver; a network built in the library is deterministic until `set_delta`, as it has no $\sigma$ until a Teacher gives it one |
 
 ### 1.3 Learning
 
@@ -123,7 +123,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 |---|---|---|
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
 | CRITIC | row | how the reward is judged (§6.7) |
-| ELIGIBILITY | perturb | what the reward acts on: the exploration noise, a Hebbian ±1, or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$) |
+| ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's), a Hebbian ±1 (hebb), or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
 | HOMEOSTASIS | 10⁻⁶ | per-epoch rate a threshold drifts toward its target firing rate; 0 = off |
@@ -996,6 +996,33 @@ floor within noise of the grid's best. 0.3 is the choice by the floor
 alone. The next question is LR above 0.03, which the grid's top row has not
 closed.
 
+*Set (Byron, September 15, 2026): ESCAPE_DELTA = 0.455*, inside the plateau
+and between the two cells above; and with it the default eligibility is
+the hazard's (§1.3). *"Please sweep LR starting at 0.0275 in 0.0125
+increments to 0.05"*: below.
+
+**LR at $\Delta$ 0.455 (Byron, September 15, 2026, the sweep just named).**
+Four levels — 0.0275, 0.04 and 0.0525 by the increment, and 0.05 as the
+stated end — ten seeds, 100,000 epochs, the new default width, the hazard
+eligibility, 31 s an arm (`docs/goo60-hazard-lr.md`,
+`goo60-hazard-lr-score.png`):
+
+| LR | last tenth | sd | worst | best | seeds > 0.65 | vs hebb 0.626, paired on the seed | vs the grid's 0.03 × 0.45 (0.655) |
+|---|---|---|---|---|---|---|---|
+| 0.0275 | 0.656 | 0.051 | 0.594 | 0.767 | 5 | +0.031, $t = 1.9$, 6 of 10 | +0.002 |
+| 0.04 | 0.667 | 0.044 | 0.618 | 0.762 | 7 | +0.042, $t = 3.1$, 8 of 10 | +0.013 |
+| 0.05 | 0.671 | 0.035 | 0.611 | 0.717 | 7 | **+0.046, $t = 4.0$, 10 of 10** | +0.016 |
+| 0.0525 | 0.676 | 0.052 | 0.627 | 0.776 | 5 | **+0.051, $t = 3.9$, 10 of 10** | +0.021 |
+
+The climb has flattened. From 0.0275 to 0.0525 the mean rises 0.020 ($t =
+1.7$, 6 of 10) and no single step is significant ($t$ 0.3–0.8): LR is a
+plateau from about 0.025 to 0.0525 at 0.66–0.68, nothing collapses at the
+top, no neuron ends stuck, and hebb is beaten on every seed at 0.05 and
+0.0525. The seed sd is 0.04–0.05 here against 0.03 on the grid's top rows,
+so ten seeds do not tell these levels apart. LR stays at 0.03 until Byron
+moves it; the case for moving it is a tenth of the gap to hebb, and what
+would settle it is more seeds, not more levels.
+
 ## 4. Signalling — kept, on a schedule
 
 ### 4.1 The clock
@@ -1543,6 +1570,17 @@ a patch is outvoted by its two neighbours, which is the whole reason the
 corruption is correctable at all. FLIP = 0 collapses the two patterns into one
 and this section reads as it did before.
 
+**Clock neurons — decided (Byron, September 15, 2026): "Clock neurons can
+be created for a task as input neurons always driven by 1."** A task may
+add input neurons whose bit is always 1, so the drive above fires them
+every epoch whatever the pattern: a tonic input the network can time by
+and weigh — Williams's bias input, whose value is 1 so that its weight is
+a threshold in disguise [1, §8.4]. Under escape noise (§5.2) they are the
+one steady source of drive in a network whose silence otherwise sits at
+the floor. *Not yet built:* a problem would say how many, they would join
+the input zone (goo, §3.4) or row and be left out of the read, and
+complement coding would leave them alone.
+
 ### 4.4 Waves
 
 Firing is queued, never recursive. A wave is every event scheduled for one
@@ -1704,8 +1742,10 @@ and $P$ the chance of at least one. $\Delta_j$ is quoted in units of the
 threshold the container gave the neuron, so §5.2's scaling applies to it as
 to the rest of the axis, a neuron of any fan-in is as soft as any other, and
 it stays put when homeostasis later moves $\theta_j$. $\Delta = 0$ is the
-deterministic rule word for word. A forced neuron fires by its stimulus and
-makes no decision that wave.
+deterministic rule word for word, and so is a neuron whose starting
+threshold is not positive — one with no incoming synapses under §5.2's
+scaling, whose whole axis has collapsed and carries no width to quote. A
+forced neuron fires by its stimulus and makes no decision that wave.
 
 The draw is one uniform per neuron per wave, in neuron order, from the
 exploration stream of §6.1, taken in that draw's position — after the
@@ -2171,7 +2211,9 @@ two smaller experiments proposed alongside this one; neither is built.
 loses. It is the first gradient form on this substance to learn at all.
 The $\Delta \times$ LR grid that followed (§3.4, 660 arms) puts the plateau
 in $\Delta$ at 0.25–0.7 and makes LR the lever: 0.03 × 0.55 scores 0.681,
-**+0.056 on hebb** (9 of 10), and LR has not stopped climbing at 0.03.
+**+0.056 on hebb** (9 of 10). ESCAPE_DELTA is 0.455 since (Byron's word),
+and at that width LR is a plateau from 0.025 to 0.0525 at 0.66–0.68, hebb
+beaten on every seed at 0.05 (§3.4).
 
 ### 6.8 Earned activity — decided for now
 

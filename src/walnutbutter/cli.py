@@ -514,9 +514,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--eligibility",
         choices=ELIGIBILITIES,
-        default=ELIGIBILITY,
+        default=None,
         help=f"what the global reward acts on: the neuron's exploration noise (perturb), plain Hebbian (hebb), or the score "
-        f"of the escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: {ELIGIBILITY})",
+        f"of the escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: hazard "
+        f"when the network has escape noise, else {ELIGIBILITY})",
     )
     parser.add_argument(
         "--homeostasis",
@@ -915,6 +916,8 @@ def _run(args: argparse.Namespace) -> int:
             grid.interval = args.interval
             if not loaded or args.delta != ESCAPE_DELTA:
                 grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
+            if args.eligibility is None:  # the eligibility follows the neuron (§1.3)
+                args.eligibility = "hazard" if grid.hazard else ELIGIBILITY
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
@@ -1244,6 +1247,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
         weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
     )
+    if args.eligibility is None:  # the eligibility follows the neuron (§1.3): every seed's network gets args.delta
+        args.eligibility = "hazard" if args.delta > 0 else ELIGIBILITY
     teacher_kwargs = dict(
         target=args.target,
         lr=args.lr,

@@ -36,6 +36,8 @@ import os
 import statistics
 import sys
 import time
+
+from walnutbutter.constants import ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -73,7 +75,7 @@ def parse() -> argparse.Namespace:
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
-    parser.add_argument("--eligibility", choices=("hebb", "perturb", "hazard"), default="hebb",
+    parser.add_argument("--eligibility", choices=("hebb", "perturb", "hazard"), default="hazard" if ESCAPE_DELTA > 0 else "hebb",
                         help="what the reward acts on (§6.7): a Hebbian +-1, the perturbation the neuron decided under, or "
                              "the score of the escape-noise decision on each synapse's trace (hazard; needs --delta)")
     parser.add_argument("--epochs", type=int, default=1_000_000)
