@@ -378,7 +378,69 @@ hypothesis and not as a change to §1.1: the default network stays at eighty
 neurons until this is measured. The test is a count sweep on hebbian goo on copy (§8) —
 `--goo N` for $N$ in {8, 12, 16, 24, 32, 48, 64, 80}, ten seeds — because
 $N$ is goo's only knob, so nothing has to be re-tiled to vary it, and goo 16
-at 240 connections is shallow_copy's regime with no geometry at all. Not run.
+at 240 connections is shallow_copy's regime with no geometry at all.
+
+**Swept (Byron, September 14, 2026: "sweep goo in {24, 32, 40, 48, 64, 80} x
+threshold (and resulting floor) in {0.15 0.2 0.25 0.3 0.5} for 100000 epochs
+across 10 seeds").** Goo's count against THRESHOLD, the floor following the
+threshold at the grid's ratio of −4 so that every cell moves the whole axis
+and not the ratio, and goo then scaling both by $(N - 1)/18$; copy (§8), the
+hebb eligibility, the Rust loop, 300 arms in 742 seconds.
+`docs/goo-count-threshold.md`, `goo-count-threshold-score.png`. Accuracy over
+the last tenth, mean of ten seeds; stuck-on counts beneath:
+
+| goo \ THRESHOLD | 0.15 | 0.2 | 0.25 | 0.3 | 0.5 |
+|---|---|---|---|---|---|
+| 24 | 0.579 | 0.560 | **0.609** | 0.595 | 0.584 |
+| 32 | 0.558 | 0.530 | 0.537 | 0.574 | 0.586 |
+| 40 | 0.538 | 0.530 | 0.555 | 0.573 | 0.550 |
+| 48 | 0.527 | 0.512 | 0.532 | 0.531 | 0.526 |
+| 64 | 0.505 | 0.506 | 0.539 | 0.516 | 0.572 |
+| 80 | 0.531 | 0.518 | 0.524 | 0.516 | **0.634** |
+| *stuck on, of 24* | 7 | 9 | 3 | 6 | 4 |
+| *stuck on, of 80* | 67 | 67 | 61 | 61 | **0** |
+
+**Two results, and they pull in opposite directions.**
+
+*At the shipped threshold, fewer neurons is much better.* At THRESHOLD 0.25
+goo 24 scores 0.609 against goo 80's 0.524 — +0.085 paired on the seed,
+$t = 6.5$ — and the column falls monotonically from 24 to 64. The stuck-on
+counts say why: goo 24 ends with 3 of its 24 neurons stuck on, goo 80 with 61
+of 80. Byron's reading holds exactly where it was made.
+
+*But the best cell of the sweep is the biggest goo at the highest
+threshold.* Goo 80 at THRESHOLD 0.5 — $\theta$ 2.19, floor −8.78 — scores
+**0.634**: nine seeds of ten above 0.55 and the tenth at chance, a whole-run
+mean of 0.637 against 0.516 at the default (it learns from the start, not at
+the end), and its stuck-on count falls from 67 to **0**, the un-stick nudges
+from 549,000 to 28,000, because the outputs stop needing to be dragged off
+the rails. Against its own default it is +0.110, $t = 4.6$; against goo 24
+at the same threshold +0.050, $t = 5.1$ — the count effect *reverses sign*.
+And against goo 24 at its own best it is +0.024, $t = 1.3$: not separable.
+
+So the count was never the problem — **the threshold for the fan-in was.**
+Eighty neurons learn as well as twenty-four once their threshold keeps them
+from saturating, and §5.2's linear scaling does not get them there: at
+$N = 80$ it starts $\theta$ at 1.10, and the saturation only clears at about
+2.2, twice that. The stuck-on rows trace the same curve at every count — 64
+needs 0.5 too, 40 clears at 0.3, 24 at anything — so the threshold that stops
+a goo saturating grows *faster* than its fan-in, which is what the activity
+scan above already hinted (exponent about 1.3 against the grid) and what the
+sum of $d$ independent weights predicts if it is the variance and not the
+mean that matters. That is a measurement against §5.2's "linear because that
+is the plain reading", and it is Byron's to act on: FOR NOW was the word.
+
+*Two caveats.* The axis is truncated where it matters — for $N \ge 64$ the
+best cell is the last one, so the optimum is at 0.5 or past it, and no
+exponent can be read off five points that stop there. And the seed spread is
+wide everywhere, 0.50 to 0.70 in most cells: a cell's mean is ten seeds of
+which some catch and some do not, and goo 80 at 0.5 is the one cell where
+nearly all of them catch.
+
+*The next sweep, if it is wanted:* THRESHOLD in {0.5, 0.75, 1.0, 1.5} for
+$N$ in {48, 64, 80}, the floor following — 120 arms, about five minutes on
+the Rust loop. It would locate the optimum for the big goos and put a number
+on the exponent. Not run.
 
 The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
@@ -969,6 +1031,13 @@ the in-degree the 0.25 and the −1 were chosen against: an interior cell's
 two hex rings at REACH 2. A neuron wired like that cell keeps both exactly.
 The rule is linear because that is what "scales with fan-in" says without
 further instruction.
+
+*Measured, September 14, 2026 (§3.4, the count × threshold sweep):* linear
+under-corrects. On copy under hebb, goo 80 saturates at every THRESHOLD up
+to 0.3 — $\theta$ up to 1.32 — and comes alive at 0.5, $\theta$ 2.19,
+twice what this rule gives it, scoring 0.634 with nothing stuck; at every
+count measured the threshold that stops a goo saturating grows faster than
+its fan-in. The rule stands as written until Byron moves it.
 
 **The floor moves because it is not a second decision.** $\theta$ and
 $p^{\min}$ are two points on one axis, and it is the axis being rescaled.

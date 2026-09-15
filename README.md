@@ -467,6 +467,16 @@ the grid with its depth taken away, against goo, which is the grid with its
 depth and its locality taken away. `--no-scale-with-fan-in` runs goo flat,
 and `--scale-with-fan-in` offers the rule to any other container.
 
+Then, on copy under hebb, goo's count against THRESHOLD with the floor
+following at the grid's ratio (`docs/goo-count-threshold.md`, 300 arms):
+**at the shipped threshold fewer neurons is much better** -- goo 24 scores
+0.609, goo 80 0.524, t 6.5 -- **but the best cell of all is goo 80 at
+THRESHOLD 0.5**: 0.634, nine seeds of ten learning, not one neuron stuck on.
+The count was never the problem; the threshold for the fan-in was, and the
+linear scaling of §5.2 under-corrects by about 2x at eighty neurons. The
+axis stops where the big goos come alive, so the optimum is at 0.5 or past
+it.
+
 ## Learning
 
 **Dopamine** (AUTHORITY.md §6, the default, `--rule dopamine`). A neuron
