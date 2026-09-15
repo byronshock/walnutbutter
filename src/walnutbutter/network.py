@@ -18,7 +18,7 @@ from .constants import (
     RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
-from .exploration import gaussians
+from .exploration import gaussians, hazard_draws
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
 from .clock import before, slack
@@ -76,6 +76,7 @@ class Network:
         self.explore = EXPLORE  # when the exploration draw is taken (§6.1): every wave, or once per epoch
         self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
         self.explore_rng = None  # the stream it comes from
+        self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
@@ -104,6 +105,29 @@ class Network:
 
     def get_neuron_at(self, place: int, row: int) -> Neuron | None:  # pragma: no cover - overridden
         raise NotImplementedError
+
+    @property
+    def hazard(self) -> bool:
+        """True when the firing decision is a draw (AUTHORITY.md §5.2): set_delta gave this network a positive width."""
+        return self.escape_delta > 0.0
+
+    def set_delta(self, delta: float) -> None:
+        """Escape noise (AUTHORITY.md §5.2): every neuron's decision is `delta` times its starting threshold wide; 0 turns it off.
+
+        Call it once the thresholds are what the container gave them -- after
+        fan-in scaling -- and before anything moves them: a neuron's width is
+        set from the threshold it starts at and stays put when homeostasis
+        later moves the threshold. The draws come from the exploration stream
+        (§6.1), so a run with a positive width needs one.
+        """
+        if delta < 0.0:
+            raise ValueError(f"ESCAPE_DELTA must not be negative, got {delta}")
+        neurons = self._everyone()
+        if delta > 0.0 and any(neuron.threshold <= 0.0 for neuron in neurons):
+            raise ValueError("escape noise quotes its width in units of the starting threshold, which must be positive")
+        self.escape_delta = float(delta)
+        for neuron in neurons:
+            neuron.delta = delta * neuron.threshold
 
     def scale_with_fan_in(
         self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN
@@ -465,6 +489,9 @@ class Network:
         if self.rule in ("teacher", "adaline"):
             for connection in self.connections.values():
                 connection.eligibility = 0.0  # a new epoch earns its own credit
+        if self.hazard:
+            for connection in self.connections.values():
+                connection.score = 0.0  # the hazard eligibility is the epoch's (§6.7); the trace is the potential's and stays
         self.waves = []
 
     def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
@@ -487,15 +514,29 @@ class Network:
                 neuron.leak(now)
             if not (hold_fired and neuron.has_fired):
                 neuron.noise = draw
-            neuron.potential = max(neuron.minimum_potential, neuron.potential + draw)
+            summed = neuron.potential + draw
+            if summed < neuron.minimum_potential:
+                summed = neuron.minimum_potential
+                if neuron.delta > 0.0:
+                    for connection in neuron.incoming:
+                        connection.trace = 0.0  # the floor bit: the potential is the floor whatever the weights (§6.7)
+            neuron.potential = summed
 
     def _explore(self, time: float) -> None:
-        """The per-wave exploration draw (§6.1), called before each wave's firing decision."""
-        self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
+        """Before each wave's firing decision: the additive draw of §6.1, then the hazard's uniforms (§5.2), in that order."""
+        if self.explore == "wave" and self.sigma > 0.0:
+            self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
+        if self.hazard:
+            neurons = self._everyone()
+            for neuron, draw in zip(neurons, hazard_draws(self.explore_rng, len(neurons))):
+                neuron.draw = draw
 
     def explorer(self):
         """The hook Schedule.run calls before each wave fires, or None when nothing is exploring."""
-        return self._explore if (self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None) else None
+        additive = self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None
+        if self.hazard and self.explore_rng is None:
+            raise ValueError("escape noise needs a stream for its draws (§5.2): run the epoch with an rng, as run_epoch does")
+        return self._explore if (additive or self.hazard) else None
 
     def fired_neurons(self) -> list[Neuron]:
         """Return the neurons that have fired since the last reset."""

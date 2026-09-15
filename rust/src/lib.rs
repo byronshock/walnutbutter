@@ -168,6 +168,13 @@ pub struct Engine {
     forced: Vec<bool>,
     fired_wave: Vec<i64>, // -1 when it has not fired this epoch
     delivered_wave: Vec<i64>, // per edge: the wave it delivered in this epoch, landed or not; -1 when it did not
+    trace: Vec<f64>,    // per edge: the charge it still has in its target's potential, brought up to trace_at (§6.7)
+    trace_at: Vec<f64>,
+    score: Vec<f64>,    // per edge: the hazard eligibility accumulated this epoch (§6.7)
+    delta: Vec<f64>,    // per neuron: the width of its firing decision; 0 is the deterministic threshold (§5.2)
+    exposed_since: Vec<f64>, // per neuron: since when its hazard has run
+    draw: Vec<f64>,     // per neuron: this wave's uniform for the decision
+    hazard: bool,       // any delta > 0: the decision is a draw and the traces and scores are kept
 
     // --- the clock and the rules ------------------------------------------------------
     tau: f64,
@@ -252,6 +259,13 @@ impl Engine {
             forced: vec![false; neurons],
             fired_wave: vec![-1; neurons],
             delivered_wave: vec![-1; edges],
+            trace: vec![0.0; edges],
+            trace_at: vec![0.0; edges],
+            score: vec![0.0; edges],
+            delta: vec![0.0; neurons],
+            exposed_since: vec![0.0; neurons],
+            draw: vec![1.0; neurons],
+            hazard: false,
             tau,
             refractory,
             hop,
@@ -329,6 +343,12 @@ impl Engine {
         self.forced.iter_mut().for_each(|f| *f = false);
         self.noise.iter_mut().for_each(|x| *x = 0.0); // Neuron.reset clears it too
         self.spikes_at_reset.copy_from_slice(&self.spikes); // Neuron.reset snapshots the count
+        if self.hazard {
+            self.score.iter_mut().for_each(|s| *s = 0.0); // the hazard eligibility is the epoch's (§6.7)
+            if discharge {
+                self.trace.iter_mut().for_each(|x| *x = 0.0); // nothing is left in a zeroed potential
+            }
+        }
         if clear_eligibility {
             self.eligibility.iter_mut().for_each(|e| *e = 0.0);
         }
@@ -408,6 +428,60 @@ impl Engine {
         Ok(changed)
     }
 
+    /// Escape noise (§5.2): each neuron's decision width, `Network.set_delta`'s per-neuron values; all 0 turns it off.
+    fn set_deltas(&mut self, deltas: Vec<f64>) -> PyResult<()> {
+        if deltas.len() != self.neurons {
+            return Err(PyValueError::new_err("one delta per neuron"));
+        }
+        let on = deltas.iter().any(|&d| d > 0.0);
+        if on && self.explore.is_none() {
+            return Err(PyValueError::new_err(
+                "escape noise needs Python's stream: call set_explore_state(rng.getstate()[1]) first (§5.2)",
+            ));
+        }
+        self.delta = deltas;
+        self.hazard = on;
+        Ok(())
+    }
+
+    /// §6.7 with the hazard eligibility: every synapse into an unforced neuron moves by `lr * advantage * score`,
+    /// the score being what the neuron's decisions summed to on that synapse's trace this epoch.
+    fn reinforce_hazard(&mut self, advantage: f64, lr: f64) -> PyResult<usize> {
+        if !self.hazard {
+            return Err(PyValueError::new_err(
+                "the hazard eligibility needs escape noise: set_deltas with a positive width first (§5.2)",
+            ));
+        }
+        if advantage == 0.0 {
+            return Ok(0);
+        }
+        let step = lr * advantage;
+        let mut changed = 0;
+        for edge in 0..self.weight.len() {
+            if self.score[edge] == 0.0 {
+                continue;
+            }
+            let target = self.edge_target[edge] as usize;
+            if self.forced[target] {
+                continue; // a forced input: its firing was not the network's doing
+            }
+            let w = self.weight[edge] + step * self.score[edge];
+            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
+    fn scores(&self) -> Vec<f64> {
+        self.score.clone()
+    }
+    fn traces(&self) -> Vec<f64> {
+        self.trace.clone()
+    }
+    fn deltas(&self) -> Vec<f64> {
+        self.delta.clone()
+    }
+
     /// An external input of `amount` is not supported yet; stimuli and signals are.
     fn external(&mut self, _neuron: u32, _amount: f64, _time: f64) -> PyResult<()> {
         Err(PyValueError::new_err(
@@ -462,6 +536,12 @@ impl Engine {
                         self.delivered_wave[edge] = self.wave_no as i64;
                         if self.receive(target, self.weight[edge], time) {
                             self.last_signal[edge] = time;
+                            if self.hazard {
+                                // escape noise (§6.7): what this synapse now has in its target's potential
+                                self.trace[edge] =
+                                    self.trace[edge] * (-(time - self.trace_at[edge]) / self.tau).exp() + 1.0;
+                                self.trace_at[edge] = time;
+                            }
                             if self.earn {
                                 self.eligibility[edge] += 1.0;
                             }
@@ -482,6 +562,9 @@ impl Engine {
                 let i = i as usize;
                 if self.potential[i] < self.floor[i] {
                     self.potential[i] = self.floor[i];
+                    if self.hazard {
+                        self.clear_traces(i); // the floor bit: the weights are not in it (§6.7)
+                    }
                 }
             }
 
@@ -489,6 +572,9 @@ impl Engine {
             // in propagation.py's position exactly -- after settle(), before anything fires
             if self.sigma > 0.0 {
                 self.explore_wave(time);
+            }
+            if self.hazard {
+                self.hazard_draws(); // §5.2: one uniform per neuron, in neuron order, after the additive draw
             }
 
             let mut fired: Vec<u32> = Vec::new();
@@ -502,13 +588,13 @@ impl Engine {
             }
             for k in 0..touched.len() {
                 let i = touched[k] as usize;
-                if self.can_fire(i, time) {
+                if self.decide(i, time) {
                     self.fire(i, time, &mut fired);
                 }
             }
-            // everyone else: a threshold that has fallen with its silence (§5.4)
+            // everyone else: a threshold that has fallen with its silence (§5.4), or the hazard (§5.2)
             for i in 0..self.neurons {
-                if self.stamp[i] != mark && self.can_fire(i, time) {
+                if self.stamp[i] != mark && self.decide(i, time) {
                     self.fire(i, time, &mut fired);
                 }
             }
@@ -654,8 +740,70 @@ impl Engine {
                 self.noise[i] = draw;
             }
             let p = self.potential[i] + draw;
-            self.potential[i] = if p < self.floor[i] { self.floor[i] } else { p };
+            if p < self.floor[i] {
+                self.potential[i] = self.floor[i];
+                if self.hazard {
+                    self.clear_traces(i); // the floor bit: the weights are not in it (§6.7)
+                }
+            } else {
+                self.potential[i] = p;
+            }
         }
+    }
+
+    /// The traces into neuron `i` are zero: its potential was reset by a spike or is the floor (§6.7).
+    #[inline]
+    fn clear_traces(&mut self, i: usize) {
+        let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
+        for k in lo..hi {
+            self.trace[self.in_edges[k] as usize] = 0.0;
+        }
+    }
+
+    /// exploration.hazard_draws: one uniform per neuron from Python's stream, in neuron order (§5.2).
+    fn hazard_draws(&mut self) {
+        let n = self.neurons;
+        let mut draws = Vec::with_capacity(n);
+        match self.explore.as_mut() {
+            Some(rng) => {
+                for _ in 0..n {
+                    draws.push(rng.random());
+                }
+            }
+            None => return, // set_deltas refuses a width without a stream, so this cannot happen
+        }
+        self.draw.copy_from_slice(&draws);
+    }
+
+    /// neuron.py's decide: the threshold when the width is 0, else the escape-noise draw (§5.2), and under it the
+    /// hazard eligibility of every incoming synapse is settled for the decision (§6.7): each score moves by
+    /// e_j * trace, e_j = m e^-m / (1 - e^-m) when the neuron fires and -m when it does not.
+    fn decide(&mut self, i: usize, now: f64) -> bool {
+        if self.delta[i] <= 0.0 {
+            return self.can_fire(i, now);
+        }
+        if self.refractory_at(i, now) {
+            return false;
+        }
+        let s = self.potential_at(i, now) - self.threshold_at(i, now);
+        let mut elapsed = now - self.exposed_since[i];
+        if elapsed < 0.0 {
+            elapsed = 0.0;
+        }
+        let m = (elapsed / self.hop * (s / self.delta[i]).exp()).min(1e3);
+        let fired = self.draw[i] < -(-m).exp_m1();
+        self.exposed_since[i] = now;
+        if m > 0.0 {
+            let e = if fired { m * (-m).exp() / -(-m).exp_m1() } else { -m }; // m e^-m / (1 - e^-m), finite at any m
+            let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
+            for k in lo..hi {
+                let edge = self.in_edges[k] as usize;
+                if self.trace[edge] != 0.0 {
+                    self.score[edge] += e * self.trace[edge] * (-(now - self.trace_at[edge]) / self.tau).exp();
+                }
+            }
+        }
+        fired
     }
 
     /// neuron.py: bring the potential up to `now`. Lazy, so call it on arrival.
@@ -712,6 +860,10 @@ impl Engine {
         self.fired_at[i] = now;
         self.last_update[i] = now;
         self.potential[i] = 0.0; // the spike resets the potential
+        self.exposed_since[i] = now + self.refractory; // the hazard resumes when the refractory period ends (§5.2)
+        if self.hazard {
+            self.clear_traces(i); // nothing any synapse delivered is still in the potential (§6.7)
+        }
         self.spikes[i] += 1;
         self.fired_wave[i] = self.wave_no as i64;
         // the rate trace: one spike's worth on, decaying with rate_tau (§4.3)

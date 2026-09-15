@@ -85,6 +85,12 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "spikes": [n.spikes for n in grid.all_neurons()],
         # the synapses' stamps and the signals in flight, so a resumed run continues mid-cascade
         "last_signal": [grid.connections[i].last_signal for i in range(1, len(grid.connections) + 1)],
+        # escape noise (§5.2): the width in units of the starting threshold, each neuron's own in potential units,
+        # since when each hazard has run, and each synapse's trace of what it still has in its target (§6.7)
+        "escape_delta": grid.escape_delta,
+        "deltas": [n.delta for n in grid.all_neurons()],
+        "exposed_since": [n.exposed_since for n in grid.all_neurons()],
+        "traces": [[grid.connections[i].trace, grid.connections[i].trace_at] for i in range(1, len(grid.connections) + 1)],
         "pending": [[time, connection.id] for time, connection in grid.schedule.pending()],
         "dopamine": None if grid.dopamine is None else grid.dopamine.state(),
         "rule": grid.rule,  # which rule the schedule's hook serves: dopamine, or teacher (eligibility for the read)
@@ -325,6 +331,13 @@ def _restore_clock(grid, data: dict) -> None:
         neuron.spikes = spikes
     for connection_id, last in enumerate(data.get("last_signal", []), start=1):
         grid.connections[connection_id].last_signal = last
+    grid.escape_delta = data.get("escape_delta", 0.0)  # escape noise (§5.2); older checkpoints ran the threshold
+    for neuron, delta in zip(neurons, data.get("deltas", [])):
+        neuron.delta = delta
+    for neuron, since in zip(neurons, data.get("exposed_since", [])):
+        neuron.exposed_since = since
+    for connection_id, (trace, at) in enumerate(data.get("traces", []), start=1):
+        grid.connections[connection_id].trace, grid.connections[connection_id].trace_at = trace, at
     grid.schedule.clear()
     for time, connection_id in data.get("pending", []):
         grid.schedule.signal(grid.connections[connection_id], time)

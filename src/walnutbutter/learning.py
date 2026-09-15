@@ -43,7 +43,12 @@ This is the REINFORCE / node-perturbation estimator of the reward gradient,
 a three-factor rule: presynaptic activity x postsynaptic perturbation x
 global reward. With `eligibility="hebb"` the perturbation is replaced by a
 plain Hebbian term (+1 if the target fired, -1 if not) and no noise is
-injected, which is the classic reward-modulated Hebbian rule.
+injected, which is the classic reward-modulated Hebbian rule. With
+`eligibility="hazard"` the firing decision itself is the draw (escape noise,
+AUTHORITY.md §5.2: the network was given a positive ESCAPE_DELTA) and the
+eligibility is Williams's own, the score of each decision summed over the
+epoch on each synapse's trace of what it still had in the potential (§6.7);
+every engine accumulates it as it runs and this module only pays it.
 
 Forced inputs are never adjusted and weights are kept within the grid's
 weight_range, [-1, 1] by default.
@@ -91,7 +96,7 @@ TARGETS: dict[str, Target] = {
 RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
 # means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
 # are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
-ELIGIBILITIES = ("perturb", "hebb")
+ELIGIBILITIES = ("perturb", "hebb", "hazard")  # hazard: the score of the escape-noise decision (§5.2) on each synapse's trace (§6.7)
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 
 
@@ -455,12 +460,30 @@ def reinforce(
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
     if late not in LATE_RULES:
         raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
+    if eligibility == "hazard":
+        if not getattr(grid, "hazard", False):
+            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
+        if late != "count" or leaky:
+            raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
     if arrays(grid):
         return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
     if not advantage:
         return 0
     low, high = grid.weight_range
     step = lr * advantage
+    if eligibility == "hazard":  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
+        changed = 0
+        for connection in grid.connections.values():
+            if not connection.score or connection.target.forced:
+                continue  # nothing accumulated, or a forced input: its firing was not the network's doing
+            weight = connection.weight + step * connection.score
+            if weight < low:
+                weight = low
+            elif weight > high:
+                weight = high
+            connection.weight = weight
+            changed += 1
+        return changed
     perturb = eligibility == "perturb"
     tau, hop = getattr(grid, "synapse_tau", SYNAPSE_TAU), Neuron.hop()  # the synapse's leak, not the neuron's (§6.12)
     changed = 0
@@ -553,6 +576,9 @@ class Teacher:
         self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
+        if eligibility == "hazard" and not getattr(grid, "hazard", False):
+            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) "
+                             "before the Teacher (§5.2)")
         if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
             raise ValueError("learning rate, sigma, homeostasis and unstick rates must not be negative")
         if not 0.0 < unstick_target < 1.0:

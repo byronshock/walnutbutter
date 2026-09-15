@@ -31,3 +31,8 @@ def gaussians(rng, count: int, sigma: float) -> list[float]:
         out.append(math.cos(angle) * radius)
         out.append(math.sin(angle) * radius)
     return out[:count]
+
+
+def hazard_draws(rng, count: int) -> list[float]:
+    """`count` uniforms, one per neuron, for the escape-noise decision (AUTHORITY.md §5.2): not paired, not rounded up."""
+    return [rng.random() for _ in range(count)]

@@ -78,12 +78,14 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
         [n.threshold for n in neurons], [n.minimum_potential for n in neurons],
         Neuron.tau, Neuron.refractory, Neuron.hop(), Neuron.bored_after, Neuron.rate_tau,
     )
-    if sigma > 0.0:
+    deltas = [n.delta for n in neurons]  # escape noise (§5.2): each neuron's decision width, 0 when off
+    if sigma > 0.0 or any(d > 0.0 for d in deltas):
         if explore_rng is None:
-            raise ValueError("exploration noise needs a stream: pass explore_rng, the random.Random the other engines use")
+            raise ValueError("exploration or escape noise needs a stream: pass explore_rng, the random.Random the other engines use")
         engine.set_explore_state(list(explore_rng.getstate()[1]))
     low, high = weight_range
     engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
+    engine.set_deltas(deltas)
     return engine, neurons, index
 
 
@@ -208,6 +210,8 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
                 baseline = reward
             if teacher.eligibility == "perturb":
                 engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
+            elif teacher.eligibility == "hazard":
+                engine.reinforce_hazard(reward - baseline, teacher.lr)
             else:
                 engine.reinforce_hebb(reward - baseline, teacher.lr)
             book.step()
@@ -226,6 +230,11 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             theirs = list(engine.noises())
             if mine != theirs:
                 parted.append((epoch, f"noise differs on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
+        if teacher is not None and teacher.eligibility == "hazard":
+            mine = [c.score for c in edges]
+            theirs = list(engine.scores())
+            if mine != theirs:
+                parted.append((epoch, f"hazard scores differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
         mine = [c.weight for c in edges]
         theirs = list(engine.weights())
         worst = max((abs(a - b) for a, b in zip(mine, theirs)), default=0.0)
@@ -233,7 +242,7 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             parted.append((epoch, f"weights differ by up to {worst:g}"))
         if parted:
             break
-    if not parted and teacher is not None and sigma > 0.0:
+    if not parted and teacher is not None and (sigma > 0.0 or grid.hazard):
         if list(engine.explore_state()) != list(teacher.rng.getstate()[1]):
             parted.append((epochs, "the two streams ended in different states: a different number of draws was taken"))
     return parted
@@ -283,10 +292,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     order. Without it the bits come from the grid's own stream, which a differently built
     network consumes differently.
 
-    `eligibility` is hebb (sigma is then 0, as the Teacher sets it) or perturb, which
+    `eligibility` is hebb (sigma is then 0, as the Teacher sets it), perturb, which
     needs a positive `sigma` and draws its noise per wave (§6.1) from `random.Random(seed)`,
     the stream a Teacher with that seed would use, so a Rust run and a Python run of the
-    same seed take the same draws. The row critic and late = count only.
+    same seed take the same draws, or hazard, which needs the grid to have been given a
+    positive ESCAPE_DELTA (`grid.set_delta`, §5.2) and draws its decisions from the same
+    stream. The row critic and late = count only.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -302,12 +313,14 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
 
     from .learning import TARGETS
 
-    if eligibility not in ("hebb", "perturb"):
-        raise ValueError(f"eligibility must be hebb or perturb, got {eligibility!r}")
+    if eligibility not in ("hebb", "perturb", "hazard"):
+        raise ValueError(f"eligibility must be hebb, perturb or hazard, got {eligibility!r}")
     if eligibility == "perturb" and sigma <= 0.0:
         raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
+    if eligibility == "hazard" and not grid.hazard:
+        raise ValueError("the hazard eligibility needs escape noise: grid.set_delta(ESCAPE_DELTA > 0) first (§5.2)")
     sigma = sigma if eligibility == "perturb" else 0.0
-    explore_rng = random.Random(seed) if sigma > 0.0 else None
+    explore_rng = random.Random(seed) if (sigma > 0.0 or grid.hazard) else None  # the hazard's draws come from it too
 
     if patterns is not None:
         if len(patterns) < epochs:
@@ -348,7 +361,9 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         reward = sum(1 for o, w in zip(on, want) if o == w) / len(want)
         if baseline is None:
             baseline = reward
-        if sigma > 0.0:
+        if eligibility == "hazard":
+            engine.reinforce_hazard(reward - baseline, lr)
+        elif sigma > 0.0:
             engine.reinforce_perturb(reward - baseline, lr, sigma)
         else:
             engine.reinforce_hebb(reward - baseline, lr)
