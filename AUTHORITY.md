@@ -850,6 +850,40 @@ lies: the axis wants extending, $P$ in {0.1 … 0.5} at a handful of
 thresholds, before the value is called stable. The constant and the next
 sweep are Byron's.
 
+**And extended, the same day, by Byron: $P$ in {0.1, 0.15, 0.2, 0.25, 0.3,
+0.35, 0.4, 0.45, 0.5} at THRESHOLD 0.2, 0.26, 0.35 and 0.44, ten seeds,
+100,000 epochs** — 360 arms, `docs/goo60-zones-sparse.md`,
+`goo60-zones-sparse-rows.png`.
+
+| $P$ | projections at 60 | mean over the four thresholds | against $P$ 0.5, paired | every seed learned, of 4 |
+|---|---|---|---|---|
+| 0.1 | 329 | 0.583 | −0.022, $t = 3.2$ | 0 |
+| 0.15 | 490 | 0.610 | +0.005, $t = 0.7$ | 1 |
+| 0.2 | 651 | 0.605 | 0.000 | 2 |
+| 0.25 | 811 | 0.600 | −0.005, $t = 0.6$ | 2 |
+| 0.3 | 971 | 0.600 | −0.005, $t = 0.6$ | 0 |
+| 0.35 | 1,141 | 0.603 | −0.002, $t = 0.2$ | 2 |
+| 0.4 | 1,310 | 0.602 | −0.003, $t = 0.4$ | 0 |
+| 0.45 | 1,489 | 0.603 | −0.001, $t = 0.2$ | 3 |
+| 0.5 | 1,642 | 0.605 | — | 2 |
+
+**Below 0.5 the axis is flat.** From $P$ 0.15 to 0.5 every level sits at
+0.600–0.610 and none is separable from 0.5; only 0.1 falls off, −0.022 at
+$t = 3.2$, with 329 projections — a goo too sparse to carry the copy.
+With the sweep above, the projection's plateau is now seen from both
+sides: **0.15 to 0.5**, cliffs at 0.1 and from 0.6 upward. The best cells
+are at THRESHOLD 0.2: $P$ 0.15 at 0.633, and $P$ 0.2 at 0.626 with a
+worst seed of 0.600 — the highest floor in either sweep, spread 0.017 —
+and THRESHOLD 0.2's row is the best of the four (0.607, five every-seed
+cells of nine, its best band 0.15–0.35 at 0.615), so GOO_THRESHOLD stays
+where it is.
+
+*The stable value.* $P$ **0.2**: inside the plateau with a level on either
+side that also has every seed learning at THRESHOLD 0.2 (0.15 and 0.25),
+one step clear of the cliff at 0.1, the highest floor anywhere, and the
+fastest goo that learns — 651 projections, 7,200 epochs a second, against
+1,642 and 4,500 at 0.5. GOO_PROJECTION is 1 in §1.2 until Byron sets it.
+
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
 rather than the whole of goo, and whether the two zones should default to
