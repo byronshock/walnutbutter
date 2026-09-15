@@ -55,8 +55,9 @@ they bear on the code. Each entry says what it contributes here.
    86(11), 2278-2324. https://doi.org/10.1109/5.726791
    The MNIST digits: 60,000 training and 10,000 test images of 28 x 28
    bytes with their labels, as distributed by LeCun, Cortes and Burges. The
-   mnist problem (AUTHORITY.md §8) reads them from `mnist/`, averaged to
-   14 x 14 and thresholded at half; `walnutbutter.mnist` is the loader.
+   mnist problem (AUTHORITY.md §8) reads the training split from `mnist/`,
+   averaged to 14 x 14 and thresholded at half; the test split is not
+   fetched, by decision; `walnutbutter.mnist` is the loader.
 
 ## Not yet mentioned in our conversations, but the roots of the above
 

@@ -595,8 +595,9 @@ REINFORCE) or, with `--eligibility hebb`, +1 if the target fired and -1 if
 not. Forced inputs are never adjusted and weights stay within [-1, 1].
 
 The **mnist** problem (AUTHORITY.md §8) reads the handwritten digits from
-`mnist/` (four IDX files, not in git; `mnist/README.md` says where from and
-`walnutbutter.mnist.fetch()` gets them), each image averaged to 14 × 14 and
+`mnist/` (the training split's two IDX files, not in git; `mnist/README.md`
+says where from and `walnutbutter.mnist.fetch()` gets them; the test split is
+not fetched, by decision), each image averaged to 14 × 14 and
 thresholded at half onto 196 input neurons, ten classes on 30 outputs read
 by count, and the class critic: the label's three outputs out-spike every
 other class's three, or nothing. `walnutbutter --problem mnist` builds a

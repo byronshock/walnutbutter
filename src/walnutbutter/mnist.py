@@ -1,8 +1,10 @@
 """MNIST as the substance sees it: 28 x 28 handwritten digits made 14 x 14 bits (AUTHORITY.md §8, the mnist problem).
 
 Byron, September 15, 2026, setting the task up: its own data folder, `mnist/`,
-holding the four IDX files as distributed (LeCun, Cortes and Burges; [6] in
-BIBLIOGRAPHY.md); each image averaged over 2 x 2 blocks to 14 x 14 and each
+holding the training split's two IDX files as distributed (LeCun, Cortes and
+Burges; [6] in BIBLIOGRAPHY.md) -- and not the test split: "we do not dare
+touch the test split" (Byron, the same day), so it is not fetched, not read,
+and not a split this module knows. Each image is averaged over 2 x 2 blocks to 14 x 14 and each
 block on iff its mean intensity is at least half of full; 196 raw bits on 196
 input neurons, coding raw, no permutation, the rate drive of §4.3 as it is.
 The labels ride with the patterns: the stream a run is given is a seeded
@@ -31,10 +33,7 @@ FILES = {  # split -> (images, labels): each (file name, bytes, sha256), as fetc
         ("train-images-idx3-ubyte.gz", 9_912_422, "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609"),
         ("train-labels-idx1-ubyte.gz", 28_881, "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"),
     ),
-    "test": (
-        ("t10k-images-idx3-ubyte.gz", 1_648_877, "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6"),
-        ("t10k-labels-idx1-ubyte.gz", 4_542, "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6"),
-    ),
+    # the test split (t10k-*) is deliberately absent: "we do not dare touch the test split" (Byron, September 15, 2026)
 }
 SIDE = 28  # pixels per side as distributed
 BLOCK = 2  # the block averaged to one bit: 14 x 14 of them
@@ -44,7 +43,7 @@ THRESHOLD = 0.5  # a block is on iff its mean intensity is at least this fractio
 
 
 def available(folder: Path | str = FOLDER) -> bool:
-    """True when all four files are in the folder."""
+    """True when the training split's two files are in the folder."""
     return all((Path(folder) / name).exists() for pair in FILES.values() for name, _, _ in pair)
 
 

@@ -3168,7 +3168,9 @@ the layout, the inputs, and whether anything outside the network trains it.
   two widths, 196 in and 30 out, **300 neurons unless `--goo` says
   otherwise** (an interior of 74: a start, to be swept), by the reinforce
   rule under escape noise; the train split in the seeded shuffle of §4.5,
-  cycling, so 100,000 epochs is one and two thirds of a pass. The test
-  split is in the folder and not yet used: §7 says the network keeps
-  living and there is no evaluation run, so reading it is a decision for
-  Byron, not a default. Nothing is measured yet.
+  cycling, so 100,000 epochs is one and two thirds of a pass. **The test
+  split is not fetched** (Byron, the same day: *"we do not dare touch the
+  test split. please unfetch it."*): §7 says the network keeps living and
+  there is no evaluation run, so there is no held-out set either; the
+  score is what the living network does on the stream it is given, and the
+  loader knows one split. Nothing is measured yet.
