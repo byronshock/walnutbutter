@@ -44,6 +44,10 @@ class Neuron:
         self.minimum_potential = float(minimum_potential)  # inhibition can push the potential no lower than this
         self.potential = 0.0  # weighted input received since the last spike
         self.noise = 0.0  # exploration noise added at the last input (see learning.py)
+        self.delta = 0.0  # the width of this neuron's firing decision, in potential units (AUTHORITY.md §5.2, escape
+        # noise): ESCAPE_DELTA times its starting threshold, set by Network.set_delta; 0 is the deterministic threshold
+        self.exposed_since = 0.0  # clock time the hazard has run from: the previous decision, or the refractory period's end
+        self.draw = 1.0  # this wave's uniform for the decision, set by the network's explorer hook; 1 never fires
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
         self.has_fired = False  # fired in the current epoch
@@ -147,6 +151,9 @@ class Neuron:
         """
         if self.potential < self.minimum_potential:
             self.potential = self.minimum_potential
+            if self.delta > 0.0:
+                for connection in self.incoming:
+                    connection.trace = 0.0  # at the floor the potential is the floor whatever the weights (§6.7)
 
     @property
     def ready(self) -> bool:
@@ -175,6 +182,43 @@ class Neuron:
             return False
         return self.potential_at(now) >= self.threshold_at(now)
 
+    def expected_spikes(self, now: float) -> float:
+        """m_j(now): the spikes the hazard expects of this neuron since its exposure began (AUTHORITY.md §5.2).
+
+        (dt / hop) * exp(s / delta), with s the margin the decision is made
+        on and dt the time since the previous decision or the refractory
+        period's end; capped at 1e3, beyond which the chance of a spike is
+        already 1 to the last bit. Needs delta > 0.
+        """
+        s = self.potential_at(now) - self.threshold_at(now)
+        elapsed = now - self.exposed_since
+        if elapsed < 0.0:
+            elapsed = 0.0
+        return min(elapsed / Neuron.hop() * math.exp(s / self.delta), 1e3)
+
+    def decide(self, now: float) -> bool:
+        """The firing decision at `now`: can_fire when delta is 0, else the escape-noise draw (AUTHORITY.md §5.2).
+
+        Under escape noise this also settles the hazard eligibility of every
+        incoming synapse for the decision (§6.7): each score moves by
+        e_j * trace, with e_j = m e^-m / (1 - e^-m) when the neuron fires and
+        -m when it does not. The schedule calls it exactly once per neuron per wave.
+        """
+        if self.delta <= 0.0:
+            return self.can_fire(now)
+        if self.refractory_at(now):
+            return False
+        m = self.expected_spikes(now)
+        fired = self.draw < -math.expm1(-m)
+        self.exposed_since = now
+        if m > 0.0:
+            e = m * math.exp(-m) / -math.expm1(-m) if fired else -m  # m e^-m / (1 - e^-m): finite at any m
+            tau = Neuron.tau
+            for connection in self.incoming:
+                if connection.trace != 0.0:
+                    connection.score += e * connection.trace * math.exp(-(now - connection.trace_at) / tau)
+        return fired
+
     def fire(self, wave: int = 0, now: float | None = None) -> list[Connection]:
         """Spike: mark this neuron as fired in `wave` at time `now` and return the connections to signal along.
 
@@ -193,6 +237,10 @@ class Neuron:
             self.last_update = now
             self.rate_level = self.firing_rate(now) + 1000.0 / Neuron.rate_tau  # Hz: one spike's worth (§4.3)
             self.rate_at = now
+            self.exposed_since = now + Neuron.refractory  # the hazard resumes when the refractory period ends (§5.2)
+        if self.delta > 0.0:
+            for connection in self.incoming:
+                connection.trace = 0.0  # the spike reset the potential: nothing any synapse delivered is still in it (§6.7)
         if Neuron.verbose:
             print(f"{self.name} fired in wave {wave}.")
         return [connection for connection in self.outgoing if connection.is_active]
@@ -208,6 +256,9 @@ class Neuron:
         """
         if discharge:
             self.potential = 0.0
+            if self.delta > 0.0:
+                for connection in self.incoming:
+                    connection.trace = 0.0  # nothing is left in a zeroed potential (§6.7)
         self.has_fired = False
         self.fired_in_wave = None
         self.forced = False

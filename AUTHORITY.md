@@ -90,6 +90,7 @@ at all.
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
 | TEACHER_THRESHOLD | 14.3 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz, so 14.3 — the middle of the one-spike band — means *at least one spike*, the line as far from both edges as it can sit (Byron, September 14, 2026, choosing it to mean one spike and not for its score). It was 40, two spikes, for the read's first hour |
 | BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods |
+| ESCAPE_DELTA | 0 (off) | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). Positive, a neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$: one expected spike per hop at threshold, $e$ times more per $\Delta_j$ above it. 0 is the deterministic threshold. Swept $\{0.7, 1.05, 1.4\}$ on copy (§3.4) |
 
 ### 1.3 Learning
 
@@ -122,7 +123,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 |---|---|---|
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
 | CRITIC | row | how the reward is judged (§6.7) |
-| ELIGIBILITY | perturb | what the reward acts on: the exploration noise, or a Hebbian ±1 |
+| ELIGIBILITY | perturb | what the reward acts on: the exploration noise, a Hebbian ±1, or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$) |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
 | HOMEOSTASIS | 10⁻⁶ | per-epoch rate a threshold drifts toward its target firing rate; 0 = off |
@@ -1578,6 +1579,76 @@ goo scales its *own* constants, GOO_THRESHOLD = 0.2 and
 GOO_MINIMUM_POTENTIAL = −0.8 since the fine sweep of §3.4 (they were 1 and
 −4), not the grid's: the threshold belongs to the container.
 
+**The decision is a draw — escape noise, decided (Byron, September 15,
+2026: "Let's please go with (3). It is the most like what I want to do.
+Make the boredom stochastic and it is Williams's unit outright.").** With
+ESCAPE_DELTA $= \Delta > 0$ the rule above is the sharp limit of a
+stochastic one. At every wave, at time $t$, every neuron $j$ that is not
+refractory makes a decision on its margin $s = p_j(t) - \theta_j(t)$ — the
+leaked potential after the wave's signals and the floor, against the
+threshold it faces, the bored clock of §5.4 included — and fires with
+probability
+
+$$P_j(t) = 1 - e^{-m_j(t)}, \qquad
+m_j(t) = \frac{\Delta t}{\text{hop}}\; e^{\,s/\Delta_j}, \qquad
+\Delta_j = \Delta\,\theta_j^{\text{start}},$$
+
+where $\Delta t$ is the time since the neuron's previous decision, or since
+its refractory period ended if it was refractory then. The neuron carries a
+hazard of $e^{s/\Delta_j}$ spikes per hop: one expected spike per hop at
+threshold, $e$ times more per $\Delta_j$ of margin above it, $e$ times fewer
+per $\Delta_j$ below; $m$ is the number of spikes expected over the interval
+and $P$ the chance of at least one. $\Delta_j$ is quoted in units of the
+threshold the container gave the neuron, so §5.2's scaling applies to it as
+to the rest of the axis, a neuron of any fan-in is as soft as any other, and
+it stays put when homeostasis later moves $\theta_j$. $\Delta = 0$ is the
+deterministic rule word for word. A forced neuron fires by its stimulus and
+makes no decision that wave.
+
+The draw is one uniform per neuron per wave, in neuron order, from the
+exploration stream of §6.1, taken in that draw's position — after the
+floor, before anything fires — so the three engines fire the same neurons
+at the same waves from the same seed. A neuron fires iff its uniform is
+below $P_j(t)$.
+
+*Why a rate and not a coin per wave (Claude).* Williams's unit [1] decides
+once per time step; this network's waves come when signals arrive, so a
+busy epoch holds more waves than a quiet one, and a coin tossed at every
+wave would make a resting neuron's spontaneous rate depend on how busy its
+neighbours are. Charging the hazard for the time elapsed makes the
+spontaneous rate a rate: a neuron at rest, $s = -\theta_j$, fires at
+$e^{-1/\Delta}$ spikes per hop whatever else is happening. The hazard is
+evaluated at the wave's margin over the interval before it; the potential
+was leaking through that interval, so after a large input this understates
+the hazard a little, and every engine understates it identically.
+
+*What it is.* Williams §2: a threshold unit with noise on its input is a
+Bernoulli semilinear unit whose squashing function is one minus the noise's
+distribution function. This is that unit with the noise in the threshold
+rather than on the potential — an escape-noise integrate-and-fire neuron,
+the spike response model's soft threshold — and its boredom is stochastic:
+a neuron nobody talks to sits at rest and fires on its own at a rate the
+margin sets, and the clock of §5.4, when it runs, raises that rate by
+lowering $\theta_j(t)$. It replaces the additive noise of §6.1 as the
+source of exploration; nothing is added to any potential and nothing has to
+be recorded. Its eligibility is in §6.7.
+
+*Rest is loud and the floor is the only silence.* A neuron at rest fires
+$21\,e^{-1/\Delta}$ times an epoch at the default clock (twenty-one hops
+to a 35 ms epoch): five at $\Delta = 0.7$, saturation from 1.05 up. So
+under the count read an output that must be off cannot rest; it has to be
+held at the floor, where the hazard bottoms out at $e^{(p^{\min}_j -
+\theta_j)/\Delta_j} = e^{-5/\Delta}$ per hop under goo's ratio of $-4$,
+and it is still wrong in the fraction of epochs that shows a stray spike:
+
+| $\Delta$ | spikes per epoch at rest | at the floor | epochs with a stray spike at the floor |
+|---|---|---|---|
+| 0.7 | 5.0 | 0.017 | 1.6% |
+| 1.05 | 8.1 (saturates at 7) | 0.18 | 16% |
+| 1.4 | 10 (saturates at 7) | 0.59 | 45% |
+
+$\Delta$ sets how quiet silence can be, and the sweep is over exactly that.
+
 ### 5.3 Refractory period
 
 A neuron that fired at $t_{\text{fired}}$ is refractory while
@@ -1606,6 +1677,17 @@ potential waiting to be touched; both engines now fire it at once.) The
 spike it fires on its own is a spike like any other: it releases by its
 delay, which at 200 ms is nothing, and it resets the clock on its
 boredom.
+
+*Made stochastic, September 15, 2026 (Byron: "Make the boredom stochastic
+and it is Williams's unit outright").* With ESCAPE_DELTA $> 0$ (§5.2) a
+bored neuron's firing is a rate rather than a deadline: it fires on its own
+at $e^{s/\Delta_j}$ spikes per hop from wherever its margin sits, without
+waiting for the threshold to reach the potential. The clock above still
+runs when BORED_AFTER is positive and composes with the hazard — a falling
+$\theta_j(t)$ raises it — but it is no longer the only thing in the system
+that turns silence into a spike (§8, shallow_not), and the flood that turned
+it off is not a property of the hazard, whose spontaneous rate $\Delta$
+sets directly.
 
 ## 6. Learning rules — open
 
@@ -1710,6 +1792,13 @@ not yet worth anything.
 Nothing measured before this revision is affected by it. The hook is off
 whenever $\sigma$ is 0, which is what the hebb eligibility runs at, so every
 result in §6.7 and §8 obtained with that eligibility stands unchanged.
+
+*The hazard's draws, September 15, 2026.* Under escape noise (§5.2,
+ESCAPE_DELTA $> 0$) the exploration is the neuron's own decision and no
+$\xi_j$ is added to any potential; the same stream supplies one uniform per
+neuron per wave for the decisions, in this draw's position. $\sigma$ and
+$\Delta$ can both be on, the additive draw coming first; the runs of §6.7
+under the hazard eligibility set $\sigma = 0$.
 
 ### 6.2 Release
 
@@ -1915,6 +2004,59 @@ and pay it with the advantage $A = R - b$ in place of the raw score $S$ —
 the same machinery as the current rule with one substitution. Under (a) and
 (b) there is no weight decay (§6.8), because the decay is carried by the
 dopamine pool and the reinforce rule runs without one.
+
+**The hazard eligibility — built September 15, 2026 (Byron, choosing it
+over two smaller experiments: "It is the most like what I want to do").**
+*Claude's derivation, from [1], asked for that morning: "What is the CORRECT
+eligibility for the REINFORCE learning rule that pays when a bored neuron
+fires?"* With escape noise (§5.2) each neuron's decision at each wave is a
+Bernoulli draw with a known probability, so the characteristic eligibility
+of Williams's eq. (6) exists and is exact, and an epoch of decisions with
+one reward at its end is the episodic case of his §5, eq. (11): a weight's
+eligibility is the sum, over the epoch's decisions, of the score of each
+decision times what that weight contributed to the margin it was made on.
+For neuron $j$ deciding at wave $t$ with expected count $m = m_j(t)$ and
+outcome $y_j(t)$, $\partial \ln P/\partial s$ is $(m/\Delta_j)\,e^{-m}/(1 -
+e^{-m})$ when it fired and $-m/\Delta_j$ when it did not, and $\partial
+s/\partial w_{ij}$ is the charge synapse $i \to j$ still had in $j$'s
+potential at the decision — its arrivals integrated since $j$'s last spike,
+each leaked with TAU:
+
+$$x_{ij}(t) = \sum_{\text{arrivals } a} e^{-(t - t_a)/\text{TAU}}, \qquad
+\hat e_j(t) = \begin{cases} m\,e^{-m}/(1 - e^{-m}) & \text{fired} \\ -m & \text{silent} \end{cases}, \qquad
+e_{ij} = \sum_{t} \hat e_j(t)\, x_{ij}(t),$$
+
+and at the read $w_{ij} \leftarrow \mathrm{clip}(w_{ij} + \text{LR} \cdot A
+\cdot e_{ij})$ for every $j$ not forced this epoch. The $1/\Delta_j$ of the
+score is folded into the rate: Williams sets the Gaussian unit's rate to
+$\alpha\sigma^2$ so the step does not blow up as the unit sharpens, and
+$\Delta_j$ is this unit's $\sigma$; a per-neuron constant in the rate factor
+is within his Theorem 1 and keeps LR on the scale the hebb eligibility set
+it at. Read it as: a spike earns about one when it was unlikely and less
+the more expected it was; every silent decision costs the spikes it was
+expected to produce; over an epoch a synapse's eligibility is the neuron's
+spike count minus its expected count, weighted by what the synapse was
+contributing when each decision was made. It is zero in expectation at
+every decision whatever the margin — $P\cdot m e^{-m}/(1 - e^{-m}) - (1 -
+P)\,m = 0$ — so a neuron far from its threshold contributes nothing rather
+than noise, which is what the sampled $\xi_j/\sigma$ could not do. The
+trace $x_{ij}$ is the derivative and not a stand-in: it is zeroed when $j$
+spikes (the potential resets) and when the floor bites (the potential is
+then the floor whatever the weights), so an inhibited neuron held at the
+floor accumulates nothing on its synapses either. LATE does not apply — the
+trace says what each signal was contributing at each decision — and a
+signal that arrives while $j$ is refractory is dropped and contributes
+nothing, as it does to the potential. A neuron that fires more than once an
+epoch is credited for every decision, which the one-draw-per-epoch record
+of the perturb eligibility never was.
+
+*The forms not taken.* The per-wave probit score under additive noise (the
+conditional mean of §6.1's $\xi_j$ given the outcome) and the hebb rule
+centred on the neuron's own rate, Williams §8.4's $y - \bar y$, were the
+two smaller experiments proposed alongside this one; neither is built.
+
+*Measured:* the sweep of $\Delta \in \{0.7, 1.05, 1.4\}$ on copy, goo 60,
+ten seeds, 100,000 epochs (Byron, September 15, 2026), recorded in §3.4.
 
 ### 6.8 Earned activity — decided for now
 
@@ -2438,6 +2580,29 @@ object engine's bits. The count-read figures of §3.4 and §4.3 are being
 redone in any case; the goo sweeps of §3.4 before them were on the array
 engine or on a direct goo, where the case is rare, and stand as recorded.
 
+*Escape noise and the hazard eligibility, September 15, 2026.* The loop
+makes the stochastic decision of §5.2 — one uniform per neuron per wave from
+the same stream, in the additive draw's position — keeps the per-synapse
+trace $x_{ij}$ and accumulator $e_{ij}$ of §6.7 as it runs, and
+`reinforce_hazard` pays them at the read; `fast.train` and `compare` take
+`eligibility="hazard"`, and `tests/test_hazard.py` runs the three engines
+side by side on goo with the decision on, wave by wave and weight by weight,
+learning on. Rust lands on the object engine's bits — seven goos of 40 and
+60 at $\Delta$ 0.7 and 1.4, sixty epochs, every spike, score and weight
+equal. **The array engine cannot, and this rule is the first to show it.**
+It sums a wave's inputs in the matrix's order where the other two add them
+in push order, and its exponentials are numpy's, which differ from libm's in
+the last bit on one argument in twenty (measured on this machine: 190,729 of
+200,000). Under every rule before this one a last-bit difference in a
+potential could only surface as a spike sitting within an ulp of threshold
+— two neuron-epochs in 800, at $5\times10^{-17}$, on a goo of 40 — so the
+engines agreed on every spike and the tests compared spikes. The hazard
+eligibility is a continuous function of the potential, so there the same
+difference is the twelfth digit of a score. The array engine therefore
+agrees with the other two on every spike and to a part in $10^9$ on scores
+and weights, and the test says so; the Rust engine, which the sweeps run
+on, agrees to the bit.
+
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
 as the eligibility they earn, LATE other than count, and the leaky trace on
@@ -2502,7 +2667,8 @@ the layout, the inputs, and whether anything outside the network trains it.
   target set to copy and the permutation off, and it is the task the goo
   comparisons of §3.4 are posed on from here. Every sweep of that section
   before this definition ran on reversal, whose target is the input
-  reversed; none of them measured this task.
+  reversed; none of them measured this task. *Escape noise (§5.2) is
+  swept on this task, September 15, 2026: §6.7, recorded in §3.4.*
 - **sustain_inputs** (Byron, September 12, 2026). The same 16 inputs will
   be used across 8 neurons. However, this network is not trained
   externally: the neurons will utilize the new eligibility rule (§6).

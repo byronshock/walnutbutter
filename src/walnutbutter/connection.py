@@ -33,6 +33,10 @@ class Connection:
         self.kind = kind  # "local" (a neighbour), "local2" (a neighbour of a neighbour), "small_world" (a shortcut)
         self.last_signal: float | None = None  # clock time of the last signal the target integrated along here: the synapse's only trace
         self.eligibility = 0.0  # what this synapse has earned this epoch, awaiting the teacher's signal (dopamine.py)
+        self.trace = 0.0  # under escape noise (AUTHORITY.md §6.7): the charge this synapse still has in its target's
+        # potential, brought up to trace_at -- the derivative of the target's margin with respect to this weight
+        self.trace_at = 0.0  # when that trace was last brought up to date (lazy, like the leak)
+        self.score = 0.0  # the hazard eligibility this epoch: the sum over the target's decisions of e_j(t) * trace(t)
 
     def joins(self, source: Neuron, target: Neuron) -> bool:
         """True if this connection runs from `source` to `target` (direction matters)."""

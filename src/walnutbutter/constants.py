@@ -56,6 +56,12 @@ INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is
 BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms of silence after which a neuron's
 # threshold has fallen to zero and it fires on its own (§5.4, Byron, September 12, 2026). Swept below the epoch it
 # floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
+ESCAPE_DELTA = 0.0  # off. Positive, the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15,
+# 2026: "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a
+# wave with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this
+# constant times its starting threshold -- one expected spike per hop at threshold, e times more per delta_j above it.
+# 0 is the deterministic threshold. Swept {0.7, 1.05, 1.4} on copy, September 15, 2026; the hazard eligibility (§6.7)
+# needs it.
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own

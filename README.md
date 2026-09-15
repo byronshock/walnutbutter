@@ -593,6 +593,18 @@ was not a forced input moves by `lr * advantage * eligibility`, where the
 eligibility is the target neuron's exploration noise (node-perturbation
 REINFORCE) or, with `--eligibility hebb`, +1 if the target fired and -1 if
 not. Forced inputs are never adjusted and weights stay within [-1, 1].
+
+With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
+itself is the draw: a neuron that is not refractory fires at a wave with
+probability `1 - exp(-m)`, `m = (dt / hop) * exp(s / delta_j)`, where `s`
+is its margin against the threshold it faces and `delta_j` is D times its
+starting threshold -- one expected spike per hop at threshold, e times more
+per `delta_j` above it, so a neuron nobody talks to fires on its own at a
+rate its margin sets. That is Williams's Bernoulli unit with the noise in
+the threshold, and `--eligibility hazard` pays it with Williams's own
+eligibility: the score of each decision, summed over the epoch on each
+synapse's trace of what it still had in the potential (§6.7). It needs a
+positive D and runs in all three engines.
 Under the schedule the mesh reverberates on its own, so no performance is
 claimed for this rule any more.
 

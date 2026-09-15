@@ -49,6 +49,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "quash": "--quash",
     "rate_tau": "--rate-tau",
     "sigma": "--sigma",  # exploration noise, only felt under --eligibility perturb (§6.1)
+    "delta": "--delta",  # escape noise (§5.2): the decision's width in starting thresholds; --eligibility hazard learns by it
     "threshold": "--threshold",  # THRESHOLD, quoted per THRESHOLD_FAN_IN incoming synapses; goo scales it (§5.2)
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
     "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
@@ -72,8 +73,9 @@ def parse() -> argparse.Namespace:
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
-    parser.add_argument("--eligibility", choices=("hebb", "perturb"), default="hebb",
-                        help="what the reward acts on (§6.7): a Hebbian +-1, or the perturbation the neuron decided under")
+    parser.add_argument("--eligibility", choices=("hebb", "perturb", "hazard"), default="hebb",
+                        help="what the reward acts on (§6.7): a Hebbian +-1, the perturbation the neuron decided under, or "
+                             "the score of the escape-noise decision on each synapse's trace (hazard; needs --delta)")
     parser.add_argument("--epochs", type=int, default=1_000_000)
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
@@ -132,6 +134,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
     grid.hebb_rate, grid.synapse_tau, grid.flip = args.hebb, args.synapse_tau, args.flip
     grid.rule = "reinforce"
+    grid.set_delta(args.delta)  # escape noise (§5.2), once the thresholds are the container's
     return grid, args
 
 
@@ -170,6 +173,7 @@ def run_arm(job: tuple) -> dict:
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
               "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
+              "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result

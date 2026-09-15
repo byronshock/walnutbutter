@@ -20,7 +20,7 @@ from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_THRESHOLD
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
+    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
@@ -503,10 +503,20 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"exploration noise: std dev added to each neuron's potential at every input (default: {SIGMA:g}; 0 = off)",
     )
     parser.add_argument(
+        "--delta",
+        type=float,
+        default=ESCAPE_DELTA,
+        metavar="D",
+        help=f"escape noise (AUTHORITY.md §5.2): the firing decision is a draw, D times the neuron's starting threshold "
+        f"wide -- one expected spike per hop at threshold, e times more per D of margin above it, so a neuron nobody talks "
+        f"to fires on its own at a rate its margin sets (default: {ESCAPE_DELTA:g}; 0 = the deterministic threshold)",
+    )
+    parser.add_argument(
         "--eligibility",
         choices=ELIGIBILITIES,
         default=ELIGIBILITY,
-        help=f"what the global reward acts on: the neuron's exploration noise (perturb) or plain Hebbian (default: {ELIGIBILITY})",
+        help=f"what the global reward acts on: the neuron's exploration noise (perturb), plain Hebbian (hebb), or the score "
+        f"of the escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: {ELIGIBILITY})",
     )
     parser.add_argument(
         "--homeostasis",
@@ -903,6 +913,8 @@ def _run(args: argparse.Namespace) -> int:
             if args.input_cells and not loaded:
                 grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
+            if not loaded or args.delta != ESCAPE_DELTA:
+                grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
@@ -977,8 +989,8 @@ def _run(args: argparse.Namespace) -> int:
                 effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
                 print(f"rule: reinforce ({args.eligibility} eligibility"
                       f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
-                      f"sigma {effective_sigma:g} ({args.explore})"
-                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma else ''}"
+                      f"sigma {effective_sigma:g} ({args.explore}), escape delta {args.delta:g}"
+                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma and not args.delta else ''}"
                       f", no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
@@ -1169,6 +1181,7 @@ def _seed_worker(job: dict) -> dict:
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
     grid.interval = job.get("interval", grid.interval)
+    grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's
     grid.problem = job.get("problem")
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
@@ -1272,7 +1285,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
-                     "teacher_threshold": args.teacher_threshold,
+                     "teacher_threshold": args.teacher_threshold, "delta": args.delta,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:
@@ -1291,6 +1304,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
     shape += f", {args.rule} rule" + (f" with the {args.eligibility} eligibility" if args.rule == "reinforce" else "")
+    shape += f", escape delta {args.delta:g}" if args.delta else ""
     print(
         f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,
