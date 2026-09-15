@@ -95,9 +95,12 @@ def plot(args, traces, finals) -> None:
         ax.plot([], [], color=BLUE, linewidth=0.8, alpha=0.6, label=note)
     ax.legend(loc="lower right", frameon=False, fontsize=7.5, labelcolor=INK2)
     ax.set_ylim(0.35, 1.0)
-    who = f"seed {seeds[0]}" if one else (args.arm or "every seed")
-    tail = f" -- {finals[seeds[0]]:.3f} over the last tenth" if one and finals.get(seeds[0]) is not None else ""
-    fig.suptitle(f"{args.name}: {args.arm + ', ' if one and args.arm else ''}{who}, score over the run{tail}", x=0.01, ha="left", color=INK, fontsize=11)
+    if one:  # short enough to fit: the arm is in the file name, the last tenth is the number that matters
+        tail = f", {finals[seeds[0]]:.3f} over the last tenth" if finals.get(seeds[0]) is not None else ""
+        title = f"{args.name}: seed {seeds[0]}{tail}"
+    else:
+        title = f"{args.name}: {args.arm or 'every seed'}, score over the run"
+    fig.suptitle(title, x=0.01, ha="left", color=INK, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = ROOT / "docs" / (f"{args.name}-{args.arm}-trace.png" if args.arm else f"{args.name}-trace.png")
     if one:
