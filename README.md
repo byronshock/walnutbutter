@@ -31,7 +31,9 @@ architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
 (`--goo`) began as the control -- the same eighty neurons with no positions
 at all and every ordered pair connected, so whatever the geometry is worth is
 what goo is missing -- and is the working network since September 14, 2026:
-sixty neurons at its own threshold of 1 (AUTHORITY.md §1.2, §3.4).
+sixty neurons at its own threshold, 0.2, with no direct projection from its
+inputs to its outputs and every neuron un-sticking itself (AUTHORITY.md
+§1.2, §3.4).
 
 ## Setup (once)
 
@@ -443,11 +445,15 @@ shown.
 
 **Its potential axis scales with fan-in**, and nothing else's does
 (AUTHORITY.md §5.2), and since September 14, 2026 it scales **its own
-constants**: GOO_THRESHOLD 1 and GOO_MINIMUM_POTENTIAL -4, the grid's ratio
-kept. Quoted at an interior hex cell's 18 incoming synapses; a goo neuron of
-60 has 59, so it starts at a threshold of 59/18 = 3.28 and a floor of -13.1,
-past the saturation edge the sweeps below found. (At the grid's 0.25 and 80
-neurons it started at 1.097 and -4.389, which is where those sweeps began.)
+constants**: GOO_THRESHOLD 0.2 and GOO_MINIMUM_POTENTIAL -0.8, the grid's
+ratio kept. Quoted at an interior hex cell's 18 incoming synapses; a goo
+neuron of 60 has 59, so it starts at a threshold of 0.2 x 59/18 = 0.66 and a
+floor of -2.62 -- set from a sweep at 0.01 steps with every neuron
+un-sticking (below), where 0.15-0.40 is a plateau and 0.20 the level where
+every seed learned. (It was 1, theta 3.28, chosen to sit past the
+saturation edge; once the direct projection was cut that was a dead
+interior. At the grid's 0.25 and 80 neurons it started at 1.097 and -4.389,
+where the sweeps began.)
 
 Both move, because they are two points on one axis and it is the axis being
 rescaled. Unscaled, goo's output zone is on 100% of the time whatever the
@@ -494,6 +500,17 @@ constants, copy -- scores **0.556** with the hebb eligibility and 0.514
 (`docs/goo60-count.md`, `docs/goo60-count-perturb.md`), at 7,000 epochs a
 second: the read that stops counting a stray spike as a one moves the
 ceiling down, not up.
+
+Then the bug: a fully connected goo wires input i straight onto output i,
+and that one synapse was what the rule had learned. Cut the input-to-output
+projection (`copy` asks for it; `--direct-projection` puts it back) and
+every seed sits at 0.500 -- a dead interior at theta 3.28, since nothing
+walked a silent interior neuron's threshold down. So **un-sticking now
+reaches every neuron**, not the output row only, and with it the interior
+lives at every threshold from 0.10 to 0.50 (`docs/goo60-nodirect-threshold.md`,
+410 arms): a plateau at ~0.56 from 0.15 to 0.40, 0.20 the level where every
+seed learned a two-hop copy, and the old default of 1 off the plateau at
+0.502. GOO_THRESHOLD is 0.2 since.
 
 ## Learning
 
@@ -627,16 +644,17 @@ reinforcement leaves them out; an unforced input neuron is treated like any
 other. `--homeostasis 0` switches it off. Per-neuron thresholds are saved in
 checkpoints.
 
-**Un-sticking the outputs.** A saturated output neuron, one that fires on
-every input or on none, gets no learning signal at all, because the
-exploration noise never changes what it does. `--unstick RATE` (default
-0.001) moves the threshold of any output neuron that is stuck, firing more
-than 99% or less than 1% of the time, toward `--unstick-target` (default
-0.5), and stops the moment it is no longer stuck. Nothing else in the mesh
-is touched, so what the network has already learned is preserved. On a
-trained checkpoint this freed both stuck outputs without disturbing the
-six correct ones; routing the missing bit to them additionally needs the
-interior to loosen, which is the slow global homeostasis's job.
+**Un-sticking.** A saturated neuron, one that fires on every input or on
+none, gets no learning signal at all, because nothing changes what it does.
+`--unstick RATE` (default 0.001) moves the threshold of any neuron that is
+stuck, firing more than 99% or less than 1% of the time, toward
+`--unstick-target` (default 0.5), and stops the moment it is no longer
+stuck; a neuron forced this epoch is left alone. It was the output row only
+until September 14, 2026, when the interior of a goo with no direct
+projection turned out to be dead for want of exactly this (AUTHORITY.md
+§6.7): all neurons are first-class citizens, and with every neuron
+un-sticking the starting threshold stops mattering much -- the network
+finds its own operating point.
 
 Accuracy **to date** is the mean over every epoch since the start; the
 **recent** figure is an exponential average over roughly the last 200.

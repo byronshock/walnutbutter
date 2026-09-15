@@ -74,8 +74,8 @@ at all.
 | THRESHOLD | 0.25 | $\theta$ every neuron of the grid, the columns and the lattice starts with, quoted at THRESHOLD_FAN_IN incoming synapses (§5.2); goo has its own, below |
 | THRESHOLD_FAN_IN | 18 | the in-degree THRESHOLD and MINIMUM_POTENTIAL are quoted at: an interior hex cell's two rings at REACH 2. A container that scales rescales neuron $j$'s whole potential axis by $d_j / \text{THRESHOLD\_FAN\_IN}$ (§5.2); goo does, nothing else does yet |
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
-| GOO_THRESHOLD | 1 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $59/18 = 3.28$, past the saturation edge of §3.4. The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo on that decision. *Swept at 0.01 steps on the no-direct copy with every neuron un-sticking (§3.4, September 14, 2026): 1 is off the plateau — 0.502 — and 0.15–0.40 is on it, 0.20 the level where every seed learned. To be set by Byron* |
-| GOO_MINIMUM_POTENTIAL | −4 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −13.1 |
+| GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
+| GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -552,7 +552,9 @@ GOO_THRESHOLD and GOO_MINIMUM_POTENTIAL in §1.2, the floor following at the
 grid's ratio of −4 as every sweep above ran it. Scaled by its fan-in a goo of
 60 starts at $\theta$ 3.28 and a floor of −13.1, well past the edge of about
 $0.028 \times 59 = 1.65$, on 3,540 connections against 80's 6,320: about
-twice the speed, on the plateau. The grid, the columns and the lattice keep
+twice the speed, on the plateau. *(The threshold moved to 0.2 later the same
+day, from the fine sweep at the end of this section, once the direct
+projection was cut and every neuron un-stuck: 1 was off that plateau.)* The grid, the columns and the lattice keep
 THRESHOLD = 0.25 and every result measured with it; this is the third of the
 three readings §3.4 opened with — that THRESHOLD was a constant of the grid
 and belongs to the container — taken for goo and not for the substance.
@@ -698,7 +700,8 @@ honest caveat: with 41 levels, one this tight could be chance at ten seeds
 — the plateau cannot be. 0.27, the plateau's centre and the next tightest
 (worst seed 0.518, nothing stuck), is the other candidate. **GOO_THRESHOLD
 stays at 1 until Byron sets it** (§1.2): the value is substance, and this
-sweep is what he asked for to choose it.
+sweep is what he asked for to choose it. *Set to 0.20 the same day, on the
+word: §1.2.*
 
 **Benchmarked under the count read (Byron, September 14, 2026: "Please run
 on 10 seeds for 100000 epochs", and "also benchmark with the perturb
@@ -1426,9 +1429,9 @@ decision — `--scale-with-fan-in` makes the rule available to any container
 so the question can be asked without a code change. On the grid it is not a
 no-op even in principle: in-degree runs from 7 at a corner to 24, so
 seventeen distinct thresholds replace the one. And since September 14, 2026
-goo scales its *own* constants, GOO_THRESHOLD = 1 and
-GOO_MINIMUM_POTENTIAL = −4 (§1.2, §3.4), not the grid's: the threshold
-belongs to the container.
+goo scales its *own* constants, GOO_THRESHOLD = 0.2 and
+GOO_MINIMUM_POTENTIAL = −0.8 since the fine sweep of §3.4 (they were 1 and
+−4), not the grid's: the threshold belongs to the container.
 
 ### 5.3 Refractory period
 
