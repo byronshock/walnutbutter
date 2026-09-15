@@ -87,7 +87,7 @@ at all.
 | RATE_TAU | 5 ms | the exponential window the rate read estimates over (§4.3); equal to REFRACTORY, so one spike reads exactly RATE_ON |
 | READ_WINDOW | 5 ms | the window of the `window` read: a bit, counting only spikes this recently before the epoch's end (§4.3) |
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
-| TEACHER_THRESHOLD | 40 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz and reads off, two are 57 and read on: a stray background spike is not a one. To be swept |
+| TEACHER_THRESHOLD | 14.3 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz, so 14.3 — the middle of the one-spike band — means *at least one spike*, the line as far from both edges as it can sit (Byron, September 14, 2026, choosing it to mean one spike and not for its score). It was 40, two spikes, for the read's first hour |
 | BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods |
 
 ### 1.3 Learning
@@ -810,8 +810,12 @@ are silent and 20–32% saturated at seven spikes, with hidden neurons
 averaging 87 Hz of background — and the saturated mode is **as common for a
 target-off output as for a target-on one**, so it carries nothing. A read
 that called any spike a one was scoring that background as error, which is
-the substance working and the teacher not. 40 Hz reads one stray spike as
-off; where the line should sit was a sweep, below.
+the substance working and the teacher not. The read began at 40 Hz, two
+spikes, so that a stray spike would read as off; the sweep below measured
+what that cost, and the line was then set to **14.3 Hz — the middle of the
+one-spike band** — by Byron, to mean one spike, with the score it happens to
+yield not the reason: the sweep's figures were measurements of one synapse
+(§3.4), not of a copy.
 
 *Swept (Byron, September 14, 2026: "sweep TEACHER_THRESHOLD in {25, 30, 35,
 40, 45, 50, 60, 80, 100} on 10 seeds with eligibility=hebb") — and held, not
