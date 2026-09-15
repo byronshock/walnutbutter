@@ -27,7 +27,12 @@ rings of neighbours plus a few random small-world shortcuts. **Walnut butter**
 is the substance the neurons are made of: spread it on the plane in smears of
 a given density and neurons appear at that density, and butter spread near
 other butter connects, so where you put it and how thick decides the whole
-architecture. The default of each is an 8 x 10 field of 80 neurons.
+architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
+(`--goo`) began as the control -- the same eighty neurons with no positions
+at all and every ordered pair connected, so whatever the geometry is worth is
+what goo is missing -- and is the working network since September 14, 2026:
+sixty neurons at its own threshold, 0.2, wired by a rule about zones and
+every neuron un-sticking itself (AUTHORITY.md §1.2, §3.4).
 
 ## Setup (once)
 
@@ -49,6 +54,7 @@ walnutbutter                 # open the window, free-run, learn, report accuracy
 walnutbutter --headless --epochs 20000 -q   # the same without a window, for a fixed number of epochs
 walnutbutter --step          # window where each Space press runs one epoch
 walnutbutter --no-learn      # just watch the untrained network
+walnutbutter --problem copy             # 4 bits complement-coded onto 8 input neurons, and the 8 outputs taught to show exactly that, place for place, unpermuted; an output is on if its spike count this epoch, as a rate, exceeds --teacher-threshold (AUTHORITY.md §8, §4.3; the goo task)
 walnutbutter --problem sustain_inputs   # the 16 four-bit inputs as they are on 4 neurons; score = which input neurons spiked again, against the pattern; learns by dopamine (AUTHORITY.md §8)
 walnutbutter --problem improved_sustain # the same on a 10x7 grid wired to reach 3, the 4 inputs in the middle of the middle row
 walnutbutter --problem population_copy  # 4 bits population-coded over 12 neurons (1001 -> 111000000111), copied to the top row, cycles quashed
@@ -265,7 +271,14 @@ exploration noise from the same seed, and are run side by side by
 by wave and move the same weights. They can differ only in the order
 floating-point additions happen, so on the rare epoch where a potential sits
 within rounding of a threshold the two may decide differently and diverge
-from there, like two seeds. On this machine the array engine runs an 8x10
+from there, like two seeds. A third engine, the Rust wave loop in `rust/`
+(`fast.py`; AUTHORITY.md §6.15), owns the state for a whole run and is
+reached from Python -- `fast.train`, and `docs/rust-sweep.py` for a sweep --
+rather than from `--engine`. It runs the reinforce rule with either
+eligibility, drawing its exploration noise from Python's own stream so the
+draws are equal and not approximately equal, and `tests/test_fast.py` runs it
+against the object engine wave by wave; a rule it lacks it refuses rather
+than approximates. On this machine the array engine runs an 8x10
 mesh about twice as fast as the object engine, a 24x20 mesh five times as
 fast and a 48x40 mesh seven times as fast; the object engine has no
 dependencies and prints per neuron with `-v`, which the array engine does not.
@@ -398,6 +411,116 @@ with `--load-weights`), and shows in the window or runs headless with
 no rows, so it is shown, not trained. The earlier Gaussian receptive-field
 wiring (`connect_by_distance`) remains in the library for reference.
 
+## Goo
+
+The plane taken away (AUTHORITY.md §3.4). Every container above has to say
+what "near" means before it can say what connects; goo has no positions, so
+there is no distance to measure and nothing to be near, and what is left is
+a rule about zones (AUTHORITY.md §3.4): the input zone and the output zone
+never project onto each other -- not in, not out, not within -- and every
+other ordered pair projects, one way, with probability `--projection`
+(GOO_PROJECTION, 0.2 since September 15, 2026, from two sweeps: the plateau
+in P runs 0.15 to 0.5 and 0.2 has the highest floor and the fastest goo
+that learns). `--goo` makes 60 neurons (GOO_COUNT; it was the grid's 80
+while the two were compared): about 650 projections at 0.2, the seed's
+choice of them, an interior neuron hearing about twelve and a zone neuron
+about nine. At projection 1 it is 3,300, an interior neuron hearing all 59
+others and a zone neuron the 44 of the interior -- the fully connected
+goo, which the sweeps found the worst value. A copy has to cross the
+interior. (It began as every
+ordered pair -- 3,540 at sixty, and goo 80 against the grid's 1,395 was the
+same neurons with four and a half times the wiring -- which is what the
+sweeps below ran on.)
+
+With no rows there is no bottom row to be the input, so the zones go by
+index: the first `--across` neurons are the input zone and the last
+`--across` the output. They are addressed the way every other container's
+rows are (`get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out), so
+learning, the teacher, the checkpoints and the array engine need to know
+nothing about it. Goo smaller than twice the zone width overlaps them on
+purpose, and `--goo 8` reads the eight neurons it writes.
+
+```bash
+walnutbutter --goo --headless --epochs 1000        # 80 neurons, fully connected
+walnutbutter --goo 200 --engine arrays --headless  # bigger goo, on the array engine
+walnutbutter --goo --seeds 8 --epochs 50000        # a batch, like any other container
+```
+
+Nothing is drawn to decide the topology -- the count alone fixes which pairs
+connect and in what id order -- so the seed reaches only the weights, the
+permutation and the inputs, and a checkpoint rebuilds goo from its count
+even when it was built without a seed. `--omega`, `--reach` and `--rows` do
+not reach it, and it has no geometry, so it runs headless and cannot be
+shown.
+
+**Its potential axis scales with fan-in**, and nothing else's does
+(AUTHORITY.md §5.2), and since September 14, 2026 it scales **its own
+constants**: GOO_THRESHOLD 0.2 and GOO_MINIMUM_POTENTIAL -0.8, the grid's
+ratio kept. Quoted at an interior hex cell's 18 incoming synapses; a goo
+neuron of 60 has 59, so it starts at a threshold of 0.2 x 59/18 = 0.66 and a
+floor of -2.62 -- set from a sweep at 0.01 steps with every neuron
+un-sticking (below), where 0.15-0.40 is a plateau and 0.20 the level where
+every seed learned. (It was 1, theta 3.28, chosen to sit past the
+saturation edge; once the direct projection was cut that was a dead
+interior. At the grid's 0.25 and 80 neurons it started at 1.097 and -4.389,
+where the sweeps began.)
+
+Both move, because they are two points on one axis and it is the axis being
+rescaled. Unscaled, goo's output zone is on 100% of the time whatever the
+input and the read carries nothing at all. Scaling the threshold alone
+barely helps -- still 99% on -- because the recurrence sustains the activity,
+and raising the threshold against an unmoved floor caps inhibition while
+excitation piles up. Moving both lands it: the output zone varies, and goo
+then produces more distinct output words than the grid does.
+
+That is activity, not learning. Swept twice at 250,000 epochs and ten seeds
+against the same goo run flat and against the grid (AUTHORITY.md §3.4,
+`docs/goo-250k.md`, `docs/goo-250k-hebb.md`): **all three at chance both
+times** -- under the perturb eligibility grid 0.520, flat goo 0.511, scaled
+goo 0.507; under hebb scaled goo 0.513, flat goo 0.506, grid 0.502. The grid
+does not learn reversal at ten rows under either rule; where hebb learns
+(§6.7's 0.98, §4.3's 0.64) the task is one hop wide. The rescaling fixed the
+read carrying nothing, not the rule learning nothing, and the comparison goo
+was built for wants a one-hop task the grid can do: reaching_copy, which is
+the grid with its depth taken away, against goo, which is the grid with its
+depth and its locality taken away. `--no-scale-with-fan-in` runs goo flat,
+and `--scale-with-fan-in` offers the rule to any other container.
+
+Then, on copy under hebb, goo's count against THRESHOLD with the floor
+following at the grid's ratio (`docs/goo-count-threshold.md`, 300 arms):
+**at the shipped threshold fewer neurons is much better** -- goo 24 scores
+0.609, goo 80 0.524, t 6.5 -- **but the best cell of all is goo 80 at
+THRESHOLD 0.5**: 0.634, nine seeds of ten learning, not one neuron stuck on.
+The count was never the problem; the threshold for the fan-in was, and the
+linear scaling of §5.2 under-corrects by about 2x at eighty neurons.
+
+Past that edge (`docs/goo-count-threshold-high.md`, goo 64 to 120 against
+THRESHOLD 0.5 to 2) there is **no optimum at all**: twenty cells at 0.56 to
+0.64 whose spread is the seed noise, over a sevenfold range of theta and a
+twofold range of count. The threshold's only job is to get a goo out of
+saturation. At goo 120 most of the goo can be silent -- 55 to 77 of 120
+neurons stuck off -- and the copy survives on the eight inputs projecting
+straight onto the eight outputs. Everything that escapes saturation lands at
+0.60-0.64, where the hebb eligibility also lands on reaching_copy: the
+ceiling is the rule's, not the network's.
+
+Under the count read (§4.3) the working network -- goo 60 at its own
+constants, copy -- scores **0.556** with the hebb eligibility and 0.514
+(chance) with perturb over ten seeds and 100,000 epochs
+(`docs/goo60-count.md`, `docs/goo60-count-perturb.md`), at 7,000 epochs a
+second: the read that stops counting a stray spike as a one moves the
+ceiling down, not up.
+
+Then the bug: a fully connected goo wires input i straight onto output i,
+and that one synapse was what the rule had learned. Cut the input-to-output
+projection and every seed sits at 0.500 -- a dead interior at theta 3.28,
+since nothing walked a silent interior neuron's threshold down. So **un-sticking now
+reaches every neuron**, not the output row only, and with it the interior
+lives at every threshold from 0.10 to 0.50 (`docs/goo60-nodirect-threshold.md`,
+410 arms): a plateau at ~0.56 from 0.15 to 0.40, 0.20 the level where every
+seed learned a two-hop copy, and the old default of 1 off the plateau at
+0.502. GOO_THRESHOLD is 0.2 since.
+
 ## Learning
 
 **Dopamine** (AUTHORITY.md §6, the default, `--rule dopamine`). A neuron
@@ -470,6 +593,32 @@ was not a forced input moves by `lr * advantage * eligibility`, where the
 eligibility is the target neuron's exploration noise (node-perturbation
 REINFORCE) or, with `--eligibility hebb`, +1 if the target fired and -1 if
 not. Forced inputs are never adjusted and weights stay within [-1, 1].
+
+The **mnist** problem (AUTHORITY.md §8) reads the handwritten digits from
+`mnist/` (the training split's two IDX files, not in git; `mnist/README.md`
+says where from and `walnutbutter.mnist.fetch()` gets them; the test split is
+not fetched, by decision), each image averaged to 14 × 14 and
+thresholded at half; the input zone is three clock neurons always driven,
+the 196 on-off pixels and their 196 complements; ten classes on 30 outputs
+read by count, and the class critic: the label's three outputs out-spike
+every other class's three, or nothing. `walnutbutter --problem mnist` builds
+a goo of 624 for it, an interior of 199 between the zones; `--goo N` sizes it.
+
+With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
+itself is the draw: a neuron that is not refractory fires at a wave with
+probability `1 - exp(-m)`, `m = (dt / hop) * exp(s / delta_j)`, where `s`
+is its margin against the threshold it faces and `delta_j` is D times its
+starting threshold -- one expected spike per hop at threshold, e times more
+per `delta_j` above it, so a neuron nobody talks to fires on its own at a
+rate its margin sets. That is Williams's Bernoulli unit with the noise in
+the threshold, and `--eligibility hazard` pays it with Williams's own
+eligibility: the score of each decision, summed over the epoch on each
+synapse's trace of what it still had in the potential (§6.7). It needs a
+positive D and runs in all three engines. Since September 15, 2026 the
+command line's default is D = 0.455 (ESCAPE_DELTA, Byron's word from the
+Δ × LR grid of AUTHORITY.md §3.4) with the hazard eligibility; `--delta 0`
+is the deterministic neuron of every earlier result, and a network built in
+the library stays deterministic until `network.set_delta(D)`.
 Under the schedule the mesh reverberates on its own, so no performance is
 claimed for this rule any more.
 
@@ -530,16 +679,17 @@ reinforcement leaves them out; an unforced input neuron is treated like any
 other. `--homeostasis 0` switches it off. Per-neuron thresholds are saved in
 checkpoints.
 
-**Un-sticking the outputs.** A saturated output neuron, one that fires on
-every input or on none, gets no learning signal at all, because the
-exploration noise never changes what it does. `--unstick RATE` (default
-0.001) moves the threshold of any output neuron that is stuck, firing more
-than 99% or less than 1% of the time, toward `--unstick-target` (default
-0.5), and stops the moment it is no longer stuck. Nothing else in the mesh
-is touched, so what the network has already learned is preserved. On a
-trained checkpoint this freed both stuck outputs without disturbing the
-six correct ones; routing the missing bit to them additionally needs the
-interior to loosen, which is the slow global homeostasis's job.
+**Un-sticking.** A saturated neuron, one that fires on every input or on
+none, gets no learning signal at all, because nothing changes what it does.
+`--unstick RATE` (default 0.001) moves the threshold of any neuron that is
+stuck, firing more than 99% or less than 1% of the time, toward
+`--unstick-target` (default 0.5), and stops the moment it is no longer
+stuck; a neuron forced this epoch is left alone. It was the output row only
+until September 14, 2026, when the interior of a goo with no direct
+projection turned out to be dead for want of exactly this (AUTHORITY.md
+§6.7): all neurons are first-class citizens, and with every neuron
+un-sticking the starting threshold stops mattering much -- the network
+finds its own operating point.
 
 Accuracy **to date** is the mean over every epoch since the start; the
 **recent** figure is an exponential average over roughly the last 200.
@@ -579,9 +729,11 @@ src/walnutbutter/
   propagation.py Schedule: the time-ordered queue of signals in flight, run a wave at a time; propagate()
   dopamine.py  Dopamine: the global pool, its expectation, and the learning at a refire
   arrays.py    ArrayNetwork: the same network as numpy vectors and a scipy sparse matrix (--engine arrays)
+  fast.py      the Rust wave loop (rust/), built from a grid; train(), compare() against the object engine
   exploration.py the Box-Muller noise draws both engines share
   constants.py every global constant: the default network, the neuron's clock, the learning rule's knobs
   grid.py      GridOfNeurons: builds the rectangle of hexagons and wires up both rings of neighbours
+  goo.py       Goo: no positions, every ordered pair connected, zones by index (--goo); the control
   columns.py   HexColumns: the cells extruded into layers in R3 (--layers); bottom layer in, top layer out
   butter.py    WalnutButter: smears of neuron density (per unit cell) on the plane; shapes Rect and Disc
   cartesian.py CartesianNodes: the lattice, a scatter, or a placed recipe; reach wiring

@@ -43,7 +43,12 @@ This is the REINFORCE / node-perturbation estimator of the reward gradient,
 a three-factor rule: presynaptic activity x postsynaptic perturbation x
 global reward. With `eligibility="hebb"` the perturbation is replaced by a
 plain Hebbian term (+1 if the target fired, -1 if not) and no noise is
-injected, which is the classic reward-modulated Hebbian rule.
+injected, which is the classic reward-modulated Hebbian rule. With
+`eligibility="hazard"` the firing decision itself is the draw (escape noise,
+AUTHORITY.md §5.2: the network was given a positive ESCAPE_DELTA) and the
+eligibility is Williams's own, the score of each decision summed over the
+epoch on each synapse's trace of what it still had in the potential (§6.7);
+every engine accumulates it as it runs and this module only pays it.
 
 Forced inputs are never adjusted and weights are kept within the grid's
 weight_range, [-1, 1] by default.
@@ -58,7 +63,8 @@ alone: their firing was not the network's doing. An unforced input neuron
 is an ordinary neuron and is treated as one. The default
 rate of 1e-6 toward a target of 0.5 is a very slow drift (a fully stuck
 neuron moves its threshold by about 0.0006 per thousand epochs, so the
-effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thresholds may go negative, within `THRESHOLD_RANGE`.
+effect belongs to runs of millions of epochs); a rate of 0 switches it off. Thresholds may go negative, and nothing clips them:
+the [-5, 5] range that once did was eliminated on September 14, 2026 as artificial (AUTHORITY.md §1.3).
 """
 
 from __future__ import annotations
@@ -71,7 +77,7 @@ from .grid import GridOfNeurons
 from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
 from .constants import (
     BASELINE_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
-    TARGET, TARGET_RATE, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WINDOW,
+    TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
 from .dopamine import Dopamine, apply_teacher
 from .monitor import run_epoch
@@ -85,12 +91,13 @@ TARGETS: dict[str, Target] = {
     "complement": lambda pattern: [not b for b in pattern],  # the same problem, only NOT (§8, Byron, September 14, 2026)
     "all-off": lambda pattern: [False] * len(pattern),
     "all-on": lambda pattern: [True] * len(pattern),
+    "label": None,  # the label's population code over the output zone (§8, mnist): expected_outputs reads it off the grid
 }
 
 RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
 # means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
 # are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
-ELIGIBILITIES = ("perturb", "hebb")
+ELIGIBILITIES = ("perturb", "hebb", "hazard")  # hazard: the score of the escape-noise decision (§5.2) on each synapse's trace (§6.7)
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 
 
@@ -106,12 +113,38 @@ def output_row(grid: GridOfNeurons) -> list[Neuron]:
 
 def expected_outputs(grid: GridOfNeurons, target: str = "reversed") -> list[bool]:
     """What the read should show for the grid's current input: the clean pattern, which flips (§4.3) may differ from."""
+    if target == "label":
+        return label_code(grid)
     pattern = getattr(grid, "target_pattern", None)
     if pattern is None:
         pattern = grid.input_pattern
     if pattern is None:
         raise ValueError("no input pattern set")
     return TARGETS[target](pattern)
+
+
+def label_code(grid: GridOfNeurons) -> list[bool]:
+    """The label as the output zone should show it: class c owns outputs c * population to (c + 1) * population - 1, all on."""
+    if grid.input_label is None:
+        raise ValueError("the label target needs a stream that carries labels (a dataset, §8)")
+    classes = grid.output_width() // grid.population
+    return [c == grid.input_label for c in range(classes) for _ in range(grid.population)]
+
+
+def class_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
+    """The class critic (§8, mnist; Byron, September 15, 2026: population per class, the most active wins).
+
+    Each class owns `population` output neurons in a row. Their spikes this
+    epoch are summed, and the reward is 1 when the label's class out-spikes
+    every other class, else 0: a tie loses, and so does silence.
+    """
+    if grid.input_label is None:
+        raise ValueError("the class critic needs a stream that carries labels (a dataset, §8)")
+    counts = grid.output_counts()
+    pop = grid.population
+    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    mine = groups[grid.input_label]
+    return 1.0 if all(mine > g for c, g in enumerate(groups) if c != grid.input_label) else 0.0
 
 
 def output_fired(grid: GridOfNeurons) -> list[bool]:
@@ -310,6 +343,7 @@ CRITICS = {
     "decoded": decoded_accuracy,  # fraction of data bits right after reading and error-correcting the row
     "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
+    "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
 }
 
 
@@ -345,51 +379,55 @@ def stuck_neurons(grid: GridOfNeurons) -> tuple[list[Neuron], list[Neuron]]:
 
 
 def homeostasis(
-    grid: GridOfNeurons, rate: float, target: float = TARGET_RATE, threshold_range: tuple[float, float] = THRESHOLD_RANGE
+    grid: GridOfNeurons, rate: float, target: float = TARGET_RATE
 ) -> int:
     """Nudge each neuron's threshold toward its target firing rate, except those forced this epoch.
 
     Returns the number of neurons moved.
     """
     if arrays(grid):
-        return grid.homeostasis(rate, target, threshold_range)
+        return grid.homeostasis(rate, target)
     if rate <= 0:
         return 0
-    low, high = threshold_range
     moved = 0
     for neuron in grid.all_neurons():
         if forced(neuron):
             continue
-        threshold = neuron.threshold + rate * (neuron.rate - target)
-        neuron.threshold = max(low, min(high, threshold))
+        neuron.threshold = neuron.threshold + rate * (neuron.rate - target)  # nothing clips it
         moved += 1
     return moved
 
 
-def unstick_outputs(
+def unstick(
     grid: GridOfNeurons,
     rate: float,
     target: float = 0.5,
-    threshold_range: tuple[float, float] = THRESHOLD_RANGE,
 ) -> list[Neuron]:
-    """Nudge the threshold of every *stuck* output neuron toward a target firing rate.
+    """Nudge the threshold of every *stuck* neuron toward a target firing rate.
 
-    Only output neurons whose running rate is beyond the stuck band (almost
-    always on, or almost always off) are touched, and only while they are.
-    A saturated output gets no learning signal because the exploration noise
-    never changes whether it fires; moving its threshold back toward the
-    region where the noise matters gives the rule a gradient there, and
-    nothing else in the mesh is disturbed. Returns the neurons nudged (indices, for the array engine).
+    Every neuron whose running rate is beyond the stuck band (almost always
+    on, or almost always off) is touched, and only while it is; a neuron
+    forced this epoch is left alone, as homeostasis leaves it. A saturated
+    neuron gets no learning signal because nothing changes whether it fires;
+    moving its threshold back toward the region where the rule has a gradient
+    gives it one, and nothing else in the mesh is disturbed.
+
+    It was the output row only until September 14, 2026, when the interior of
+    a goo with no direct projection turned out to be dead for want of exactly
+    this (AUTHORITY.md §3.4): "all neurons are first-class citizens" (Byron),
+    and a restriction to the outputs was an artificial one (§2). Returns the
+    neurons nudged (indices, for the array engine).
     """
     if arrays(grid):
-        return grid.unstick_outputs(rate, target, threshold_range)
+        return grid.unstick(rate, target)
     if rate <= 0:
         return []
-    low, high = threshold_range
     nudged = []
-    for neuron in output_row(grid):
+    for neuron in grid.all_neurons():
+        if forced(neuron):
+            continue
         if neuron.rate > STUCK_ABOVE or neuron.rate < STUCK_BELOW:
-            neuron.threshold = max(low, min(high, neuron.threshold + rate * (neuron.rate - target)))
+            neuron.threshold = neuron.threshold + rate * (neuron.rate - target)
             nudged.append(neuron)
     return nudged
 
@@ -450,12 +488,30 @@ def reinforce(
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
     if late not in LATE_RULES:
         raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
+    if eligibility == "hazard":
+        if not getattr(grid, "hazard", False):
+            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
+        if late != "count" or leaky:
+            raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
     if arrays(grid):
         return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
     if not advantage:
         return 0
     low, high = grid.weight_range
     step = lr * advantage
+    if eligibility == "hazard":  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
+        changed = 0
+        for connection in grid.connections.values():
+            if not connection.score or connection.target.forced:
+                continue  # nothing accumulated, or a forced input: its firing was not the network's doing
+            weight = connection.weight + step * connection.score
+            if weight < low:
+                weight = low
+            elif weight > high:
+                weight = high
+            connection.weight = weight
+            changed += 1
+        return changed
     perturb = eligibility == "perturb"
     tau, hop = getattr(grid, "synapse_tau", SYNAPSE_TAU), Neuron.hop()  # the synapse's leak, not the neuron's (§6.12)
     changed = 0
@@ -515,13 +571,12 @@ class Teacher:
         target: str = TARGET,
         lr: float = LR,
         sigma: float = SIGMA,
-        eligibility: str = ELIGIBILITY,
+        eligibility: str | None = None,
         baseline_rate: float = BASELINE_RATE,
         window: int = WINDOW,
         seed: int | None = None,
         homeostasis: float = HOMEOSTASIS,
         target_rate: float = TARGET_RATE,
-        threshold_range: tuple[float, float] = THRESHOLD_RANGE,
         discharge: bool = False,
         unstick: float = UNSTICK,
         unstick_target: float = UNSTICK_TARGET,
@@ -540,34 +595,37 @@ class Teacher:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic not in ("row", "population") and target not in ("reversed", "copy"):
+        if critic not in ("row", "population", "class") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
+        if critic == "class" and target != "label":
+            raise ValueError("the class critic scores a dataset's label (§8): its target is label")
         self.critic = critic
         if late not in LATE_RULES:
             raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
         self.late = late  # what a signal arriving after its target fired earns
         self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
+        if eligibility is None:  # the eligibility follows the neuron (§1.3): the hazard's under escape noise, else the constant's
+            eligibility = "hazard" if getattr(grid, "hazard", False) else ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
+        if eligibility == "hazard" and not getattr(grid, "hazard", False):
+            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) "
+                             "before the Teacher (§5.2)")
         if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
             raise ValueError("learning rate, sigma, homeostasis and unstick rates must not be negative")
         if not 0.0 < unstick_target < 1.0:
             raise ValueError(f"unstick target firing rate must be between 0 and 1, got {unstick_target}")
         self.unstick = unstick
         self.unstick_target = unstick_target
-        self.unstuck_count = 0  # how many epoch-nudges the output un-sticking has applied
+        self.unstuck_count = 0  # how many epoch-nudges the un-sticking has applied
         self.moved = 0  # synapses the external teacher has moved
         self.last_signal: float | None = None  # the teacher's score for the last epoch, in [-1, 1]
         self.mistakes = 0.0  # output neurons read wrongly in the last epoch (the ADALINE rule)
         self.history: list[dict] = []  # one entry per progress report; saved in checkpoints
         if not 0.0 < target_rate < 1.0:
             raise ValueError(f"target firing rate must be between 0 and 1, got {target_rate}")
-        low, high = threshold_range
-        if not low < high:
-            raise ValueError(f"threshold range must run from low to high, got {threshold_range}")
         self.homeostasis = homeostasis
         self.target_rate = target_rate
-        self.threshold_range = (float(low), float(high))
         self.discharge = discharge  # zero every potential between inputs instead of letting it leak
         self.grid = grid
         self.target = target
@@ -618,8 +676,8 @@ class Teacher:
         elif self.rule == "reinforce":
             reinforce(self.grid, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.grid)
-        homeostasis(self.grid, self.homeostasis, self.target_rate, self.threshold_range)
-        self.unstuck_count += len(unstick_outputs(self.grid, self.unstick, self.unstick_target, self.threshold_range))
+        homeostasis(self.grid, self.homeostasis, self.target_rate)
+        self.unstuck_count += len(unstick(self.grid, self.unstick, self.unstick_target))
         self.baseline += self.baseline_rate * (reward - self.baseline)
         self.epochs += 1
         if self._trace is not None:
@@ -677,8 +735,7 @@ class Teacher:
         if self.late != "count":
             settings += f", late signals {self.late}d"
         if self.homeostasis:
-            low, high = self.threshold_range
-            settings += f", homeostasis {self.homeostasis:g} toward {self.target_rate:g} in [{low:g}, {high:g}]"
+            settings += f", homeostasis {self.homeostasis:g} toward {self.target_rate:g}"
         if self.unstick:
             settings += f", unstick {self.unstick:g}"
         if self.discharge:

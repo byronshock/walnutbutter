@@ -13,6 +13,16 @@ from dataclasses import dataclass
 from .constants import ACROSS, FLIP, ROWS
 
 
+def dataset_stream(name: str | None, seed: int):
+    """A problem's dataset as an input stream with labels, or None when the inputs are random bits (§4.5)."""
+    if name is None:
+        return None
+    if name == "mnist":
+        from . import mnist
+        return mnist.stream("train", seed)
+    raise ValueError(f"no dataset called {name!r}")
+
+
 @dataclass(frozen=True)
 class Problem:
     name: str
@@ -37,6 +47,10 @@ class Problem:
     hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
     drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
     flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
+    outputs: int | None = None  # the width of the output zone when it differs from the input's (goo, §3.4); None: across
+    clock: int = 0  # clock neurons (§4.3): input neurons at the front of the input zone whose bit is always 1
+    goo: int | None = None  # the goo this problem is posed on: --goo defaults to this many neurons (None: the grid unless --goo)
+    data: str | None = None  # a dataset the inputs come from, with their labels, in place of random bits (§4.5): "mnist"
 
 
 PROBLEMS: dict[str, Problem] = {
@@ -44,6 +58,18 @@ PROBLEMS: dict[str, Problem] = {
         "reversal",
         "the top row learns to show the bottom row reversed, taught by a Teacher with a target and a critic",
         ACROSS, ROWS, trained=True, rule="reinforce", quash=False,
+    ),
+    "copy": Problem(
+        "copy",
+        "an input is complement-coded and presented on the input neurons, and the desired output is exactly the "
+        "input expressed across the output neurons (Byron, September 14, 2026): eight in, eight out, output place i "
+        "taught to show coded bit i. Unpermuted: 'permuting patterns should no longer matter, all neurons are "
+        "first-class citizens of the population' (Byron, same day), and on goo a permutation of the input zone is only "
+        "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
+        "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
+        ACROSS, ROWS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
+        read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
+        # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
     "sustain_inputs": Problem(
         "sustain_inputs",
@@ -114,6 +140,17 @@ PROBLEMS: dict[str, Problem] = {
         "against 13.1 at reach 2) (AUTHORITY.md §8)",
         16, 5, trained=False, readout="top", read="fired", target="copy", critic="row",
         coding="population-complement", population=2, reach=5, permute=True, rule="teacher", quash=True,
+    ),
+    "mnist": Problem(
+        "mnist",
+        "the MNIST digits (Byron, September 15, 2026: 'a new task, with its own data folder: mnist'): each 28 x 28 image "
+        "averaged over 2 x 2 blocks to 14 x 14 and each block on iff its mean is at least half; the input zone is three "
+        "clock neurons always driven, the 196 on-off pixels and their 196 complements (395 in all), no permutation; ten "
+        "classes on 30 output neurons, three a class, read by count, and the class critic: reward 1 when the label's three "
+        "out-spike every other class's three, else 0. Posed on goo with an interior of 199 unless --goo says otherwise "
+        "(624 neurons), by the reinforce rule; the train split in a seeded shuffle, cycling (mnist.stream)",
+        3 + 2 * 196, ROWS, trained=True, target="label", critic="class", rule="reinforce", quash=False, permute=False,
+        read="count", coding="complement", population=3, outputs=30, clock=3, goo=3 + 2 * 196 + 199 + 30, data="mnist",
     ),
     "population_denoise": Problem(
         "population_denoise",

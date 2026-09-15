@@ -160,7 +160,7 @@ def test_teacher_validates_tracks_and_reports():
     second = teacher.epoch(verbose=False)
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
-    assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5 in [-5, 5], unstick 0.001): accuracy" in teacher.status()
+    assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
     hebb = Teacher(grid, eligibility="hebb")
     assert hebb.sigma == 0.0  # no exploration noise for the Hebbian variant
 
@@ -178,7 +178,7 @@ def test_teacher_with_seed_is_reproducible():
 
 
 def test_targets_registry_has_the_builtin_targets():
-    assert set(learning.TARGETS) == {"reversed", "copy", "complement", "all-off", "all-on"}
+    assert set(learning.TARGETS) == {"reversed", "copy", "complement", "all-off", "all-on", "label"}
     assert learning.TARGETS["complement"]([True, False]) == [False, True]  # shallow_not (§8)
 
 
@@ -235,8 +235,8 @@ def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_input
     assert unforced_input.threshold == pytest.approx(thresholds[unforced_input] + 0.05)
 
 
-def test_homeostasis_moves_thresholds_toward_the_target_rate_and_stays_in_range():
-    from walnutbutter.learning import THRESHOLD_RANGE, homeostasis
+def test_homeostasis_moves_thresholds_toward_the_target_rate_and_nothing_clips_them():
+    from walnutbutter.learning import homeostasis
     grid = GridOfNeurons(across=4, rows=3, omega=0)
     hot, cold = grid.get_neuron_at(0, 0), grid.get_neuron_at(1, 0)
     hot.rate, cold.rate = 1.0, 0.0
@@ -255,14 +255,17 @@ def test_homeostasis_moves_thresholds_toward_the_target_rate_and_stays_in_range(
     assert homeostasis(grid, rate=0.0) == 0
     for _ in range(500):
         homeostasis(grid, rate=1.0)
-    assert hot.threshold == THRESHOLD_RANGE[1] and cold.threshold == THRESHOLD_RANGE[0]
+    # no range: the [-5, 5] clamp was eliminated as artificial (Byron, September 14, 2026)
+    # (the last 0.1 step above was not reset, so the loop began 0.05 from `before`)
+    assert hot.threshold == pytest.approx(before[hot] + 0.05 + 250.0) and cold.threshold == pytest.approx(before[cold] - 0.05 - 250.0)
 
 
 def test_teacher_homeostasis_reduces_stuck_neurons():
     from walnutbutter.learning import stuck_neurons
     def run(homeostasis):
         grid = GridOfNeurons(across=8, rows=6, weight=None, seed=1)
-        teacher = Teacher(grid, seed=1, homeostasis=homeostasis, target_rate=0.5)
+        # un-sticking off: since September 14, 2026 it reaches every neuron and would do this job on its own
+        teacher = Teacher(grid, seed=1, homeostasis=homeostasis, target_rate=0.5, unstick=0.0)
         for _ in range(3000):
             teacher.epoch(verbose=False)
         on, off = stuck_neurons(grid)
@@ -278,7 +281,7 @@ def test_teacher_validates_homeostasis_and_reports_it():
         Teacher(grid, target_rate=1.5)
     teacher = Teacher(grid, homeostasis=0.01, target_rate=0.4, seed=1)
     teacher.step()
-    assert "homeostasis 0.01 toward 0.4 in [-5, 5]" in teacher.status() and "stuck" not in teacher.status()
+    assert "homeostasis 0.01 toward 0.4" in teacher.status() and "stuck" not in teacher.status()
     default = Teacher(grid, seed=1)
     default.step()
     assert "homeostasis 1e-06 toward 0.5" in default.status() and "sigma 0.1" in default.status()
@@ -288,18 +291,22 @@ def test_teacher_validates_homeostasis_and_reports_it():
     assert "homeostasis" not in off.status()
 
 
-def test_threshold_range_is_configurable_and_validated():
+def test_there_is_no_threshold_range_anywhere():
+    """Byron, September 14, 2026: eliminate threshold clipping, it's artificial. A threshold goes where the rules take it."""
     from walnutbutter.learning import homeostasis
     grid = GridOfNeurons(across=4, rows=3, omega=0)
     hot = grid.get_neuron_at(0, 0)
     hot.rate = 1.0
     for _ in range(200):
+        homeostasis(grid, rate=1.0)
+    assert hot.threshold == pytest.approx(0.25 + 100.0)  # far past the 5 that once stopped it
+    with pytest.raises(TypeError):
         homeostasis(grid, rate=1.0, threshold_range=(0.0, 1.5))
-    assert hot.threshold == 1.5
-    teacher = Teacher(grid, threshold_range=(0, 2), seed=1)
-    assert teacher.threshold_range == (0.0, 2.0) and "in [0, 2]" in teacher.status() or teacher.average is None
-    with pytest.raises(ValueError):
-        Teacher(grid, threshold_range=(3, 1))
+    with pytest.raises(TypeError):
+        Teacher(grid, threshold_range=(0, 2), seed=1)
+    teacher = Teacher(grid, seed=1, homeostasis=0.01)
+    teacher.epoch(verbose=False)
+    assert not hasattr(teacher, "threshold_range") and "in [" not in teacher.status()
 
 
 def test_the_leak_is_the_default_and_discharge_is_available():
@@ -313,34 +320,36 @@ def test_the_leak_is_the_default_and_discharge_is_available():
     assert "discharge" in discharging.status()
 
 
-def test_unstick_touches_only_stuck_output_neurons():
-    from walnutbutter.learning import unstick_outputs
+def test_unstick_touches_every_stuck_neuron_wherever_it_sits():
+    """It was the output row only until September 14, 2026 (AUTHORITY.md §6.7): now a stuck interior neuron is nudged too."""
+    from walnutbutter.learning import unstick
     grid = GridOfNeurons(across=6, rows=4, omega=0)
     outputs = output_row(grid)
     hot, cold, fine = outputs[0], outputs[1], outputs[2]
     hot.rate, cold.rate, fine.rate = 1.0, 0.0, 0.5
     interior = grid.get_neuron_at(3, 1)
-    interior.rate = 1.0  # stuck, but not an output: must be left alone
+    interior.rate = 1.0  # stuck, and not an output: nudged all the same
     before = {n: n.threshold for n in grid.neurons.values()}
-    nudged = unstick_outputs(grid, rate=0.1)
-    assert nudged == [hot, cold]
+    nudged = unstick(grid, rate=0.1)
+    assert set(nudged) == {hot, cold, interior}
     assert hot.threshold == pytest.approx(before[hot] + 0.05)
     assert cold.threshold == pytest.approx(before[cold] - 0.05)
-    assert fine.threshold == before[fine] and interior.threshold == before[interior]
-    assert unstick_outputs(grid, rate=0.0) == []
+    assert interior.threshold == pytest.approx(before[interior] + 0.05)
+    assert fine.threshold == before[fine]
+    assert unstick(grid, rate=0.0) == []
 
 
-def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_respects_the_range():
-    from walnutbutter.learning import unstick_outputs
+def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_nothing_clips_it():
+    from walnutbutter.learning import unstick
     grid = GridOfNeurons(across=6, rows=4, omega=0)
     hot = output_row(grid)[0]
     hot.rate = 1.0
     for _ in range(300):
-        unstick_outputs(grid, rate=1.0, threshold_range=(-2.0, 2.0))
-    assert hot.threshold == 2.0
+        unstick(grid, rate=1.0)
+    assert hot.threshold == pytest.approx(0.25 + 150.0)  # no range to stop at
     hot.rate = 0.6  # out of the stuck band: nothing more happens
-    assert unstick_outputs(grid, rate=1.0) == []
-    assert hot.threshold == 2.0
+    assert unstick(grid, rate=1.0) == []
+    assert hot.threshold == pytest.approx(0.25 + 150.0)  # and stays there: nothing more happened
 
 
 def test_teacher_applies_unsticking_and_reports_it():
@@ -418,3 +427,22 @@ def test_a_late_signal_counts_by_default_and_is_ignored_or_depressed_on_request(
     assert Teacher(GridOfNeurons(across=4, rows=3, omega=0)).late == "count"
     with pytest.raises(ValueError):
         Teacher(GridOfNeurons(across=4, rows=3, omega=0), late="whenever")
+
+
+
+def test_unstick_reaches_every_stuck_neuron_and_leaves_a_forced_one_alone():
+    """§6.7, September 14, 2026: un-sticking is for every neuron, not the output row -- the interior of a goo with no
+    direct projection was dead for want of it. A neuron forced this epoch is left alone, as homeostasis leaves it."""
+    from walnutbutter.learning import unstick
+    grid = GridOfNeurons(across=6, rows=4, omega=0)
+    interior, out, forced_in = grid.get_neuron_at(2, 2), output_row(grid)[3], grid.input_row()[0]
+    for n in grid.all_neurons():
+        n.rate = 0.5  # nobody stuck
+    interior.rate, out.rate, forced_in.rate = 0.0, 1.0, 1.0
+    forced_in.forced = True
+    before = {n: n.threshold for n in grid.all_neurons()}
+    nudged = unstick(grid, rate=0.1)
+    assert set(nudged) == {interior, out}  # the interior neuron as much as the output; the forced input not at all
+    assert interior.threshold == pytest.approx(before[interior] - 0.05) and out.threshold == pytest.approx(before[out] + 0.05)
+    assert forced_in.threshold == before[forced_in]
+    assert all(n.threshold == before[n] for n in grid.all_neurons() if n not in (interior, out))

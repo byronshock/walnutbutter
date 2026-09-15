@@ -7,3 +7,5 @@ build/
 dist/
 run*.json
 runs/
+mnist/*.gz
+mnist/*-ubyte
