@@ -745,7 +745,43 @@ averaging 87 Hz of background — and the saturated mode is **as common for a
 target-off output as for a target-on one**, so it carries nothing. A read
 that called any spike a one was scoring that background as error, which is
 the substance working and the teacher not. 40 Hz reads one stray spike as
-off; where the line should sit is a sweep. The neurons whose bit is 1 are **forced** to fire
+off; where the line should sit was a sweep, below.
+
+*Swept (Byron, September 14, 2026: "sweep TEACHER_THRESHOLD in {25, 30, 35,
+40, 45, 50, 60, 80, 100} on 10 seeds with eligibility=hebb").* The working
+network — goo 60 at $\theta$ 3.28, copy — 100,000 epochs, the Rust loop,
+ninety arms in eighty seconds; `docs/goo60-teacher-threshold.md`,
+`goo60-teacher-threshold-score.png`. At a 35 ms epoch the count is an
+integer, so the nine levels are four reads — one spike is 28.6 Hz, two are
+57.1, three 85.7, four 114.3 — and within a band the arms came out
+**bit-identical**, seed for seed, which is the built-in check that the read
+was the only thing that changed:
+
+| the read | TEACHER_THRESHOLD | last 10,000 epochs | over seeds | seeds above 0.55 | stuck on / off, of 60 | against 40 Hz |
+|---|---|---|---|---|---|---|
+| at least 1 spike | 25 | **0.630** | 0.504–0.667 | 9 | 0.0 / 5.8 | +0.073, $t = 3.0$ |
+| at least 2 | 30, 35, **40**, 45, 50 | 0.556 | 0.511–0.630 | 5 | 4.5 / 16.2 | — |
+| at least 3 | 60, 80 | 0.547 | 0.527–0.588 | 4 | 0.0 / 6.9 | −0.010, $t = 0.7$ |
+| at least 4 | 100 | 0.513 | 0.500–0.564 | 2 | 0.0 / 40.6 | −0.043, $t = 3.2$ |
+
+**Every spike the read demands costs score, monotonically.** The best read
+by score is "at least one spike", which is the old `fired` read in all but
+name — the same 0.63 the same goo scored before the count read existed.
+And the read changes the network as well as the number: it is in the reward
+and so in the weights, and a stricter read pays out less early, potentiates
+less, and leaves a quieter network — 41 of 60 neurons never firing at four
+spikes, against 6 at one. So the loss from a strict read is not only
+background scored as signal now being scored as silence; it is a network
+that learned less because it was told less.
+
+*What this does and does not decide.* It decides what the rule of §6.7 can
+be scored to on this task: 0.63 when any spike is a one, less for every
+spike more. It does not decide what "on" means — that is the task's
+definition, and Byron's — and picking the read by the score it yields is
+the circle he closed when he set this read. The default stays at 40 Hz (at
+least two spikes) until he moves it. If the rule is to score well *and* a
+one is to mean sustained firing, the thing to change is the rule, which is
+where §6.7's open question already points. The neurons whose bit is 1 are **forced** to fire
 at $t_e$, refractory period permitting. A neuron forced this epoch is marked as such, which only
 the reinforce rule (§6.7) consults.
 
