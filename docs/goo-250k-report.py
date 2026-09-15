@@ -27,8 +27,26 @@ ARMS = [  # file stem -> how it is named in the report, and its colour in the fi
 ]
 
 
+def from_log(stem: str) -> dict[int, tuple[float, float]]:
+    """The seed table `--seeds` prints at the end: seed -> (last tenth, to date), as fractions.
+
+    "Last tenth" there is the mean reward over the final 25,000 epochs, which is the statistic
+    worth reading on a run this long; the Teacher's own `recent` is a 200-epoch moving average
+    and swings by several points from one report to the next.
+    """
+    rows = {}
+    for line in (RUNS / f"{stem}.log").read_text().splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0].isdigit() and parts[1].endswith("%") and parts[2].endswith("%"):
+            rows[int(parts[0])] = (float(parts[1][:-1]) / 100.0, float(parts[2][:-1]) / 100.0)
+    if set(rows) != set(SEEDS):
+        raise SystemExit(f"{stem}.log has a table for seeds {sorted(rows)}, not {list(SEEDS)} -- has the arm finished?")
+    return rows
+
+
 def load(stem: str) -> list[dict]:
     """One record per seed: the final figures and the Teacher's history."""
+    table = from_log(stem)
     out = []
     for seed in SEEDS:
         path = RUNS / f"{stem}-seed{seed}.json"
@@ -45,8 +63,9 @@ def load(stem: str) -> list[dict]:
             "history": history,
             "stuck_on": history[-1]["stuck_on"],
             "stuck_off": history[-1]["stuck_off"],
-            "accuracy_to_date": history[-1]["accuracy_to_date"],
-            "recent": history[-1]["recent"],
+            "accuracy_to_date": table[seed][1],
+            "last_tenth": table[seed][0],
+            "recent": history[-1]["recent"],  # the 200-epoch EMA at the final report, for the figure only
         })
     return out
 
@@ -63,7 +82,7 @@ def paired_t(a: list[float], b: list[float]) -> tuple[float, float]:
 
 def main() -> None:
     arms = {stem: load(stem) for stem, _, _ in ARMS}
-    recent = {stem: [r["recent"] for r in rows] for stem, rows in arms.items()}
+    recent = {stem: [r["last_tenth"] for r in rows] for stem, rows in arms.items()}
     to_date = {stem: [r["accuracy_to_date"] for r in rows] for stem, rows in arms.items()}
     epochs = arms["scaled"][0]["epochs"]
 
@@ -79,7 +98,7 @@ def main() -> None:
         "once per arm; report: `docs/goo-250k-report.py`; figure: `goo-250k-score.png`. Every run's "
         "checkpoint and log is under `runs/goo-250k/` (not in git).",
         "",
-        "| arm | accuracy, last tenth | range | accuracy, to date | stuck on | stuck off |",
+        "| arm | accuracy, last 25,000 epochs | range over seeds | accuracy, to date | stuck on | stuck off |",
         "|---|---|---|---|---|---|",
     ]
     for stem, label, _ in ARMS:
@@ -90,13 +109,13 @@ def main() -> None:
             f"{statistics.fmean(d):.4f} | {statistics.fmean(x['stuck_on'] for x in rows):.1f} | "
             f"{statistics.fmean(x['stuck_off'] for x in rows):.1f} |"
         )
-    lines += ["", "Paired on the seed, over the last tenth of each run:", ""]
+    lines += ["", "Paired on the seed, over the last 25,000 epochs of each run:", ""]
     lines += ["| comparison | mean difference | t |", "|---|---|---|"]
     for a, b in (("scaled", "flat"), ("scaled", "grid"), ("flat", "grid")):
         mean, t = paired_t(recent[a], recent[b])
         name = {s: l for s, l, _ in ARMS}
         lines.append(f"| {name[a]} − {name[b]} | {mean:+.4f} | {t:+.2f} |")
-    lines += ["", "Per seed, accuracy over the last tenth:", "",
+    lines += ["", "Per seed, accuracy over the last 25,000 epochs:", "",
               "| seed | " + " | ".join(l for _, l, _ in ARMS) + " |",
               "|---|" + "---|" * len(ARMS)]
     for i, seed in enumerate(SEEDS):
@@ -137,7 +156,7 @@ def plot(arms: dict) -> None:
     ax.set_axisbelow(True)
     ax.tick_params(colors=INK2, labelsize=8, length=0)
     ax.set_xlabel("epoch", color=INK2, fontsize=9)
-    ax.set_ylabel("accuracy over the recent window", color=INK2, fontsize=9)
+    ax.set_ylabel("accuracy, 200-epoch moving average at each report", color=INK2, fontsize=9)
     ax.legend(loc="upper left", frameon=False, fontsize=8, labelcolor=INK2)
     fig.suptitle("Goo at 250,000 epochs: does the rescaled axis learn?", x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))

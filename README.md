@@ -453,10 +453,15 @@ and raising the threshold against an unmoved floor caps inhibition while
 excitation piles up. Moving both lands it: the output zone varies, and goo
 then produces more distinct output words than the grid does.
 
-That is activity, not learning. Whether the rescaled goo actually *learns*
-is unmeasured -- 1,500 epochs leaves the grid at chance too -- and it is the
-sweep this container was built to run. `--no-scale-with-fan-in` runs goo
-flat, and `--scale-with-fan-in` offers the rule to any other container.
+That is activity, not learning. Swept at 250,000 epochs and ten seeds
+against the same goo run flat and against the grid (AUTHORITY.md §3.4,
+`docs/goo-250k.md`): **all three at chance** -- grid 0.520, flat goo 0.511,
+scaled goo 0.507 -- because the defaults are the reinforce rule with the
+perturb eligibility, which §6.7 already records at chance on the grid. The
+rescaling fixed the read carrying nothing, not the rule learning nothing, and
+the comparison goo was built for still wants a configuration in which the
+grid learns (the hebb eligibility). `--no-scale-with-fan-in` runs goo flat,
+and `--scale-with-fan-in` offers the rule to any other container.
 
 ## Learning
 

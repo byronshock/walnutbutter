@@ -274,14 +274,55 @@ and 1.5 and 2 to add nothing (8.2 words against 8.4), which is what holding
 $p^{\min}/\theta$ fixed predicts: once inhibition is no longer capped, a
 deeper floor is never reached.
 
-*What the measurement does not say.* It is activity, not learning. 1,500
-epochs of the teacher leaves scaled goo, unscaled goo and the grid all three
-at chance (0.497–0.507) — which is what 1,500 epochs does to this system,
-since the grid's own results needed 50,000 to 100,000 — so **whether the
-rescaled goo learns is unmeasured**, and that is the sweep this container was
-built to run. The two rejected alternatives are still on the table if it does
-not: a weight range scaling as $1/\sqrt{N}$, and the reading that THRESHOLD
-was never a constant of the substance but a constant of the grid.
+**Swept (Byron, September 14, 2026: "sweep goo with threshold and floor
+with 10 seeds at 250000 epochs").** Three arms, ten seeds each, 250,000
+epochs, the reversal problem at every default — the reinforce rule with the
+perturb eligibility, $\sigma$ 0.1 — on the array engine, every arm at seed
+$s$ given the same input stream (§4.5) so the arms pair epoch by epoch. Two
+arms were added to the one asked for, because a control's number means
+nothing without the thing it controls for: the same goo run flat, and the
+8 × 10 grid. `docs/goo-250k.md`, `goo-250k-score.png`, the checkpoints under
+`runs/goo-250k/`.
+
+| arm | last 25,000 epochs | over seeds | stuck on | stuck off |
+|---|---|---|---|---|
+| hex grid, 8 × 10 | **0.520** | 0.499–0.550 | 47.5 | 12.6 |
+| goo, flat | 0.511 | 0.497–0.573 | 62.2 | 6.3 |
+| goo, threshold and floor scaled | 0.507 | 0.500–0.528 | 41.4 | 27.0 |
+
+**Everything is at chance, the grid included.** Paired on the seed, the grid
+beats scaled goo by 0.013 ($t = 2.2$) and flat goo by 0.009 ($t = 1.5$), and
+the two goos differ by 0.004 ($t = 0.5$) — a borderline edge for the
+baseline, measured against a baseline that itself learned nothing in a
+quarter of a million epochs. That is not a surprise this file did not already
+hold: §6.1 and §6.7 record the perturb rule at chance on the grid under both
+drives (0.543 under rate drive; 56.8% at five rows), while the hebb
+eligibility of the same rule reaches 0.80 and 0.978. The sweep ran the
+container's defaults, and the container's defaults are the rule that does not
+learn.
+
+So **this says nothing about locality or depth.** A control can only measure
+what the baseline achieves, and here the baseline achieved nothing, so the
+gap between them is a gap between two chance results. What it does say is
+narrower and still worth having: (i) the rescaling of §5.2 did what the
+activity table above said it would and no more — flat goo ends with 62 of 80
+neurons stuck on, the saturation of the unscaled axis, scaled goo with 41 on
+and 27 off — it fixed the read carrying nothing, not the rule learning
+nothing; and (ii) 250,000 epochs of the perturb rule on this problem is not a
+learning run for any of the three, which the grid's own figure, 0.520, states
+on its own.
+
+*What the comparison needs, and does not have yet.* A configuration in which
+the grid demonstrably learns, so that goo has something to fall short of or
+match: the reinforce rule with the **hebb** eligibility, on shallow_copy or
+reaching_copy, where §6.7 puts the grid at 0.80–0.98. That eligibility now
+runs in every engine (§6.15), and the Rust loop is the engine to run it on —
+except that `docs/rust-sweep.py` builds a grid only and does not yet know
+`--goo`. Not run: it is the next sweep, not this one, and it is Byron's to
+call. The two rejected alternatives are still on the table if that sweep
+finds the rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the
+reading that THRESHOLD was never a constant of the substance but a constant
+of the grid.
 
 *Also not decided here:* whether the pairs should connect with a probability
 less than 1, which would make "fully connected" one end of a density axis
