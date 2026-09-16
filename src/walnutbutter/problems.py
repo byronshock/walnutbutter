@@ -148,12 +148,13 @@ PROBLEMS: dict[str, Problem] = {
         "the MNIST digits (Byron, September 15, 2026: 'a new task, with its own data folder: mnist'): each 28 x 28 image "
         "averaged over 2 x 2 blocks to 14 x 14 and each block on iff its mean is at least half; the input zone is three "
         "clock neurons always driven, the 196 on-off pixels and their 196 complements (395 in all), no permutation; ten "
-        "classes on 30 output neurons, three a class, read by count, and the class critic: reward 1 when the label's three "
-        "out-spike every other class's, else 0. Five outputs a class since the evening of September 15 (50 in all), and "
+        "classes on 50 output neurons, five a class, read by count, and the graded critic (Byron, the night of September "
+        "15: 'a graded critic it is'): the fraction of the other classes the label's class out-spikes, ties not beaten. "
+        "--critic class is the earlier 1-or-0. Five outputs a class since the evening of September 15, and "
         "no homeostasis or un-sticking: the hazard keeps nothing stuck and the un-sticking carried the network into "
         "silence. Posed on goo with an interior of 199 unless --goo says otherwise (644 neurons), by the reinforce rule; "
         "the train split in a seeded shuffle, cycling (mnist.stream)",
-        3 + 2 * 196, ROWS, trained=True, target="label", critic="class", rule="reinforce", quash=False, permute=False,
+        3 + 2 * 196, ROWS, trained=True, target="label", critic="graded", rule="reinforce", quash=False, permute=False,
         read="count", coding="complement", population=5, outputs=50, clock=3, goo=3 + 2 * 196 + 199 + 50, data="mnist",
         homeostasis=0.0, unstick=0.0,
     ),

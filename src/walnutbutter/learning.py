@@ -147,6 +147,25 @@ def class_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
     return 1.0 if all(mine > g for c, g in enumerate(groups) if c != grid.input_label) else 0.0
 
 
+def graded_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
+    """The graded critic (§8, mnist; Byron, September 15, 2026: "a graded critic it is").
+
+    The class sums as the class critic takes them; the reward is the fraction
+    of the other classes the label's class strictly out-spikes: 1 when it
+    out-spikes every one (the class critic's 1), 0 when it out-spikes none,
+    and a near miss is paid for what it beat. A tie is not beaten, so
+    silence scores 0. Chance is a half.
+    """
+    if grid.input_label is None:
+        raise ValueError("the graded critic needs a stream that carries labels (a dataset, §8)")
+    counts = grid.output_counts()
+    pop = grid.population
+    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    mine = groups[grid.input_label]
+    others = [g for c, g in enumerate(groups) if c != grid.input_label]
+    return sum(1 for g in others if mine > g) / len(others)
+
+
 def output_fired(grid: GridOfNeurons) -> list[bool]:
     """Whether each output neuron is on, left to right, whichever engine runs the grid (see Network.output_fired)."""
     return grid.output_fired()
@@ -344,6 +363,7 @@ CRITICS = {
     "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
     "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
+    "graded": graded_accuracy,  # the fraction of the other groups the label's group out-spikes (§8)
 }
 
 
@@ -595,10 +615,10 @@ class Teacher:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic not in ("row", "population", "class") and target not in ("reversed", "copy"):
+        if critic not in ("row", "population", "class", "graded") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
-        if critic == "class" and target != "label":
-            raise ValueError("the class critic scores a dataset's label (§8): its target is label")
+        if critic in ("class", "graded") and target != "label":
+            raise ValueError(f"the {critic} critic scores a dataset's label (§8): its target is label")
         self.critic = critic
         if late not in LATE_RULES:
             raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")

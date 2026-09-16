@@ -122,7 +122,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | constant | value | meaning |
 |---|---|---|
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
-| CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing (§8, mnist); and the decoded and population critics of §4.3 and §6.13 |
+| CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing; graded, the fraction of the other groups the label's group out-spikes (§8, mnist); and the decoded and population critics of §4.3 and §6.13 |
 | ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's), a Hebbian ±1 (hebb), or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
@@ -3231,11 +3231,17 @@ the layout, the inputs, and whether anything outside the network trains it.
      outputs) since the evening of September 15** (Byron: "Let's have a
      population of five neurons per output class"), so a class's sum is
      over five and ties at the top are rarer.
-  3. **The critic: class.** The label's three must out-spike every other
-     class's three; the reward is then 1 and otherwise 0 — a tie loses,
-     and so does silence, which is why the row critic would not do (one-hot
-     on ten, silence scores 0.9). The score is the classification accuracy
-     itself.
+  3. **The critic: class**, at first. The label's group must out-spike
+     every other class's; the reward is then 1 and otherwise 0 — a tie
+     loses, and so does silence, which is why the row critic would not do
+     (one-hot on ten, silence scores 0.9). The score is the classification
+     accuracy itself. **Then graded (Byron, the night of September 15, on
+     the threshold sweep below: "a graded critic it is"):** the same class
+     sums, and the reward is the fraction of the other nine classes the
+     label's class strictly out-spikes — 1 for the class critic's win, 0
+     for a class that beats none, and a near miss paid for what it beat; a
+     tie is not beaten, so silence still scores 0. Chance is a half. It is
+     the problem's critic; `--critic class` is the 1-or-0.
   The target is `label`, the label's population code over the output zone,
   for any critic that wants a pattern. Posed on goo (§3.4) with zones of
   two widths, 395 in and 50 out, and **an interior of 199 unless `--goo`
@@ -3357,3 +3363,13 @@ the layout, the inputs, and whether anything outside the network trains it.
   the floor of noise under the class sums is the hazard's resting rate, and
   only $\Delta$ lowers it; and a reward with no gradation pays the same
   nothing for a near miss as for silence.
+
+  *Byron, the same night: "a graded critic it is. Please build the graded
+  critic and then sweep Delta in {0.1 0.15 0.2 0.225 0.25 0.275} with the
+  graded critic across 10 seeds for 25000 epochs."* The critic is decision
+  3 above. The sweep runs at $P = 0.05$ under the reinstated zone rule, and
+  at GOO_THRESHOLD 0.6 with the floor at $-2.4$ rather than at the default
+  0.2 — *Claude's choice, stated:* the measurement above puts a fifth of
+  the neurons at the ceiling at 0.2, where $\Delta$ made no difference, and
+  0.6 is where the ceiling empties, so a $\Delta$ sweep at 0.2 would have
+  measured the drive and not the width. Sixty arms; results below.

@@ -110,14 +110,17 @@ def _outputs_on(engine, grid, out) -> list[bool]:
 
 def _reward(engine, grid, out, critic, want_of) -> float:
     """The epoch's reward from the engine's arrays: the row critic against the target, or the class critic (§8)."""
-    if critic == "class":
+    if critic in ("class", "graded"):
         counts = engine.epoch_spike_counts()
         pop = grid.population
         groups = [sum(counts[i] for i in out[c * pop:(c + 1) * pop]) for c in range(len(out) // pop)]
         label = grid.input_label
         if label is None:
-            raise ValueError("the class critic needs a stream that carries labels (a dataset, §8)")
-        return 1.0 if all(groups[label] > g for c, g in enumerate(groups) if c != label) else 0.0
+            raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")
+        others = [g for c, g in enumerate(groups) if c != label]
+        if critic == "class":
+            return 1.0 if all(groups[label] > g for g in others) else 0.0
+        return sum(1 for g in others if groups[label] > g) / len(others)
     on = _outputs_on(engine, grid, out)
     want = want_of(grid.target_pattern)
     return sum(1 for o, w in zip(on, want) if o == w) / len(want)
@@ -186,8 +189,8 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
 
     sigma = teacher.sigma if teacher is not None else 0.0
     if teacher is not None:
-        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class") or teacher.late != "count" or teacher.leaky:
-            raise ValueError("compare mirrors the reinforce rule with the row or class critic, late = count and no trace only")
+        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded") or teacher.late != "count" or teacher.leaky:
+            raise ValueError("compare mirrors the reinforce rule with the row, class or graded critic, late = count and no trace only")
         if teacher.grid is not grid:
             raise ValueError("the teacher must be teaching this grid")
     engine, neurons, index = build(
@@ -312,9 +315,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     positive ESCAPE_DELTA (`grid.set_delta`, §5.2) and draws its decisions from the same
     stream. The row critic and late = count only.
 
-    `critic` is row (the fraction of outputs matching the target) or class (§8: the
-    label's group of outputs out-spikes every other group, or nothing), which needs
-    `labels` beside `patterns`, one per pattern, as `mnist.stream` gives them.
+    `critic` is row (the fraction of outputs matching the target), class (§8: the
+    label's group of outputs out-spikes every other group, or nothing) or graded (the
+    fraction of the other groups it out-spikes); the last two need `labels` beside
+    `patterns`, one per pattern, as `mnist.stream` gives them.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -339,8 +343,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     sigma = sigma if eligibility == "perturb" else 0.0
     explore_rng = random.Random(seed) if (sigma > 0.0 or grid.hazard) else None  # the hazard's draws come from it too
 
-    if critic not in ("row", "class"):
-        raise ValueError(f"the Rust loop is paid by the row or the class critic, got {critic!r}")
+    if critic not in ("row", "class", "graded"):
+        raise ValueError(f"the Rust loop is paid by the row, class or graded critic, got {critic!r}")
     if patterns is not None:
         grid.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
 

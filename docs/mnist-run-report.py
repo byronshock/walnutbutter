@@ -49,11 +49,12 @@ def main() -> None:
         ax.plot(epochs, rolling, color=colour, linewidth=2.0, label=f"{label}: last tenth {record['last_tenth']:.3f}")
         lines.append(f"{label}: mean {record['mean']:.3f}, last tenth {record['last_tenth']:.3f}, "
                      f"{record['epochs_per_second']} epochs/s, stuck on/off {record['stuck_on']}/{record['stuck_off']}")
-    ax.axhline(0.1, color=INK, linestyle="--", linewidth=1.0)
-    ax.text(ax.get_xlim()[1], 0.105, "chance, ten classes", ha="right", va="bottom", color=INK, fontsize=9)
+    chance = 0.1 if record.get("critic") == "class" else 0.5  # the class critic pays a tenth by luck, the graded one a half
+    ax.axhline(chance, color=INK, linestyle="--", linewidth=1.0)
+    ax.text(ax.get_xlim()[1], chance + 0.005, "chance, ten classes", ha="right", va="bottom", color=INK, fontsize=9)
     ax.set_xlabel("epoch", color=INK)
     ax.set_ylabel(f"reward, rolling mean of {args.window} samples ({args.window * step:,} epochs)", color=INK)
-    ax.set_ylim(0.0, max(0.5, max(max(l.get_ydata()) for l in ax.get_lines()) + 0.05))
+    ax.set_ylim(0.0, max(chance + 0.4, max(max(l.get_ydata()) for l in ax.get_lines()) + 0.05))
     ax.grid(axis="y", color="#e6e6e6")
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)

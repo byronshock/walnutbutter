@@ -11,7 +11,7 @@ import pytest
 
 from walnutbutter import fast, mnist
 from walnutbutter.goo import Goo
-from walnutbutter.learning import Teacher, class_accuracy, label_code
+from walnutbutter.learning import Teacher, class_accuracy, graded_accuracy, label_code
 from walnutbutter.monitor import run_epoch
 from walnutbutter.problems import PROBLEMS, dataset_stream
 
@@ -99,16 +99,34 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
             neuron.spikes_at_reset, neuron.spikes = 0, c
         goo.input_label = label
         assert class_accuracy(goo) == want
+    # the graded critic (§8): the fraction of the other classes the label's class out-spikes; a tie is not beaten
+    for counts, label, want in (([1, 1, 0, 3, 0, 0], 1, 1.0), ([1, 1, 0, 3, 0, 0], 0, 0.0), ([1, 1, 1, 3, 0, 0], 1, 0.0),
+                                ([0, 0, 0, 0, 0, 0], 1, 0.0)):
+        for neuron, c in zip(outputs, counts):
+            neuron.spikes_at_reset, neuron.spikes = 0, c
+        goo.input_label = label
+        assert graded_accuracy(goo) == want
+    goo.population = 2  # three classes of two: the label's class beats one of the other two
+    for neuron, c in zip(outputs, [5, 0, 2, 2, 9, 0]):
+        neuron.spikes_at_reset, neuron.spikes = 0, c
+    goo.input_label = 0
+    assert graded_accuracy(goo) == pytest.approx(1 / 2) and class_accuracy(goo) == 0.0
+    goo.input_label = 2
+    assert graded_accuracy(goo) == 1.0 and class_accuracy(goo) == 1.0
+    goo.population = 3
     goo.input_label = None
     with pytest.raises(ValueError, match="labels"):
         class_accuracy(goo)
+    with pytest.raises(ValueError, match="labels"):
+        graded_accuracy(goo)
     with pytest.raises(ValueError, match="interior"):
         Goo(count=10, across=4, outputs=6)  # the zones talk only through an interior, so there has to be one
     with pytest.raises(ValueError, match="labels for"):
         goo.use_input_stream(patterns, [1])
 
 
-def test_the_three_engines_agree_under_the_class_critic():
+@pytest.mark.parametrize("critic", ["class", "graded"])
+def test_the_three_engines_agree_under_the_class_critic(critic):
     pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
     rng = random.Random(4)
@@ -124,21 +142,21 @@ def test_the_three_engines_agree_under_the_class_critic():
 
     mesh, twin = make(), make()
     net = ArrayNetwork(twin)
-    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic="class", homeostasis=0.01, unstick=0.1)
+    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
                 for x in (mesh, net)]
     rewards = []
     for _ in range(40):
         rewards.append([t.epoch(verbose=False) for t in teachers])
-        assert rewards[-1][0] == rewards[-1][1] and rewards[-1][0] in (0.0, 1.0)
+        assert rewards[-1][0] == rewards[-1][1] and 0.0 <= rewards[-1][0] <= 1.0
         assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
         assert net.input_label == mesh.input_label
     assert any(r[0] == 1.0 for r in rewards) and any(r[0] == 0.0 for r in rewards)
     if fast.available():
         g = make()
-        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic="class", homeostasis=0.01, unstick=0.1)
+        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
         assert fast.compare(g, epochs=40, teacher=teacher) == []
         g = make()
-        mean, trace, engine, report = fast.train(g, 60, target="label", critic="class", patterns=patterns, labels=labels,
+        mean, trace, engine, report = fast.train(g, 60, target="label", critic=critic, patterns=patterns, labels=labels,
                                                  eligibility="hazard", seed=7, trace_every=0)
         assert 0.0 <= mean <= 1.0 and g.input_at == 60  # the stream of 50 went round again
 
@@ -152,7 +170,7 @@ def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 644, 50, 5)
     args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
     assert args.unstick == 0.01 and args.homeostasis == 0.0  # given on the command line, it is kept
-    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "class", "complement", "count", "mnist")
+    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "graded", "complement", "count", "mnist")
     assert not problem.permute and problem.trained and problem.rule == "reinforce"
     assert dataset_stream(None, 1) is None
     with pytest.raises(ValueError, match="no dataset"):
