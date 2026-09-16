@@ -145,7 +145,8 @@ at all.
 | RATE_ON, RATE_OFF | 200, 0 Hz | the rates a target-on and a target-off output are driven to: saturation ($1/$REFRACTORY) and silence (§6.9) |
 | TEACHER_THRESHOLD | 14.3 Hz | the count read (§4.3): an output is on if the rate estimated from its spike count this epoch exceeds this. At a 35 ms epoch one spike is 28.6 Hz, so 14.3 — the middle of the one-spike band — means *at least one spike*, the line as far from both edges as it can sit (Byron, September 14, 2026, choosing it to mean one spike and not for its score). It was 40, two spikes, for the read's first hour |
 | BORED_AFTER | 0 (off) | when positive, silence after which a neuron's threshold has fallen to zero and it fires on its own (§5.4). Off since September 14, 2026: every value below the epoch floods. Superseded by ESCAPE_DELTA (Byron, September 15, 2026): the hazard buys what the clock was to buy, "and much much more cleanly"; it is not run on top of the hazard |
-| ESCAPE_DELTA | 0.455 | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). A neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$: one expected spike per hop at threshold, $e$ times more per $\Delta_j$ above it; 0 is the deterministic threshold. *The value is Byron's word (September 15, 2026, after the $\Delta \times$ LR grid of §3.4): inside the plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up.* Applied by the command line and the sweep driver; a network built in the library is deterministic until `set_delta`, as it has no $\sigma$ until a Teacher gives it one |
+| ESCAPE_DELTA | 0.455 | the width of the firing decision, in units of the neuron's starting threshold (§5.2, escape noise; Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright"). A neuron that is not refractory fires at a wave with probability $1 - e^{-m}$, $m = (\Delta t/\text{hop})\sqrt{N_0/N}\,e^{s/\Delta_j}$, $s = p - \theta_j(t)$, $\Delta_j = \Delta\,\theta_j^{\text{start}}$, $N_0$ the reference count below: $\sqrt{N_0/N}$ expected spikes per hop at threshold, $e$ times more per $\Delta_j$ above it; 0 is the deterministic threshold. *The value is Byron's word (September 15, 2026, after the $\Delta \times$ LR grid of §3.4): inside the plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up.* Applied by the command line and the sweep driver; a network built in the library is deterministic until `set_delta`, as it has no $\sigma$ until a Teacher gives it one |
+| ESCAPE_REFERENCE_COUNT | 60 | the count ESCAPE_DELTA is quoted at (§5.2; Byron, September 16, 2026: "scaling the network MUST reduce the probability of escape noise at each neuron by sqrt(N)"): a network of $N$ neurons runs every hazard at $\sqrt{60/N}$ times what the width alone gives, so the goo of 60 the width was set on keeps its regime and a larger network is quieter as the square root of its size. The unit the width is quoted in, as THRESHOLD_FAN_IN is the unit the threshold is quoted in; not a knob |
 
 ### 1.3 Learning
 
@@ -1960,15 +1961,17 @@ threshold it faces, the bored clock of §5.4 included — and fires with
 probability
 
 $$P_j(t) = 1 - e^{-m_j(t)}, \qquad
-m_j(t) = \frac{\Delta t}{\text{hop}}\; e^{\,s/\Delta_j}, \qquad
-\Delta_j = \Delta\,\theta_j^{\text{start}},$$
+m_j(t) = \frac{\Delta t}{\text{hop}}\,\sqrt{\frac{N_0}{N}}\; e^{\,s/\Delta_j}, \qquad
+\Delta_j = \Delta\,\theta_j^{\text{start}}, \qquad N_0 = \text{ESCAPE\_REFERENCE\_COUNT},$$
 
 where $\Delta t$ is the time since the neuron's previous decision, or since
 its refractory period ended if it was refractory then. The neuron carries a
-hazard of $e^{s/\Delta_j}$ spikes per hop: one expected spike per hop at
-threshold, $e$ times more per $\Delta_j$ of margin above it, $e$ times fewer
-per $\Delta_j$ below; $m$ is the number of spikes expected over the interval
-and $P$ the chance of at least one. $\Delta_j$ is quoted in units of the
+hazard of $\sqrt{N_0/N}\,e^{s/\Delta_j}$ spikes per hop, $N$ the network's
+count: at the reference count one expected spike per hop at threshold, $e$
+times more per $\Delta_j$ of margin above it, $e$ times fewer per $\Delta_j$
+below, and the whole of it scaled down as the square root of the count
+(decided below, September 16, 2026); $m$ is the number of spikes expected
+over the interval and $P$ the chance of at least one. $\Delta_j$ is quoted in units of the
 threshold the container gave the neuron, so §5.2's scaling applies to it as
 to the rest of the axis, a neuron of any fan-in is as soft as any other, and
 it stays put when homeostasis later moves $\theta_j$. $\Delta = 0$ is the
@@ -1976,6 +1979,54 @@ deterministic rule word for word, and so is a neuron whose starting
 threshold is not positive — one with no incoming synapses under §5.2's
 scaling, whose whole axis has collapsed and carries no width to quote. A
 forced neuron fires by its stimulus and makes no decision that wave.
+
+**The escape rate falls as the square root of the count — decided (Byron,
+September 16, 2026: "A design principle of this project is that it should
+have as few knobs as possible and by default operate in or near a stable
+regime. Therefore scaling the network MUST reduce the probability of
+escape noise at each neuron by sqrt(N). I want to build this into the
+rule.")** Every hazard in a network of $N$ neurons is multiplied by
+$\sqrt{N_0/N}$, $N_0 = $ ESCAPE_REFERENCE_COUNT $= 60$, the goo the width
+was set on (§3.4), so at 60 nothing measured moves, and a neuron of the
+mnist goo of 445 escapes at 0.37 of the rate the width alone would give.
+It is the whole hazard that is scaled and not the width, so the decision
+keeps its sharpness — $e$ times per $\Delta_j$ — and the score of §6.7,
+$\partial \ln P/\partial s$, keeps its form; the factor is the same at every
+margin, which is what "the probability of escape noise at each neuron"
+says, and a neuron that hears nothing takes it like any other. The
+reference count is the unit the width is quoted in, as THRESHOLD_FAN_IN is
+the unit the threshold is quoted in, and not a knob; below it a smaller
+network is louder by the same law. `Network.set_delta` sets the factor
+from the count, every engine carries it per neuron, and a checkpoint
+recomputes it rather than storing it, since it is a rule and not a state.
+Measured at rest (every weight 0, $\Delta$ 0.455, sixty epochs, the object
+engine), spikes a neuron an epoch:
+
+| $N$ | $\sqrt{60/N}$ | with the rule | the width alone | per hop, measured | the hazard $e^{-1/\Delta}\sqrt{60/N}$ |
+|---|---|---|---|---|---|
+| 20 | 1.73 | 2.46 | 1.72 | 0.117 | 0.192 |
+| 60 | 1 | 1.74 | 1.74 | 0.083 | 0.111 |
+| 240 | 0.50 | 1.00 | 1.73 | 0.048 | 0.056 |
+| 445 | 0.37 | 0.77 | 1.74 | 0.037 | 0.041 |
+
+The measured rate per hop is the hazard's $p$ with the refractory period
+taken out, $p/(1 + 3p)$ at three hops, which is why the counts fall a
+little slower than the square root. The three engines agree to the bit at
+counts where the factor is not 1 (`tests/test_hazard.py` at 40 and the
+mnist goo at 445).
+
+*Claude's arithmetic on what the law holds still, for Byron to weigh.* A
+neuron of the scaled goo hears $d = 0.05\,N$ neurons, each escaping at $p$
+a hop; the escape input it receives has mean $d\,p\,\bar w$ and a spread
+of about $\sqrt{d p}$ times the weights' spread. With $p \propto 1/\sqrt{N}$
+the mean grows as $\sqrt{N}$ and the spread as $N^{1/4}$; against the
+threshold, which scales as $N$ (above), both fall, as $1/\sqrt{N}$ and
+$N^{-3/4}$, where before this rule the mean held and the spread fell as
+$1/\sqrt{N}$. The number of escape spikes in the whole network a hop, $N
+p$, now grows as $\sqrt{N}$ rather than $N$. A $1/N$ law would hold the
+mean escape input to a neuron constant against an unscaled threshold; the
+exponent is one line in `network.escape_scale` if the measurements want
+it.
 
 *A neuron that hears nothing (September 16, 2026).* Under the scaling of
 §5.2 a neuron with no incoming synapses had threshold 0, floor 0 and no
@@ -2011,7 +2062,7 @@ busy epoch holds more waves than a quiet one, and a coin tossed at every
 wave would make a resting neuron's spontaneous rate depend on how busy its
 neighbours are. Charging the hazard for the time elapsed makes the
 spontaneous rate a rate: a neuron at rest, $s = -\theta_j$, fires at
-$e^{-1/\Delta}$ spikes per hop whatever else is happening. The hazard is
+$e^{-1/\Delta}\sqrt{N_0/N}$ spikes per hop whatever else is happening. The hazard is
 evaluated at the wave's margin over the interval before it; the potential
 was leaking through that interval, so after a large input this understates
 the hazard a little, and every engine understates it identically.
@@ -2029,7 +2080,7 @@ recorded — and it replaces the clock of §5.4 as the source of boredom
 eligibility is in §6.7.
 
 *Rest is loud and the floor is the only silence.* A neuron at rest fires
-$21\,e^{-1/\Delta}$ times an epoch at the default clock (twenty-one hops
+$21\,e^{-1/\Delta}\sqrt{N_0/N}$ times an epoch at the default clock (twenty-one hops
 to a 35 ms epoch): five at $\Delta = 0.7$, saturation from 1.05 up. So
 under the count read an output that must be off cannot rest; it has to be
 held at the floor, where the hazard bottoms out at $e^{(p^{\min}_j -
@@ -3114,6 +3165,12 @@ beside $r_j$, in the object engine's order, and moved after the update. The
 ±1 rule is `reinforce_wrong_hebb`. Agreement to the bit on goo under escape
 noise and on the mnist feedforward goo, learning on (`tests/test_hazard.py`,
 `tests/test_fast.py`).
+
+*The count's scaling of every hazard (§5.2, September 16, 2026)* is a
+per-neuron factor the loop takes beside the widths (`set_escape_scales`),
+multiplied into the hazard in the same place and order as the other two
+engines; the agreement tests run at counts other than the reference, so
+they hold it.
 
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than

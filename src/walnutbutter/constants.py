@@ -68,6 +68,11 @@ BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms
 # floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
 # Superseded by ESCAPE_DELTA (Byron, September 15, 2026: "The hazard is buying us what the bored clock was supposed to
 # buy us, and much much more cleanly"): not run on top of the hazard; the mechanism stays, the configuration does not.
+ESCAPE_REFERENCE_COUNT = 60  # the count ESCAPE_DELTA is quoted at (AUTHORITY.md §5.2; Byron, September 16, 2026: "scaling
+# the network MUST reduce the probability of escape noise at each neuron by sqrt(N)"): a network of N neurons runs every
+# hazard at sqrt(this / N) times what the width alone gives, so the goo of 60 the width was set on keeps its regime and a
+# larger network is quieter as the square root of its size. The unit the width is quoted in, as THRESHOLD_FAN_IN is the
+# unit the threshold is quoted in; not a knob.
 ESCAPE_DELTA = 0.455  # the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15, 2026:
 # "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a wave
 # with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this constant

@@ -248,6 +248,7 @@ def run_arm(job: tuple) -> dict:
               "critic": args.critic, "problem": problem,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
+              "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
               "count_memory": COUNT_MEMORY if eligibility == "hebb" else None,  # the centred rule's memory (§6.7); a record
               # naming hebb without it is from before September 16, 2026, when hebb named the +-1 rule now called wrong_hebb
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knob

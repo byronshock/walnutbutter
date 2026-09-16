@@ -361,6 +361,10 @@ def _restore_clock(grid, data: dict) -> None:
     grid.escape_delta = data.get("escape_delta", 0.0)  # escape noise (§5.2); older checkpoints ran the threshold
     for neuron, delta in zip(neurons, data.get("deltas", [])):
         neuron.delta = delta
+    from .network import escape_scale
+    grid.escape_scale = escape_scale(len(neurons))  # §5.2: the count's scaling of every hazard is a rule, recomputed not stored
+    for neuron in neurons:
+        neuron.escape_scale = grid.escape_scale
     for neuron, since in zip(neurons, data.get("exposed_since", [])):
         neuron.exposed_since = since
     for connection_id, (trace, at) in enumerate(data.get("traces", []), start=1):

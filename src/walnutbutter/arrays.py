@@ -112,6 +112,8 @@ class ArrayNetwork(Network):
         self.noise = np.array([x.noise for x in neurons], dtype=float)
         self.escape_delta = mesh.escape_delta  # escape noise (§5.2): ESCAPE_DELTA on this network
         self.delta_v = np.array([x.delta for x in neurons], dtype=float)  # each neuron's decision width, in potential units
+        self.escape_scale = getattr(mesh, "escape_scale", 1.0)  # sqrt(N0 / N), the count's scaling of every hazard (§5.2)
+        self.escape_scale_v = np.array([x.escape_scale for x in neurons], dtype=float)
         self.exposed_since = np.array([x.exposed_since for x in neurons], dtype=float)  # since when each hazard has run
         self.draw = np.ones(n)  # this wave's uniforms for the decisions
         self.rate = np.array([x.rate for x in neurons], dtype=float)
@@ -295,7 +297,8 @@ class ArrayNetwork(Network):
                 soft = deciding & (self.delta_v > 0.0)
                 elapsed = np.maximum(time - self.exposed_since, 0.0)
                 m = np.zeros(n)
-                m[soft] = np.minimum(elapsed[soft] / hop * np.exp((standing[soft] - facing[soft]) / self.delta_v[soft]), 1e3)
+                m[soft] = np.minimum(elapsed[soft] / hop * self.escape_scale_v[soft]
+                                     * np.exp((standing[soft] - facing[soft]) / self.delta_v[soft]), 1e3)
                 ready = np.where(soft, self.draw < -np.expm1(-m), deciding & (standing >= facing))
                 self.exposed_since[soft] = time
                 positive = m > 0.0

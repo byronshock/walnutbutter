@@ -172,6 +172,7 @@ pub struct Engine {
     trace_at: Vec<f64>,
     score: Vec<f64>,    // per edge: the hazard eligibility accumulated this epoch (§6.7)
     delta: Vec<f64>,    // per neuron: the width of its firing decision; 0 is the deterministic threshold (§5.2)
+    escape_scale: Vec<f64>, // per neuron: sqrt(N0 / N), the count's scaling of every hazard (§5.2, September 16, 2026)
     exposed_since: Vec<f64>, // per neuron: since when its hazard has run
     draw: Vec<f64>,     // per neuron: this wave's uniform for the decision
     hazard: bool,       // any delta > 0: the decision is a draw and the traces and scores are kept
@@ -263,6 +264,7 @@ impl Engine {
             trace_at: vec![0.0; edges],
             score: vec![0.0; edges],
             delta: vec![0.0; neurons],
+            escape_scale: vec![1.0; neurons],
             exposed_since: vec![0.0; neurons],
             draw: vec![1.0; neurons],
             hazard: false,
@@ -481,6 +483,15 @@ impl Engine {
         }
         self.delta = deltas;
         self.hazard = on;
+        Ok(())
+    }
+
+    /// §5.2: the count's scaling of every hazard, sqrt(ESCAPE_REFERENCE_COUNT / N), as `Network.set_delta` gave each neuron.
+    fn set_escape_scales(&mut self, scales: Vec<f64>) -> PyResult<()> {
+        if scales.len() != self.neurons {
+            return Err(PyValueError::new_err("one escape scale per neuron"));
+        }
+        self.escape_scale = scales;
         Ok(())
     }
 
@@ -830,7 +841,7 @@ impl Engine {
         if elapsed < 0.0 {
             elapsed = 0.0;
         }
-        let m = (elapsed / self.hop * (s / self.delta[i]).exp()).min(1e3);
+        let m = (elapsed / self.hop * self.escape_scale[i] * (s / self.delta[i]).exp()).min(1e3);
         let fired = self.draw[i] < -(-m).exp_m1();
         self.exposed_since[i] = now;
         if m > 0.0 {

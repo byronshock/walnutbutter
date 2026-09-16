@@ -48,6 +48,8 @@ class Neuron:
         # noise): ESCAPE_DELTA times its starting threshold, set by Network.set_delta; 0 is the deterministic threshold
         self.exposed_since = 0.0  # clock time the hazard has run from: the previous decision, or the refractory period's end
         self.draw = 1.0  # this wave's uniform for the decision, set by the network's explorer hook; 1 never fires
+        self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N): the network's count scales every hazard down as its
+        # square root (AUTHORITY.md §5.2, September 16, 2026); Network.set_delta sets it, and a restore recomputes it
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
         self.expected_count: float | None = None  # n_bar_j: the running expectation of this neuron's spikes an epoch, which
@@ -187,16 +189,17 @@ class Neuron:
     def expected_spikes(self, now: float) -> float:
         """m_j(now): the spikes the hazard expects of this neuron since its exposure began (AUTHORITY.md §5.2).
 
-        (dt / hop) * exp(s / delta), with s the margin the decision is made
-        on and dt the time since the previous decision or the refractory
-        period's end; capped at 1e3, beyond which the chance of a spike is
-        already 1 to the last bit. Needs delta > 0.
+        (dt / hop) * sqrt(N0 / N) * exp(s / delta), with s the margin the
+        decision is made on, dt the time since the previous decision or the
+        refractory period's end, and sqrt(N0 / N) the count's scaling of the
+        hazard (`escape_scale`, §5.2); capped at 1e3, beyond which the chance
+        of a spike is already 1 to the last bit. Needs delta > 0.
         """
         s = self.potential_at(now) - self.threshold_at(now)
         elapsed = now - self.exposed_since
         if elapsed < 0.0:
             elapsed = 0.0
-        return min(elapsed / Neuron.hop() * math.exp(s / self.delta), 1e3)
+        return min(elapsed / Neuron.hop() * self.escape_scale * math.exp(s / self.delta), 1e3)
 
     def decide(self, now: float) -> bool:
         """The firing decision at `now`: can_fire when delta is 0, else the escape-noise draw (AUTHORITY.md §5.2).

@@ -14,9 +14,22 @@ import random
 from typing import Iterable
 
 from .constants import (
-    EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE, QUASH_K, QUASH_RATE,
-    RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
+    ESCAPE_REFERENCE_COUNT, EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
+    QUASH_K, QUASH_RATE, RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
 )
+
+
+def escape_scale(count: int) -> float:
+    """sqrt(ESCAPE_REFERENCE_COUNT / count): what a network of `count` neurons multiplies every hazard by (AUTHORITY.md §5.2).
+
+    Byron, September 16, 2026: "scaling the network MUST reduce the probability
+    of escape noise at each neuron by sqrt(N)." The reference count is the goo
+    of 60 the width was set on, so at 60 the factor is exactly 1 and nothing
+    measured there moves; a network of 445 runs its hazards at 0.37 of what
+    the width alone gives. A count of 0 has nothing to scale and gets 1.
+    """
+    import math
+    return math.sqrt(ESCAPE_REFERENCE_COUNT / count) if count > 0 else 1.0
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
 from .exploration import gaussians, hazard_draws
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
@@ -79,6 +92,7 @@ class Network:
         self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
         self.explore_rng = None  # the stream it comes from
         self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
+        self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N), the count's scaling of every hazard (§5.2), once set_delta ran
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
@@ -130,10 +144,13 @@ class Network:
         if delta < 0.0:
             raise ValueError(f"ESCAPE_DELTA must not be negative, got {delta}")
         self.escape_delta = float(delta)
-        for neuron in self._everyone():
+        everyone = self._everyone()
+        self.escape_scale = escape_scale(len(everyone))  # the count's scaling of every hazard (§5.2, September 16, 2026)
+        for neuron in everyone:
             # a neuron whose starting threshold is not positive -- no incoming synapses under fan-in scaling (§5.2) --
             # has a collapsed axis with no width to quote on it, and keeps the deterministic rule
             neuron.delta = delta * neuron.threshold if neuron.threshold > 0.0 else 0.0
+            neuron.escape_scale = self.escape_scale
 
     def scale_with_fan_in(
         self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN

@@ -86,6 +86,7 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
     low, high = weight_range
     engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
     engine.set_deltas(deltas)
+    engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
     return engine, neurons, index
 
 

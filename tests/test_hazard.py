@@ -195,15 +195,40 @@ def test_the_three_engines_agree_under_the_hebb_eligibility_with_escape_noise():
         assert parted == [], parted
 
 
+def test_the_count_scales_every_hazard_down_as_its_square_root():
+    """§5.2 (Byron, September 16, 2026: "scaling the network MUST reduce the probability of escape noise at each neuron
+    by sqrt(N)"): m = (dt / hop) sqrt(N0 / N) e^(s / Delta_j), N0 = ESCAPE_REFERENCE_COUNT = 60, the goo the width was
+    set on -- so at 60 nothing moves, a smaller network is louder and a larger one quieter, at every margin alike."""
+    from walnutbutter.constants import ESCAPE_REFERENCE_COUNT
+    from walnutbutter.grid import GridOfNeurons
+    assert ESCAPE_REFERENCE_COUNT == 60
+    for count, scale in ((20, math.sqrt(3.0)), (60, 1.0), (240, 0.5)):
+        g = Goo(count=count, across=4, seed=1, weight=0.0, projection=1.0, wiring="zones-equal")
+        assert g.escape_scale == 1.0 and all(n.escape_scale == 1.0 for n in g.all_neurons())  # deterministic until set_delta
+        g.set_delta(0.455)
+        assert g.escape_scale == scale and all(n.escape_scale == scale for n in g.all_neurons())
+        neuron = next(iter(g.all_neurons()))
+        neuron.exposed_since = 0.0
+        # at rest, one hop after its exposure began: the width alone gives e^(-1/Delta); the count scales it, at rest as anywhere
+        assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp((0.0 - neuron.threshold) / neuron.delta)
+        neuron.potential, neuron.last_update = neuron.threshold, Neuron.hop()  # at threshold: sqrt(N0 / N) a hop, not one
+        assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp(0.0)
+    grid = GridOfNeurons(across=4, rows=4, omega=0)
+    grid.set_delta(0.455)
+    assert grid.escape_scale == math.sqrt(60.0 / 16.0)  # any container: its count
+    # the array engine and the Rust loop carry the factor: the agreement tests above run at 40, where it is 1.22
+
+
 def test_a_checkpoint_keeps_the_widths(tmp_path):
     from walnutbutter.persistence import checkpoint, restore
     g = goo()
     g.set_delta(1.05)
     run_epoch(g, verbose=False, rng=random.Random(2))
     data = checkpoint(g, tmp_path / "hazard.json")
-    assert data["escape_delta"] == 1.05
+    assert data["escape_delta"] == 1.05 and "escape_scale" not in data  # the count's factor is a rule, recomputed on restore
     back, _ = restore(tmp_path / "hazard.json")
     assert back.hazard and back.escape_delta == 1.05
+    assert back.escape_scale == g.escape_scale == math.sqrt(60.0 / 40.0) and all(n.escape_scale == g.escape_scale for n in back.all_neurons())
     assert [n.delta for n in back.all_neurons()] == [n.delta for n in g.all_neurons()]
     assert [n.exposed_since for n in back.all_neurons()] == [n.exposed_since for n in g.all_neurons()]
     assert [(c.trace, c.trace_at) for c in back.connections.values()] == [(c.trace, c.trace_at) for c in g.connections.values()]
