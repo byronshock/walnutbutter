@@ -14,7 +14,8 @@ from pathlib import Path
 
 from .cartesian import CartesianNodes
 from .columns import HexColumns
-from .goo import Goo
+from .constants import GOO_SCALING_FACTOR
+from .goo import Goo, scaled_projection
 from .grid import GridOfNeurons
 from .dopamine import Dopamine
 from .neuron import Neuron
@@ -99,9 +100,10 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
     if goo:
         data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
         data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
-        data["projection"] = grid.projection  # the zone rule's probability (§3.4); below 1 the seed decided the wiring
+        data["projection"] = grid.projection  # the three earlier wirings' probability (§3.4)
+        data["scaling_factor"] = grid.scaling_factor  # the scaled rule's knob (§3.4): N times it heard in expectation
         data["outputs"] = grid.outputs  # the output zone's width, when it differs from the input's (§8, mnist)
-        data["wiring"] = grid.wiring  # the rule (§3.4), or one of the two before it; a checkpoint restores under its own
+        data["wiring"] = grid.wiring  # the rule (§3.4), or one of the three before it; a checkpoint restores under its own
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -186,18 +188,29 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
 
 
 def _restore_goo(data: dict) -> Goo:
-    """Rebuild goo from its count and the zone rule, then load its weights.
+    """Rebuild goo from its count and its wiring rule, then load its weights.
 
-    At projection 1 nothing about the topology was drawn, so a goo built
-    without a seed restores exactly; below 1 the seed decided the wiring and
-    is needed, as a grid's is for its shortcuts. A checkpoint from before the
-    zone rule (one that records `direct_projection`) cannot be rebuilt: its
-    zones projected onto each other.
+    Where nothing about the topology was drawn -- the earlier wirings at
+    projection 1, the scaled rule where every probability is 0 or 1 -- a goo
+    built without a seed restores exactly; otherwise the seed decided the
+    wiring and is needed, as a grid's is for its shortcuts. A checkpoint from
+    before the zone rule (one that records `direct_projection`) cannot be
+    rebuilt: its zones projected onto each other.
     """
     if "direct_projection" in data:
         raise ValueError(f"{path_of(data)}: goo built before the zone rule of September 14, 2026; its wiring cannot be rebuilt")
-    if data.get("projection", 1.0) < 1.0 and data["seed"] is None:
-        raise ValueError(f"{path_of(data)}: goo wired at projection {data['projection']:g} without a seed cannot be rebuilt")
+    # the wiring it was built under: recorded since the uniform rule of September 15; before that, the zone rule, with or
+    # without the afternoon's equal fan-in (§3.4)
+    wiring = data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones")
+    scaling_factor = data.get("scaling_factor", GOO_SCALING_FACTOR)
+    if wiring == "scaled":
+        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), scaling_factor, into) < 1.0 for into in (True, False))
+        how = f"at scaling factor {scaling_factor:g}"
+    else:
+        drawn = data.get("projection", 1.0) < 1.0
+        how = f"at projection {data.get('projection', 1.0):g}"
+    if drawn and data["seed"] is None:
+        raise ValueError(f"{path_of(data)}: goo wired {how} without a seed cannot be rebuilt")
     goo = Goo(
         count=data["count"],
         across=across_of(data),
@@ -210,9 +223,8 @@ def _restore_goo(data: dict) -> Goo:
         scale_with_fan_in=data.get("scale_with_fan_in", True),
         projection=data.get("projection", 1.0),
         outputs=data.get("outputs"),
-        # the wiring it was built under: recorded since the uniform rule; before that, the zone rule, with or without
-        # the afternoon's equal fan-in (§3.4)
-        wiring=data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones"),
+        wiring=wiring,
+        scaling_factor=scaling_factor,
     )
     goo.permutation = list(data["permutation"])
     goo.ecc = _ecc_name(data)

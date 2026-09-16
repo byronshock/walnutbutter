@@ -99,11 +99,14 @@ def test_a_goo_checkpoint_round_trips_from_its_count_alone():
 
 def test_goo_restores_without_a_seed_because_no_draw_chose_its_wiring():
     """Unlike a grid, whose shortcuts cannot be rebuilt without the stream that picked them."""
-    goo = Goo(count=12, across=4, seed=None, weight=None, projection=1.0)  # at P 1 no draw chose the wiring
+    goo = Goo(count=12, across=4, seed=None, weight=None, projection=1.0, wiring="zones-equal")  # at P 1 no draw chose the wiring
     run_epoch(goo, verbose=False)
     checkpoint(goo, "seedless.json")
     back, _ = restore("seedless.json")
     assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]
+    checkpoint(Goo(count=12, across=4, seed=None, weight=None), "drawn.json")  # the scaled rule draws, so it needs its seed
+    with pytest.raises(ValueError, match="at scaling factor 0.05 without a seed"):
+        restore("drawn.json")
 
 
 # --- the command line -----------------------------------------------------
@@ -237,18 +240,24 @@ def test_copy_is_read_by_count_and_the_threshold_reaches_the_command_line(tmp_pa
 
 # --- the zone rule (AUTHORITY.md §3.4, Byron, September 14, 2026) ---------------------
 
-def test_the_default_goo_is_sixty_neurons_at_projection_a_fifth_by_the_zone_rule():
-    """§3.4: the zone rule with equal fan-in, reinstated on the night of September 15, 2026 after an evening of one probability."""
-    from walnutbutter.constants import GOO_PROJECTION
+def test_the_default_goo_is_sixty_neurons_at_scaling_factor_a_twentieth_by_the_scaled_rule():
+    """§3.4: the scaled rule (Byron, September 16, 2026): every neuron hears N s synapses in expectation, no input another input."""
+    from walnutbutter.constants import GOO_SCALING_FACTOR
     goo = Goo(seed=1)
     assert DEFAULT_COUNT == GOO_COUNT == 60 and len(goo) == goo.count == 60
-    assert goo.projection == GOO_PROJECTION == 0.2 and goo.wiring == "zones-equal"
-    assert goo.zone_projection() == pytest.approx(0.2 * 59 / 44)  # a zone neuron hears the interior at a rate that matches
-    assert 650 < len(goo.connections) < 890  # about 0.2 x 59 = 11.8 synapses a neuron, sixty neurons
-    assert goo.zones_are_apart() and len(goo.interior()) == 44 and len(goo.zone_indices()) == 16
-    assert repr(goo).startswith("Goo(60 neurons, ") and repr(goo).endswith(" projections at P 0.2; 8 in, 8 out, zones apart)")
+    assert goo.scaling_factor == GOO_SCALING_FACTOR == 0.05 and goo.wiring == "scaled" and goo.expected_fan_in() == 3.0
+    assert goo.input_projection() == pytest.approx(3 / 52) and goo.other_projection() == pytest.approx(3 / 59)
+    assert 130 < len(goo.connections) < 240  # three synapses a neuron in expectation, sixty neurons: 180, give or take
+    assert goo.input_zone_is_apart() and not goo.zones_are_apart()  # only the input zone is kept from itself
+    assert any(c.source in goo.input_row() for n in goo.output_row() for c in n.incoming)  # an output hears the inputs directly
+    assert any(c.source in goo.output_row() for n in goo.output_row() for c in n.incoming)  # and the other outputs
+    assert any(c.source in goo.output_row() for n in goo.input_row() for c in n.incoming)  # and an input hears the outputs
+    assert len(goo.interior()) == 44 and len(goo.zone_indices()) == 16
+    assert repr(goo).startswith("Goo(60 neurons, ") and repr(goo).endswith(" projections at scaling factor 0.05; 8 in, 8 out, input zone apart)")
+    with pytest.raises(ValueError, match="no one zone probability"):
+        goo.zone_projection()
     assert Goo(count=ACROSS * 10, seed=1).count == 80  # the grid's eighty is still one --goo away
-    full = Goo(seed=1, projection=1.0)  # the fully connected goo: every pair with an interior end
+    full = Goo(seed=1, projection=1.0, wiring="zones-equal")  # the fully connected goo of the zone rule: every pair with an interior end
     assert len(full.connections) == 60 * 59 - 16 * 15 == 3300 and full.mean_out_degree() == pytest.approx(3300 / 60)
     assert all(len(n.incoming) == 59 for n in full.interior())  # an interior neuron hears everyone
     assert all(len(n.incoming) == 44 for n in full.input_row() + full.output_row())  # a zone neuron hears the interior
@@ -256,7 +265,7 @@ def test_the_default_goo_is_sixty_neurons_at_projection_a_fifth_by_the_zone_rule
 
 
 def test_every_pair_with_an_interior_end_projects_once_each_way_and_the_zones_never_do():
-    goo = Goo(count=5, across=2, seed=1, projection=1.0)  # zones {0, 1} and {3, 4}; the interior is neuron 2
+    goo = Goo(count=5, across=2, seed=1, projection=1.0, wiring="zones-equal")  # zones {0, 1} and {3, 4}; the interior is neuron 2
     pairs = wiring(goo)
     assert len(pairs) == len(set(pairs)) == 8
     assert set(pairs) == {(f"Goo_2", f"Goo_{k}") for k in (0, 1, 3, 4)} | {(f"Goo_{k}", "Goo_2") for k in (0, 1, 3, 4)}
@@ -266,18 +275,22 @@ def test_every_pair_with_an_interior_end_projects_once_each_way_and_the_zones_ne
 
 
 def test_at_projection_one_the_count_fixes_the_topology_and_below_it_the_seed_does():
-    one, two = Goo(count=6, across=2, seed=1, weight=None, projection=1.0), Goo(count=6, across=2, seed=2, weight=None, projection=1.0)
+    zone = dict(wiring="zones-equal")
+    one, two = Goo(count=6, across=2, seed=1, weight=None, projection=1.0, **zone), Goo(count=6, across=2, seed=2, weight=None, projection=1.0, **zone)
     assert wiring(one) == wiring(two)  # P 1: nothing drawn for the topology
     weights = lambda g: [g.connections[i].weight for i in range(1, len(g.connections) + 1)]
-    assert weights(one) != weights(two) and weights(one) == weights(Goo(count=6, across=2, seed=1, weight=None, projection=1.0))
-    a, b, c = (Goo(count=30, across=6, seed=s, weight=None, projection=0.5) for s in (1, 1, 2))
+    assert weights(one) != weights(two) and weights(one) == weights(Goo(count=6, across=2, seed=1, weight=None, projection=1.0, **zone))
+    a, b, c = (Goo(count=30, across=6, seed=s, weight=None, projection=0.5, **zone) for s in (1, 1, 2))
     assert wiring(a) == wiring(b) and wiring(a) != wiring(c)  # below 1 the seed decides, and repeats itself
     assert a.zones_are_apart() and c.zones_are_apart()
     assert "at P 0.5" in repr(a)
+    x, y, z = (Goo(count=30, across=6, seed=s, weight=None) for s in (1, 1, 2))  # the scaled rule always draws
+    assert wiring(x) == wiring(y) and wiring(x) != wiring(z)
+    assert Goo(count=30, across=6, seed=1, weight=None, scaling_factor=0.1).expected_fan_in() == 3.0  # and its knob is the fan-in
 
 
 def test_there_are_never_any_shortcuts_because_there_is_no_neighbourhood_to_get_past():
-    goo = Goo(count=12, across=4, seed=1, projection=1.0)
+    goo = Goo(count=12, across=4, seed=1, projection=1.0, wiring="zones-equal")
     assert goo.small_world_connections() == [] and goo.omega == 0.0
     assert goo.local_connections() == list(goo.connections.values())
     assert len(goo.connections_of_kind("goo")) == 12 * 11 - 8 * 7 == 76
@@ -304,15 +317,18 @@ def test_the_zones_go_by_index_because_there_are_no_places_to_go_by():
     assert goo.zone_indices() == {0, 1, 2, 3, 16, 17, 18, 19}
 
 
-def test_goo_refuses_a_goo_with_no_interior_and_a_projection_off_the_unit_interval():
-    """The zones talk only through the interior, so there has to be one: count must exceed the zones together."""
-    for count in (16, 12, 8, 7):
-        with pytest.raises(ValueError, match="needs an interior"):
-            Goo(count=count, across=8)
-    assert Goo(count=17, across=8, seed=1).interior()[0].name == "Goo_8"  # one interior neuron is enough to build
-    assert Goo(count=16, across=8, seed=1, wiring="uniform").interior() == []  # the evening's rule needed none
-    with pytest.raises(ValueError, match="would overlap"):
-        Goo(count=15, across=8, wiring="uniform")
+def test_goo_refuses_overlapping_zones_a_zone_wiring_with_no_interior_and_knobs_off_their_ranges():
+    """Under the zone wirings the zones talk only through the interior, so there has to be one; the scaled rule needs none."""
+    for wiring_name in ("zones-equal", "zones"):
+        for count in (16, 12, 8, 7):
+            with pytest.raises(ValueError, match="needs an interior"):
+                Goo(count=count, across=8, wiring=wiring_name)
+        assert Goo(count=17, across=8, seed=1, wiring=wiring_name).interior()[0].name == "Goo_8"  # one interior neuron is enough
+    assert Goo(count=16, across=8, seed=1).interior() == []  # the scaled rule: the outputs hear the inputs directly
+    assert Goo(count=16, across=8, seed=1, wiring="uniform").interior() == []  # as the evening's rule did
+    for wiring_name in ("scaled", "uniform"):
+        with pytest.raises(ValueError, match="would overlap"):
+            Goo(count=15, across=8, wiring=wiring_name)
     with pytest.raises(ValueError, match="unknown wiring"):
         Goo(count=20, across=4, wiring="mesh")
     with pytest.raises(ValueError, match="at least one neuron wide"):
@@ -320,10 +336,13 @@ def test_goo_refuses_a_goo_with_no_interior_and_a_projection_off_the_unit_interv
     for bad in (0.0, 1.5, -0.1):
         with pytest.raises(ValueError, match="projection probability"):
             Goo(count=20, across=4, projection=bad)
+    for bad in (0.0, -0.05):
+        with pytest.raises(ValueError, match="scaling factor must be positive"):
+            Goo(count=20, across=4, scaling_factor=bad)
 
 
 def test_the_zones_never_project_onto_each_other_and_at_projection_one_everything_else_does():
-    goo = Goo(count=40, across=8, seed=1, projection=1.0)
+    goo = Goo(count=40, across=8, seed=1, projection=1.0, wiring="zones-equal")
     ins, outs, inner = goo.input_row(), goo.output_row(), goo.interior()
     zone = set(ins) | set(outs)
     for n in zone:
@@ -335,7 +354,7 @@ def test_the_zones_never_project_onto_each_other_and_at_projection_one_everythin
 
 
 def test_goo_rescales_its_potential_axis_by_each_neurons_own_fan_in():
-    goo = Goo(seed=1, projection=1.0)  # at P 1 the fan-in is exact: 59 and 44
+    goo = Goo(seed=1, projection=1.0, wiring="zones-equal")  # under the zone rule at P 1 the fan-in is exact: 59 and 44
     inner, edge = goo.interior()[0], goo.input_row()[0]
     assert inner.threshold == pytest.approx(GOO_THRESHOLD * 59 / THRESHOLD_FAN_IN) == pytest.approx(0.656, abs=1e-3)
     assert edge.threshold == pytest.approx(GOO_THRESHOLD * 44 / THRESHOLD_FAN_IN) == pytest.approx(0.489, abs=1e-3)
@@ -350,7 +369,7 @@ def test_goo_rescales_its_potential_axis_by_each_neurons_own_fan_in():
 
 def test_a_neuron_hearing_exactly_the_reference_fan_in_is_left_where_the_grid_starts():
     """§5.2: THRESHOLD and MINIMUM_POTENTIAL are quoted at THRESHOLD_FAN_IN incoming synapses, so that fan-in is a fixed point."""
-    goo = Goo(count=int(THRESHOLD_FAN_IN) + 1, across=4, seed=1, threshold=0.25, minimum_potential=-1.0, projection=1.0)
+    goo = Goo(count=int(THRESHOLD_FAN_IN) + 1, across=4, seed=1, threshold=0.25, minimum_potential=-1.0, projection=1.0, wiring="zones-equal")
     for n in goo.interior():  # an interior neuron of 19 hears 18
         assert n.threshold == pytest.approx(0.25) and n.minimum_potential == pytest.approx(-1.0)
     for n in goo.input_row():  # a zone neuron hears the 11 of the interior
@@ -362,27 +381,28 @@ def test_below_projection_one_a_goo_round_trips_with_its_seed_and_refuses_withou
     from walnutbutter.arrays import ArrayNetwork
     from walnutbutter import fast
     from walnutbutter.learning import Teacher
-    goo = Goo(count=30, across=6, seed=3, weight=None, projection=0.5)
+    zone = dict(wiring="zones-equal")
+    goo = Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone)
     run_epoch(goo, verbose=False)
     data = checkpoint(goo, "half.json")
     assert data["projection"] == 0.5 and data["connections"] == len(goo.connections)
     back, _ = restore("half.json")
     assert wiring(back) == wiring(goo) and back.projection == 0.5 and back.wiring == "zones-equal" and back.zones_are_apart()
-    with pytest.raises(ValueError, match="without a seed"):
-        checkpoint(Goo(count=30, across=6, seed=None, weight=None, projection=0.5), "seedless.json")
+    with pytest.raises(ValueError, match="at projection 0.5 without a seed"):
+        checkpoint(Goo(count=30, across=6, seed=None, weight=None, projection=0.5, **zone), "seedless.json")
         restore("seedless.json")
     old = json.loads(pathlib.Path("half.json").read_text()); old["direct_projection"] = False
     pathlib.Path("old.json").write_text(json.dumps(old))
     with pytest.raises(ValueError, match="before the zone rule"):
         restore("old.json")
     # every engine runs the drawn wiring the same way
-    mesh, twin = (Goo(count=30, across=6, seed=3, weight=None, projection=0.5) for _ in range(2))
+    mesh, twin = (Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone) for _ in range(2))
     net = ArrayNetwork(twin)
     for _ in range(10):
         run_epoch(mesh, verbose=False); run_epoch(net, verbose=False)
         assert net.output_fired() == mesh.output_fired()
     if fast.available():
-        g = Goo(count=30, across=6, seed=3, weight=None, projection=0.5)
+        g = Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone)
         g.rule, g.drive, g.read = "reinforce", "rate", "count"
         assert fast.compare(g, epochs=40, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy",
                                                           homeostasis=0.01, unstick=0.1)) == []
@@ -392,7 +412,8 @@ def test_copy_runs_on_goo_and_on_the_grid_and_the_direct_flag_is_gone(capsys):
     from walnutbutter.problems import PROBLEMS
     assert not hasattr(PROBLEMS["copy"], "direct_projection")
     assert cli_main(["--problem", "copy", "--goo", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0
-    assert "the zones talk only through the 44 interior neurons" in capsys.readouterr().err
+    assert ("every neuron hears 3 synapses in expectation, an input neuron from the 52 outside its zone at P 0.0577 and "
+            "every other neuron from the 59 others at 0.0508") in capsys.readouterr().err
     assert cli_main(["--problem", "copy", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0  # the grid may
     with pytest.raises(SystemExit):
         cli_main(["--problem", "copy", "--goo", "--direct-projection", "--headless", "--epochs", "2", "--no-save"])
@@ -404,30 +425,40 @@ def test_the_command_line_builds_goo_learns_and_checkpoints(tmp_path, capsys):
     save = tmp_path / "goo.json"
     assert cli_main(["--goo", "--headless", "--epochs", "20", "--seed", "1", "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
-    assert "projections at P 0.2; 8 in, 8 out, zones apart)" in err
+    assert "projections at scaling factor 0.05; 8 in, 8 out, input zone apart)" in err
     assert "input permutation: place i along the input zone" in err  # not "the bottom row": goo has none
     assert "omega" not in err  # omega does not reach goo, so it is not reported as if it had
     data = json.loads(save.read_text())
-    assert data["container"] == "goo" and data["count"] == 60 and data["projection"] == 0.2 and data["epoch"] == 20
+    assert data["container"] == "goo" and data["count"] == 60 and data["epoch"] == 20
+    assert data["wiring"] == "scaled" and data["scaling_factor"] == 0.05 and data["projection"] == 0.2  # the earlier wirings' knob, recorded still
     assert cli_main(["--load-weights", str(save), "--headless", "--epochs", "5", "--no-save"]) == 0
 
 
-def test_the_command_line_sizes_goo_sets_its_projection_and_refuses_one_with_no_interior(capsys):
-    assert cli_main(["--goo", "24", "--projection", "1", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+def test_the_command_line_sizes_goo_sets_its_wiring_and_refuses_what_a_wiring_cannot_build(capsys):
+    assert cli_main(["--goo", "24", "--wiring", "zones-equal", "--projection", "1", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     assert "24 neurons, 312 projections at P 1" in capsys.readouterr().err  # 24 x 23 less 16 x 15
     assert cli_main(["--goo", "24", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "projections at P 0.2" in capsys.readouterr().err  # the default
-    assert cli_main(["--goo", "24", "--projection", "0.5", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "at P 0.5" in capsys.readouterr().err
+    assert "projections at scaling factor 0.05" in capsys.readouterr().err  # the default
+    assert cli_main(["--goo", "24", "--scaling-factor", "0.2", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "at scaling factor 0.2; 8 in, 8 out, input zone apart): " in capsys.readouterr().err
+    assert cli_main(["--goo", "24", "--wiring", "zones", "--projection", "0.5", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "at P 0.5; 8 in, 8 out, zones apart): " in capsys.readouterr().err
+    assert cli_main(["--goo", "16", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0  # the scaled rule needs no interior
+    assert "16 neurons" in capsys.readouterr().err
     for bad in ("16", "8", "4"):
-        assert cli_main(["--goo", bad, "--headless", "--epochs", "2", "--no-save"]) == 2
+        assert cli_main(["--goo", bad, "--wiring", "zones-equal", "--headless", "--epochs", "2", "--no-save"]) == 2
         assert "needs an interior" in capsys.readouterr().err
+    for bad in ("8", "4"):
+        assert cli_main(["--goo", bad, "--headless", "--epochs", "2", "--no-save"]) == 2
+        assert "would overlap" in capsys.readouterr().err
     assert cli_main(["--goo", "--projection", "1.5", "--headless", "--epochs", "2", "--no-save"]) == 2
     assert "--projection must be in (0, 1]" in capsys.readouterr().err
+    assert cli_main(["--goo", "--scaling-factor", "0", "--headless", "--epochs", "2", "--no-save"]) == 2
+    assert "--scaling-factor must be positive" in capsys.readouterr().err
 
 
 def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
-    assert cli_main(["--goo", "--projection", "1", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert cli_main(["--goo", "--wiring", "zones-equal", "--projection", "1", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     err = capsys.readouterr().err
     assert ("fan-in scaling (§5.2): an interior neuron hears 59 synapses and starts at threshold 0.656, floor -2.622; "
             "a zone neuron hears 44 and starts at 0.489, -1.956") in err
@@ -438,39 +469,46 @@ def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
 def test_a_seed_batch_runs_goo_and_its_header_says_what_ran(capsys):
     assert cli_main(["--goo", "20", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     err = capsys.readouterr().err
-    assert ("20 neurons of goo at projection 0.2, 8 in and 8 out, fan-in scaled, reinforce rule with the hazard eligibility, "
+    assert ("20 neurons of goo at scaling factor 0.05, 8 in and 8 out, fan-in scaled, reinforce rule with the hazard eligibility, "
             "escape delta 0.455") in err  # the default eligibility follows the neuron (§1.3)
-    assert cli_main(["--goo", "20", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb", "--seeds", "2",
-                     "--seed", "1", "--epochs", "5", "--no-save"]) == 0
-    assert "goo at projection 0.5, 8 in and 8 out, flat threshold and floor, reinforce rule with the hebb eligibility" in capsys.readouterr().err
+    assert cli_main(["--goo", "20", "--wiring", "zones-equal", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb",
+                     "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
+    assert ("goo at projection 0.5 under the zones-equal wiring, 8 in and 8 out, flat threshold and floor, reinforce rule with "
+            "the hebb eligibility") in capsys.readouterr().err
 
 
-def test_the_rule_hears_equally_and_the_two_other_wirings_are_kept():
-    """§3.4: the zone rule with equal fan-in is the rule; the plain zone rule and the evening's uniform one restore checkpoints."""
+def test_the_rule_hears_n_s_everywhere_and_the_three_earlier_wirings_are_kept():
+    """§3.4: the scaled rule is the rule; the zone rule with and without equal fan-in and the uniform one restore checkpoints."""
     import statistics as st
     hears = lambda g, ns: st.mean(len(n.incoming) for n in ns)
+    scaled = Goo(count=300, across=60, outputs=20, seed=5, weight=None)
+    assert scaled.wiring == "scaled" and scaled.expected_fan_in() == 15.0 and scaled.input_projection() == pytest.approx(15 / 240)
+    assert scaled.other_projection() == pytest.approx(15 / 299) and scaled.input_zone_is_apart() and not scaled.zones_are_apart()
+    for group in (scaled.input_row(), scaled.output_row(), scaled.interior()):
+        assert abs(hears(scaled, group) - 15.0) / 15.0 < 0.1  # every zone hears N s
+    assert any(c.source in scaled.input_row() for n in scaled.output_row() for c in n.incoming)  # the outputs hear the inputs
     uniform = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2, wiring="uniform")
     assert abs(hears(uniform, uniform.interior()) - 0.2 * 299) / (0.2 * 299) < 0.1
     assert abs(hears(uniform, uniform.input_row() + uniform.output_row()) - 0.2 * 299) / (0.2 * 299) < 0.1
     assert not uniform.zones_are_apart() and uniform.zone_projection() == 0.2
-    equal = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2)
+    equal = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2, wiring="zones-equal")
     assert equal.wiring == "zones-equal" and equal.zones_are_apart() and equal.zone_projection() == pytest.approx(0.2 * 299 / 220)
     assert abs(hears(equal, equal.input_row() + equal.output_row()) - hears(equal, equal.interior())) / hears(equal, equal.interior()) < 0.1
     zones = Goo(count=300, across=60, outputs=20, seed=5, weight=None, projection=0.2, wiring="zones")
     assert zones.zones_are_apart() and zones.zone_projection() == 0.2
     assert abs(hears(zones, zones.output_row()) - 0.2 * 220) / (0.2 * 220) < 0.1  # P times the interior
-    assert len({len(g.connections) for g in (uniform, equal, zones)}) == 3  # three wirings of one seed
+    assert len({len(g.connections) for g in (scaled, uniform, equal, zones)}) == 4  # four wirings of one seed
 
 
 def test_a_checkpoint_keeps_its_wiring_and_older_ones_restore_under_theirs(tmp_path):
     import json
-    for wiring_name in ("zones-equal", "zones", "uniform"):
-        goo = Goo(count=40, across=8, outputs=4, seed=3, weight=None, projection=0.3, wiring=wiring_name)
+    for wiring_name in ("scaled", "zones-equal", "zones", "uniform"):
+        goo = Goo(count=40, across=8, outputs=4, seed=3, weight=None, projection=0.3, scaling_factor=0.1, wiring=wiring_name)
         run_epoch(goo, verbose=False)
         data = checkpoint(goo, tmp_path / f"{wiring_name}.json")
-        assert data["wiring"] == wiring_name
+        assert data["wiring"] == wiring_name and data["scaling_factor"] == 0.1 and data["projection"] == 0.3
         back, _ = restore(tmp_path / f"{wiring_name}.json")
-        assert back.wiring == wiring_name and wiring(back) == wiring(goo)
+        assert back.wiring == wiring_name and back.scaling_factor == 0.1 and wiring(back) == wiring(goo)
     # before the uniform rule a checkpoint carried no wiring: equal_fan_in told the two zone wirings apart
     for wiring_name, field in (("zones-equal", {"equal_fan_in": True}), ("zones", {})):
         old = json.loads((tmp_path / f"{wiring_name}.json").read_text()); del old["wiring"]; old.update(field)

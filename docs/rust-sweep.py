@@ -56,7 +56,8 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
     "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
-    "projection": "--projection",  # goo's zone rule: P(i projects onto j) for a pair with an interior end (§3.4)
+    "projection": "--projection",  # the probability of goo's three earlier wirings, under --wiring (§3.4)
+    "scaling_factor": "--scaling-factor",  # goo's scaled rule: every neuron hears N times this in expectation (§3.4)
     "seed": "--seed",
 }
 DERIVED = ("cv",)  # knobs that are a reparametrisation of another, handled by hand in grid_of
@@ -73,6 +74,8 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
+    parser.add_argument("--wiring", choices=("scaled", "zones-equal", "zones", "uniform"), default=None,
+                        help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
     parser.add_argument("--eligibility", choices=("hebb", "perturb", "hazard"), default="hazard" if ESCAPE_DELTA > 0 else "hebb",
@@ -89,7 +92,8 @@ def parse() -> argparse.Namespace:
     return args
 
 
-def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None):
+def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None,
+            wiring: str | None = None):
     """The network the command line would build for this problem, with the arm's knobs applied."""
     from walnutbutter.cli import apply_problem, build_parser
     from walnutbutter.goo import Goo
@@ -98,7 +102,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
 
     from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD
 
-    argv = ["--problem", problem, "--eligibility", eligibility]
+    argv = ["--problem", problem, "--eligibility", eligibility] + ([] if wiring is None else ["--wiring", wiring])
     base_threshold = GOO_THRESHOLD if "goo" in arm else THRESHOLD  # goo has its own (§1.2)
     if "goo" in arm and "threshold" not in arm:
         argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
@@ -123,7 +127,8 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     if "goo" in arm:
         grid = Goo(count=int(arm["goo"]), across=args.across, weight=None, seed=int(arm["seed"]),
                    permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
-                   scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs)
+                   scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
+                   scaling_factor=args.scaling_factor)
     else:
         grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
@@ -145,7 +150,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio = job
+    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
     from walnutbutter.problems import PROBLEMS, dataset_stream
@@ -154,7 +159,7 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
-    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio)
+    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring)
     first = grid.all_neurons()[0]
     started_at = {"theta": first.threshold, "floor": first.minimum_potential}  # what a neuron starts at, scaling applied
     data = dataset_stream(PROBLEMS[problem].data, int(arm["seed"]))  # a dataset's images with their labels (§8), or
@@ -182,6 +187,8 @@ def run_arm(job: tuple) -> dict:
               "critic": args.critic, "problem": problem,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
+              "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knob
+              "scaling_factor": getattr(grid, "scaling_factor", None),
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result
@@ -247,7 +254,7 @@ def main() -> int:
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility, args.scale,
-                 args.floor_ratio) for arm in arms]
+                 args.floor_ratio, args.wiring) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)

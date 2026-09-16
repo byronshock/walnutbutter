@@ -39,8 +39,8 @@ def test_delta_zero_is_the_deterministic_rule_word_for_word():
 
 def test_rest_is_loud_and_a_narrow_decision_is_quiet():
     """§5.2: with every weight 0 nothing is delivered, every neuron sits at rest (s = -theta), and only the hazard fires it."""
-    loud = Goo(count=20, across=4, seed=1, weight=0.0, projection=1.0)
-    quiet = Goo(count=20, across=4, seed=1, weight=0.0, projection=1.0)
+    loud = Goo(count=20, across=4, seed=1, weight=0.0, projection=1.0, wiring="zones-equal")  # fully connected: every axis has width
+    quiet = Goo(count=20, across=4, seed=1, weight=0.0, projection=1.0, wiring="zones-equal")
     loud.set_delta(0.7)   # exp(-1/0.7) = 0.24 spikes per hop at rest: about five an epoch
     quiet.set_delta(0.1)  # exp(-10): one spike in a thousand epochs
     a, b = random.Random(1), random.Random(1)
@@ -53,7 +53,7 @@ def test_rest_is_loud_and_a_narrow_decision_is_quiet():
 
 def test_the_trace_is_what_the_synapse_has_in_the_potential():
     """§6.7: with no inhibition the floor never bites, so at every decision p_j(t) = sum_i w_ij x_ij(t) exactly."""
-    g = Goo(count=20, across=4, seed=3, weight=None, weight_range=(0.1, 1.0), projection=1.0)
+    g = Goo(count=20, across=4, seed=3, weight=None, weight_range=(0.1, 1.0), projection=1.0, wiring="zones-equal")
     g.rule, g.drive = "reinforce", "rate"
     g.set_delta(0.7)
     seen = []
@@ -75,6 +75,32 @@ def test_the_trace_is_what_the_synapse_has_in_the_potential():
     assert len(seen) > 100 and any(p > 0.0 for p, _ in seen)
     for p, from_traces in seen:
         assert p == pytest.approx(from_traces, abs=1e-9)
+
+
+def test_a_neuron_that_hears_nothing_keeps_the_deterministic_rule_in_every_engine():
+    """§5.2: a starting threshold of 0 -- no incoming synapses under the fan-in scaling -- has no width to quote, so the
+    neuron keeps the deterministic rule: at potential 0 against threshold 0 it fires at every wave it is not refractory,
+    seven times an epoch, whether or not the network is under the hazard. The array engine divided by the zero width and
+    silenced it (NaN) until September 16, 2026, the day the scaled rule made such neurons common on a small goo."""
+    np = pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    mesh, twin = goo(), goo()  # the scaled rule at 0.05 on forty neurons: two synapses a neuron in expectation
+    collapsed = [i for i, n in enumerate(mesh.all_neurons()) if not n.incoming]
+    assert len(collapsed) >= 3 and all(mesh.all_neurons()[i].threshold == 0.0 for i in collapsed)
+    mesh.set_delta(0.455)
+    twin.set_delta(0.455)
+    assert all(mesh.all_neurons()[i].delta == 0.0 for i in collapsed)  # no width
+    net = ArrayNetwork(twin)
+    for _ in range(5):
+        run_epoch(mesh, verbose=False, rng=random.Random(1))
+        run_epoch(net, verbose=False, rng=random.Random(1))
+        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+    assert all(mesh.all_neurons()[i].spikes == 7 * 5 for i in collapsed)  # seven an epoch: 35 ms at a 5 ms refractory period
+    if fast.available():
+        g = goo()
+        g.set_delta(0.455)
+        assert fast.compare(g, epochs=20, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="hazard", target="copy",
+                                                          homeostasis=0.01, unstick=0.1)) == []
 
 
 def test_the_hazard_eligibility_needs_escape_noise():

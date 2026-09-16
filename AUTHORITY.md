@@ -76,7 +76,8 @@ at all.
 | GOO_COUNT | 60 | neurons in goo (§3.4) when `--goo` is given no number. *Byron, September 14, 2026: "We will speed everything up by selecting 60 units of goo, with THRESHOLD=1."* 3,540 connections against 80's 6,320 |
 | GOO_THRESHOLD | 0.2 | goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in like the grid's would be: a goo of 60 starts at $0.2 \times 59/18 = 0.66$. *Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every neuron un-sticking, 0.15–0.40 is a plateau and 0.20 the one level of 41 where every seed learned. It was 1 — $\theta$ 3.28, chosen to sit past the saturation edge — which was off the plateau at 0.502.* The grid keeps 0.25 — the threshold belongs to the container, the third reading §3.4 named, adopted for goo |
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
-| GOO_PROJECTION | 0.2 | goo's wiring (§3.4): the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (the zone rule with equal fan-in, reinstated the night of September 15, 2026 after an evening of one probability). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
+| GOO_SCALING_FACTOR | 0.05 | goo's wiring (§3.4, the scaled rule): every neuron hears $N \times$ GOO_SCALING_FACTOR synapses in expectation — 32.2 on the mnist goo of 644, 3 on goo 60 — $P(i \to j)$ being that fan-in over the sources $j$ may hear, stopped at 1: $N - 1$ for a neuron outside the input zone, $N - I$ for one inside it, since no neuron projects onto itself and no input neuron onto another. *Byron, September 16, 2026: "P_ij necessary to give j an average of N * scaling_factor inputs. Please default scaling_factor to 0.05. I realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an oversaturated or dull network."* |
+| GOO_PROJECTION | 0.2 | **superseded as the wiring's knob by GOO_SCALING_FACTOR, September 16, 2026;** the probability of the three earlier wirings, which `--wiring zones-equal`, `zones` and `uniform` still build (§3.4). Under the zone rule with equal fan-in: the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (the zone rule with equal fan-in, reinstated the night of September 15, 2026 after an evening of one probability). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
 | TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
@@ -157,12 +158,14 @@ connections, signalling and learning:
   unit distances: a hexagonal lattice, a random scatter, or the positions a
   butter recipe describes.
 - **Goo** (`--goo N`). The plane taken away: $N$ neurons with no positions
-  at all, no neighbourhood and no shortcuts, wired by a rule about zones
-  (§3.4): the input and output zones, picked by index because there are no
-  places to pick them by, never project onto each other, and every other
-  ordered pair projects with probability GOO_PROJECTION, an interior-to-zone
-  projection scaled up so every neuron hears the same number. It began as the
-  control the other three are measured against and is the working network.
+  at all, no neighbourhood and no shortcuts, wired by the scaled rule
+  (§3.4): no neuron projects onto itself and no input neuron onto another —
+  the input zone is the first `across` neurons and the output zone the last
+  `outputs`, picked by index because there are no places to pick them by —
+  and every other ordered pair projects at the probability that gives its
+  target $N \times$ GOO_SCALING_FACTOR synapses in expectation. It began as
+  the control the other three are measured against and is the working
+  network.
 
 A neuron may sit in several input and output zones at once; structures are
 permissive, never artificially restricted.
@@ -751,6 +754,45 @@ The two rejected alternatives are still on the table if that sweep finds the
 rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
+
+**The scaled rule (Byron, September 16, 2026, 01:18 MDT: "We're going to
+change the connectivity rule before we proceed").** In his words:
+
+> P(i projects onto j) = 0 if i == j
+> = 0 if i and j are both in the input zone
+> = P_ij necessary to give j an average of N * scaling_factor inputs
+
+*"Please default scaling_factor to 0.05. I realize this does not give
+like-for-like comparisons, but that's OK because we aren't going to be
+comparing to an oversaturated or dull network."* So, with $s$ =
+GOO_SCALING_FACTOR (§1.2), $I$ the input zone's width, and $A_j$ the
+sources $j$ may hear — $N - 1$ for a neuron outside the input zone, $N - I$
+for one inside it:
+
+$$P(i \to j) = \begin{cases}
+0 & i = j \\
+0 & i, j \text{ both in the input zone} \\
+\min\!\big(1,\ Ns / A_j\big) & \text{otherwise}
+\end{cases}$$
+
+Every neuron hears $Ns$ synapses in expectation: 32.2 on the mnist goo of
+644, where an input neuron hears the 249 outside its zone at 0.129 and
+every other neuron hears the 643 others at 0.0501; 3 on goo 60. What this
+changes against the zone rule below it: only the input zone is kept from
+talking to itself — an output hears the inputs directly, the other outputs
+and the interior alike, and an input hears the outputs — so the interior is
+no longer required, only that the zones not overlap; and the knob is the
+fan-in as a fraction of the count rather than a probability, so the density
+is the same at any count. Where $Ns$ exceeds $N - I$ (above $s = 0.387$ on
+the mnist goo) an input neuron hears everything outside its zone and fewer
+than $Ns$. Nothing is drawn where the probability is 0 or 1; otherwise the
+draw is pair by pair in $(i, j)$ order on the seed's stream, the projection
+draw and then the weight, and a goo whose wiring was drawn needs its seed
+to be rebuilt. `Goo(wiring="scaled")` is the default and `--wiring` on the
+command line reaches the three rules below it, with GOO_PROJECTION as their
+knob; a checkpoint restores under the wiring it was built with. Every
+result of this section and of §8 to this point was measured under the rules
+below and stands as recorded.
 
 **The zone rule, reinstated (Byron, September 15, 2026, 20:10 MDT: "Please
 reinstate the zone rule").** The rule of one probability below held for an
@@ -1849,6 +1891,22 @@ threshold is not positive — one with no incoming synapses under §5.2's
 scaling, whose whole axis has collapsed and carries no width to quote. A
 forced neuron fires by its stimulus and makes no decision that wave.
 
+*What the collapsed axis does (September 16, 2026, the day the scaled rule
+of §3.4 made such neurons common on a small goo — three of goo 60 at a
+fan-in of 3, none of the mnist goo at 32).* Every engine examines every
+neuron at every wave, touched or not, and the deterministic rule fires a
+neuron whose potential reaches its threshold: at potential 0 against
+threshold 0 that is every wave the neuron is not refractory, seven spikes
+an epoch at REFRACTORY 5 ms, a pacemaker at 200 Hz that drives whatever it
+projects onto — the same under $\Delta = 0$ and under the hazard, in the
+objects and in Rust. The array engine divided by the zero width, took NaN
+for the chance, and silenced such a neuron under the hazard alone, from
+the hazard's first day until this one: fixed, and the three engines agree
+again on the configuration (`tests/test_hazard.py`). *Whether a neuron
+that hears nothing should be a pacemaker, silent, or at the hazard's rest
+is Byron's to call; the letter of the rule above is the pacemaker, and
+that is what runs.*
+
 The draw is one uniform per neuron per wave, in neuron order, from the
 exploration stream of §6.1, taken in that draw's position — after the
 floor, before anything fires — so the three engines fire the same neurons
@@ -2863,6 +2921,16 @@ agrees with the other two on every spike and to a part in $10^9$ on scores
 and weights, and the test says so; the Rust engine, which the sweeps run
 on, agrees to the bit.
 
+*One place it did not, found September 16, 2026:* a neuron with no
+incoming synapses has a collapsed axis and no width (§5.2), and the array
+engine divided by that zero width, took NaN for the chance, and never fired
+it, where the objects and Rust fire it at every wave it is not refractory.
+No goo before the scaled rule of §3.4 had such a neuron in a test; the first
+goo of 40 under it had six. Fixed the same day — the collapsed neuron takes
+the deterministic comparison, as the other two engines give it — and the
+agreement on the configuration is in `tests/test_hazard.py`. The lesson of
+§7 again: agreement is proven on the configuration, not carried over.
+
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
 as the eligibility they earn, LATE other than count, and the leaky trace on
@@ -3417,3 +3485,13 @@ the layout, the inputs, and whether anything outside the network trains it.
   decision: the credit for a digit must reach the interior through a
   scalar that ties a fifth of the time and moves by a ninth, and at LR
   0.03 the estimator's noise moves the network faster than its signal.
+
+  *Byron, September 16, 2026, 01:18 MDT: "We're going to change the
+  connectivity rule before we proceed; we will discuss a different critic.
+  We will set up a sweep and then proceed again."* The rule is the scaled
+  rule of §3.4 at scaling factor 0.05: on the digits' goo of 644 every
+  neuron hears 32.2 synapses in expectation — an input neuron from the 249
+  outside its zone at $P = 0.129$, every other neuron from the 643 others at
+  0.0501 — and an output now hears the inputs directly and the other
+  outputs, which under the zone rule it never did. Nothing in the tables
+  above ran under it; what runs next will.

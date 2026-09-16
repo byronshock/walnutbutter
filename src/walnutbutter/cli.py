@@ -15,8 +15,8 @@ from pathlib import Path
 from .butter import CELL_AREA
 from .cartesian import CartesianNodes
 from .columns import HexColumns
-from .goo import DEFAULT_COUNT as GOO_COUNT, Goo
-from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_THRESHOLD
+from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
+from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         const=GOO_COUNT,
         default=None,
         metavar="N",
-        help=f"goo: N neurons with no positions at all, wired by the zone rule at --projection, no neighbourhood and no "
+        help=f"goo: N neurons with no positions at all, wired by the scaled rule at --scaling-factor, no neighbourhood and no "
         f"shortcuts (default: {GOO_COUNT}, the working network since September 14, 2026). Goo has its own "
         f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
         f"--threshold and --minimum-potential override (a value equal to the grid's default is taken as not given). "
@@ -123,9 +123,34 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=GOO_PROJECTION,
         metavar="P",
-        help=f"goo's wiring (AUTHORITY.md §3.4): the probability an ordered pair with an interior end projects, one way, "
-        f"each direction its own draw; pairs with both ends in a zone never project, and an interior-to-zone projection is "
-        f"scaled up so that every neuron hears the same number in expectation (default: {GOO_PROJECTION:g})",
+        help=f"the probability of goo's three earlier wirings, under --wiring zones-equal, zones or uniform (AUTHORITY.md "
+        f"§3.4); the scaled rule does not read it. Under the zone rule: the probability an ordered pair with an interior end "
+        f"projects, one way, each direction its own draw; pairs with both ends in a zone never project, and under "
+        f"zones-equal an interior-to-zone projection is scaled up so that every neuron hears the same number in expectation "
+        f"(default: {GOO_PROJECTION:g})",
+    )
+    parser.add_argument(
+        "--scaling-factor",
+        "--scaling_factor",
+        dest="scaling_factor",
+        type=float,
+        default=GOO_SCALING_FACTOR,
+        metavar="S",
+        help=f"goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026): every neuron hears N times S "
+        f"synapses in expectation, each ordered pair projecting, one way, at that fan-in over the sources the target may "
+        f"hear -- everyone but itself, and for an input neuron everyone outside its zone -- stopped at 1. No neuron "
+        f"projects onto itself and no input neuron onto another; an output hears the inputs directly (default: "
+        f"{GOO_SCALING_FACTOR:g}: 32.2 synapses on the mnist goo of 644, 3 on goo 60)",
+    )
+    parser.add_argument(
+        "--wiring",
+        choices=WIRINGS,
+        default="scaled",
+        help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor; "
+        "or one of the three before it at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
+        "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
+        "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "
+        "every ordered pair). The two zone wirings need an interior (default: scaled)",
     )
     parser.add_argument(
         "--no-scale-with-fan-in",
@@ -865,25 +890,32 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             elif args.goo is not None:
-                if args.goo <= args.across + (args.outputs or args.across):
+                if args.wiring in ZONE_WIRINGS and args.goo <= args.across + (args.outputs or args.across):
                     print(
-                        f"error: goo needs an interior for its zones to talk through: --goo must exceed the zones "
-                        f"together, got {args.goo} for {args.across} in and {args.outputs or args.across} out",
+                        f"error: the {args.wiring} wiring needs an interior for its zones to talk through: --goo must "
+                        f"exceed the zones together, got {args.goo} for {args.across} in and {args.outputs or args.across} out",
                         file=sys.stderr,
                     )
                     return 2
+                if args.goo < args.across + (args.outputs or args.across):
+                    print(f"error: the zones would overlap: --goo must be at least the zones together, got {args.goo} for "
+                          f"{args.across} in and {args.outputs or args.across} out", file=sys.stderr)
+                    return 2
                 if not 0.0 < args.projection <= 1.0:
                     print(f"error: --projection must be in (0, 1], got {args.projection}", file=sys.stderr)
+                    return 2
+                if args.scaling_factor <= 0.0:
+                    print(f"error: --scaling-factor must be positive, got {args.scaling_factor}", file=sys.stderr)
                     return 2
                 grid = Goo(
                     count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
                     permute=not args.no_permute, weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
                     scale_with_fan_in=args.scale_with_fan_in is not False,
-                    projection=args.projection, outputs=args.outputs,
+                    projection=args.projection, outputs=args.outputs, wiring=args.wiring,
+                    scaling_factor=args.scaling_factor,
                 )
-                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; the zones talk only through "
-                      f"the {len(grid.interior())} interior neurons", file=sys.stderr)
+                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; {_wiring_summary(grid)}", file=sys.stderr)
                 inner, edge = (grid.interior() or grid.all_neurons())[0], grid.all_neurons()[0]
                 if grid.scale_with_fan_in_on:
                     print(
@@ -1170,6 +1202,17 @@ def _run_nodes(args: argparse.Namespace, width: int, height: int) -> int:
     return 0
 
 
+def _wiring_summary(grid: Goo) -> str:
+    """One line on what goo's wiring lets talk to what, for the run's header."""
+    if grid.wiring == "scaled":
+        return (f"every neuron hears {grid.expected_fan_in():g} synapses in expectation, an input neuron from the "
+                f"{grid.count - grid.across} outside its zone at P {grid.input_projection():.3g} and every other neuron "
+                f"from the {grid.count - 1} others at {grid.other_projection():.3g}")
+    if grid.wiring == "uniform":
+        return f"every ordered pair at P {grid.projection:g}, the zones included"
+    return f"the zones talk only through the {len(grid.interior())} interior neurons"
+
+
 def _seed_worker(job: dict) -> dict:
     """One seed's headless run, in its own process. Returns a summary row."""
     Neuron.verbose = False
@@ -1182,6 +1225,7 @@ def _seed_worker(job: dict) -> dict:
             minimum_potential=settings["minimum_potential"],
             scale_with_fan_in=job.get("scale_with_fan_in") is not False,
             projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
+            wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
         )
     elif job.get("lattice"):
         settings = job["settings"]
@@ -1306,6 +1350,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
                      "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
                      "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
+                     "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
@@ -1329,8 +1374,9 @@ def _run_seeds(args: argparse.Namespace) -> int:
               else f"hex grid, omega {args.omega:g}")
     shape = f"{args.across}x{args.rows} {wiring}"
     if args.goo is not None:
-        shape = (f"{args.goo} neurons of goo at projection {args.projection:g}, {args.across} in and "
-                 f"{args.outputs or args.across} out")
+        density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
+                   else f"at projection {args.projection:g} under the {args.wiring} wiring")
+        shape = f"{args.goo} neurons of goo {density}, {args.across} in and {args.outputs or args.across} out"
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"

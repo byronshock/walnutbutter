@@ -416,23 +416,26 @@ wiring (`connect_by_distance`) remains in the library for reference.
 The plane taken away (AUTHORITY.md §3.4). Every container above has to say
 what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
-a rule about zones (AUTHORITY.md §3.4): the input zone and the output zone
-never project onto each other -- not in, not out, not within -- every other
-ordered pair projects, one way, with probability `--projection`, and an
-interior-to-zone projection is scaled up so that every neuron hears the same
-number of synapses in expectation
-(GOO_PROJECTION, 0.2 since September 15, 2026, from two sweeps: the plateau
-in P runs 0.15 to 0.5 and 0.2 has the highest floor and the fastest goo
-that learns). `--goo` makes 60 neurons (GOO_COUNT; it was the grid's 80
-while the two were compared): about 650 projections at 0.2, the seed's
-choice of them, an interior neuron hearing about twelve and a zone neuron
-about nine. At projection 1 it is 3,300, an interior neuron hearing all 59
-others and a zone neuron the 44 of the interior -- the fully connected
-goo, which the sweeps found the worst value. A copy has to cross the
-interior. (It began as every
-ordered pair -- 3,540 at sixty, and goo 80 against the grid's 1,395 was the
-same neurons with four and a half times the wiring -- which is what the
-sweeps below ran on.)
+the scaled rule (AUTHORITY.md §3.4, Byron, September 16, 2026): no neuron
+projects onto itself, no input neuron onto another, and every other
+ordered pair projects, one way, at the probability that gives its target
+N times `--scaling-factor` synapses in expectation -- N - 1 candidates for
+a neuron outside the input zone, N - I for one inside it (GOO_SCALING_FACTOR,
+0.05: 32 synapses a neuron on the mnist goo of 644, 3 on goo 60). Only the
+input zone is kept from talking to itself: an output hears the inputs
+directly, the other outputs and the interior alike, so no interior is
+needed, only that the zones not overlap. `--goo` makes 60 neurons
+(GOO_COUNT; it was the grid's 80 while the two were compared): about 180
+projections at 0.05, the seed's choice of them. `--wiring` reaches the three
+earlier rules at `--projection`: `zones-equal`, the zone rule of September
+14 with the equal fan-in of the 15th (the zones never project onto each
+other and an interior-to-zone projection is scaled up so every neuron hears
+the same number; the rule until the 16th, and what every result below ran
+under; at 0.2 about 650 projections, at 1 the fully connected goo of 3,300),
+`zones` (without the equal fan-in) and `uniform` (one probability over every
+ordered pair). Under the scaled rule a neuron hearing nothing at all --
+three of goo 60 in expectation -- has a threshold of 0 and fires at every
+wave it is not refractory (AUTHORITY.md §5.2).
 
 With no rows there is no bottom row to be the input, so the zones go by
 index: the first `--across` neurons are the input zone and the last
@@ -448,12 +451,11 @@ walnutbutter --goo 200 --engine arrays --headless  # bigger goo, on the array en
 walnutbutter --goo --seeds 8 --epochs 50000        # a batch, like any other container
 ```
 
-Nothing is drawn to decide the topology -- the count alone fixes which pairs
-connect and in what id order -- so the seed reaches only the weights, the
-permutation and the inputs, and a checkpoint rebuilds goo from its count
-even when it was built without a seed. `--omega`, `--reach` and `--rows` do
-not reach it, and it has no geometry, so it runs headless and cannot be
-shown.
+The seed decides the topology, pair by pair in (i, j) order, the projection
+draw and then the weight, so a goo needs its seed to be rebuilt, and a
+checkpoint records the wiring it was built under (`wiring`, `scaling_factor`,
+`projection`) and restores under it. `--omega`, `--reach` and `--rows` do not
+reach it, and it has no geometry, so it runs headless and cannot be shown.
 
 **Its potential axis scales with fan-in**, and nothing else's does
 (AUTHORITY.md §5.2), and since September 14, 2026 it scales **its own

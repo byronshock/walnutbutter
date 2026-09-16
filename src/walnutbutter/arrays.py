@@ -284,10 +284,16 @@ class ArrayNetwork(Network):
                 facing = threshold
             if self.hazard:  # the decision is a draw (§5.2), and it settles the hazard eligibility (§6.7)
                 deciding = ~refractory if fire_forced is None else ~refractory & ~fire_forced  # a stimulus decides nothing
+                standing = self.potential_at(time)  # a decayed copy: `potential` stays the state, which a spike resets below
+                # a collapsed axis -- no incoming synapses under §5.2's scaling, so no width -- keeps the deterministic rule,
+                # as the objects and Rust do: it is not divided by its zero width (which gave NaN, and silence, until
+                # September 16, 2026)
+                soft = deciding & (self.delta_v > 0.0)
                 elapsed = np.maximum(time - self.exposed_since, 0.0)
-                m = np.where(deciding, np.minimum(elapsed / hop * np.exp((self.potential_at(time) - facing) / self.delta_v), 1e3), 0.0)
-                ready = deciding & (self.draw < -np.expm1(-m))
-                self.exposed_since[deciding] = time
+                m = np.zeros(n)
+                m[soft] = np.minimum(elapsed[soft] / hop * np.exp((standing[soft] - facing[soft]) / self.delta_v[soft]), 1e3)
+                ready = np.where(soft, self.draw < -np.expm1(-m), deciding & (standing >= facing))
+                self.exposed_since[soft] = time
                 positive = m > 0.0
                 e = np.zeros(n)
                 hit = positive & ready
