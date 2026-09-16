@@ -85,7 +85,14 @@ than half of its size is a per-output mean that the label cannot see. The
 discriminative signal is there -- the agreement is above a half -- but it is
 the small term; the estimator's noise is the large one, and while a run
 accumulates the small term its weights walk under the large one, which is
-what the sweeps show as quieting and evening.
+what the sweeps show as quieting and evening. Over 10,000 epochs the same
+check gives sign agreements of 0.555, 0.543 and 0.547 and correlations of
++0.19, +0.17 and +0.11 (evidence, probability, class): the correlation grows
+with the epochs about as the square root of their number, which is how a
+real signal accumulates under noise, while the sign agreement does not move,
+because the per-output push still decides most signs -- 0.73 of |G| under the
+evidence critic at 10,000 epochs, and now a push toward quiet (-0.69 a
+synapse), the drift the sweeps show.
 
 **The input code the outputs receive.** With learning off, an on-pixel
 input fires 3.5 spikes an epoch and an off-pixel input 1.75, each with a
