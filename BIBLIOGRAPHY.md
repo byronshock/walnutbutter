@@ -76,7 +76,8 @@ they bear on the code. Each entry says what it contributes here.
   postsynaptic cell type. *Journal of Neuroscience*, 18(24), 10464-10472.
   The STDP window itself: potentiation for pre-before-post, depression for
   post-before-pre, over tens of milliseconds.
-  Free to read at jneurosci.org, which refuses a download; not in `references/`.
+  Free to read in PubMed Central (PMC6793365) and at jneurosci.org, which both refuse a
+  scripted download; not in `references/` until saved from a browser.
 - Werfel, J., Xie, X., & Seung, H. S. (2003). Learning curves for stochastic
   gradient descent in linear feedforward networks. *NIPS 16*; extended in
   *Neural Computation*, 17(12), 2699-2718 (2005). Compares weight

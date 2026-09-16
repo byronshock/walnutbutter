@@ -20,7 +20,7 @@ Full SHA-256 sums: `sha256sum references/*.pdf`; the first sixteen hex digits ar
 
 ## Not in the folder
 
-- Bi & Poo (1998), Journal of Neuroscience 18(24), 10464-10472: free to read on jneurosci.org, which answers a download with a bot challenge; not in PubMed Central; no author copy reachable.
+- Bi & Poo (1998), Journal of Neuroscience 18(24), 10464-10472: in PubMed Central as PMC6793365 and free to read there and on jneurosci.org, but both sites answer a scripted download with a page rather than the PDF; a browser gets it at https://pmc.ncbi.nlm.nih.gov/articles/PMC6793365/ (save it as `references/BiPoo98.pdf`).
 - Markram, Lubke, Frotscher & Sakmann (1997), Science 275(5297), 213-215: paywalled at Science; the EPFL repository record carries only a licence file; no author copy found.
 - Bridle (1990), the NATO ASI chapter: paywalled at Springer; the NIPS 2 companion is in the folder instead.
 - Bishop (1995), Neural Networks for Pattern Recognition: a book, not freely available (Byron has the print copy); Bishop's 2006 PRML is free from the author but is a different book.
