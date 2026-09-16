@@ -783,6 +783,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.homeostasis = problem.homeostasis  # the problem's, unless --homeostasis was given (a value equal to the default is taken as not given)
     if problem.unstick is not None and args.unstick == UNSTICK:
         args.unstick = problem.unstick
+    if problem.lr is not None and args.lr == LR:  # the problem's own rate, unless --lr was given (a value equal to LR counts as not given)
+        args.lr = problem.lr
     if problem.target is not None:
         args.target = problem.target
     if args.critic is None:

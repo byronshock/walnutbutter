@@ -293,7 +293,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     swept, arms = grid(args)
     if not args.summary:
-        workers = min(len(arms), max(1, os.cpu_count() - 1))
+        workers = min(len(arms), max(1, os.cpu_count() - 2))  # one core for the driver, one kept free (September 16, 2026)
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept} -> {out}", flush=True)
         started = time.perf_counter()
         with Pool(workers) as pool:

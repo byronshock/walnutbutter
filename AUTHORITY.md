@@ -4207,3 +4207,90 @@ the layout, the inputs, and whether anything outside the network trains it.
   the composition, hazard plus hebb by addition (§6.7), not built as an
   option yet; and rates below 0.003, where the hazard's read moved and
   where the centred rule's drift to the rails would be slower.
+
+  **The epoch length, swept under the scaled hazard (Byron, September 16,
+  2026, 10:00 MDT: "One thing that hasn't changed across tasks is the
+  epoch length. Please sweep the quieter escape mechanism across epoch
+  length (in milliseconds) in {20, 25, 30, 35, 50, 100} across 10 seeds
+  for 25000 epochs.")** The first runs of the mnist feedforward goo under
+  the count's scaling of the hazard (§5.2): the network and settings of
+  the sweeps above — goo 445, threshold 0.6, floor −2.4, $\Delta$ 0.455
+  now at factor 0.37, $T$ = 2, the evidence critic, the count read —
+  INTERVAL {20, 25, 30, 35, 50, 100} ms × seeds 1 to 10, 25,000 epochs an
+  arm, traced every 250, at **LR 0.002 — the mnist problem's own rate
+  from this sweep on (Byron, about 10:17 MDT: "default LR to 0.002 for
+  this task"; `Problem.lr`, taken unless `--lr` is given)**. Sweep 2 holds ten
+  seeds at 0.002, 35 ms and 25,000 epochs under the unscaled hazard, so
+  the 35 ms column here is that row's replicate with only the scaling
+  changed. Two things move with the interval besides the epoch: the count
+  the evidence critic reads grows with it at a fixed $T$ (a 100 ms epoch
+  holds about three times the spikes of a 35 ms one, so the same $T$ is a
+  sharper critic), while the count read's line, TEACHER_THRESHOLD in Hz,
+  is quoted per second and holds. Both engines agree at 20 and 100 ms,
+  learning on, checked before the launch. Launched 10:02 MDT at Claude's
+  choice of LR 0.005, killed at about 10:17 when Byron set the rate, and
+  relaunched 10:19 MDT on thirty workers — the default from that minute
+  (Byron: "default to 30 workers. That should leave one core should I
+  wish to do a single run and observe") — (`runs/mnist-ff-interval`;
+  `docs/mnist-ff-interval.md` and `-estimator.md` when it lands).
+
+  *The thirty-one arms the killed sweep finished at 0.005, kept under
+  `runs/mnist-ff-interval-lr0.005` (Byron: "I just want to peek!"):*
+
+  | epoch, ms | seeds | corr, 5,000 | corr, 25,000 | right, last tenth | reward, last tenth | outputs' rate memory | inputs' rate memory |
+  |---|---|---|---|---|---|---|---|
+  | 20 | 10 | +0.096 | +0.220 ± 0.031 | 0.075 | −2.51 | 0.57 | 0.43 |
+  | 25 | 10 | +0.097 | +0.220 ± 0.031 | 0.078 | −2.56 | 0.60 | 0.50 |
+  | 30 | 10 | +0.089 | +0.222 ± 0.029 | 0.086 | −2.59 | 0.64 | 0.57 |
+  | 35 | 1 | +0.137 | +0.280 | 0.094 | −2.57 | 0.56 | 0.62 |
+  | 35, the unscaled hazard (sweep 2, 0.005) | 10 | +0.059 | +0.124 ± 0.032 | 0.077 | −2.73 | 0.75 | 0.92 |
+
+  **The quieter escape nearly doubled the estimator's alignment at the
+  same rate** — +0.22 at 25,000 epochs against +0.124 — and the off
+  pixels now rest in about half the epochs rather than nearly all of them
+  (the inputs' rate memory 0.43 to 0.62 against 0.92), the pixel contrast
+  of §0.1's fourth lever coming back. Between 20 and 30 ms the epoch
+  length makes no difference to the correlation; the reward rises as the
+  epoch shortens because a shorter epoch holds fewer spikes and the
+  evidence critic at a fixed $T$ reads a quieter zone as nearer uniform.
+
+  *Landed 11:00 MDT (`docs/mnist-ff-interval.md`, `-estimator.md`,
+  `-estimator.png`), sixty arms of 7 to 29 minutes, the longer epochs the
+  slower.* Ten seeds an epoch length at LR 0.002; the correlation with
+  $d$ over the run and the read:
+
+  | epoch, ms | corr, 5,000 | corr, 25,000 | window, last quarter | right, last tenth | reward, last tenth | outputs' rate memory | inputs' rate memory | outputs' spikes a neuron, last epoch | stuck on, of 50 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 20 | +0.092 | +0.201 ± 0.044 | +0.024 | 0.071 | −2.56 | 0.63 | 0.43 | 0.9 | 1 |
+  | 25 | +0.092 | +0.199 ± 0.031 | +0.022 | 0.077 | −2.62 | 0.68 | 0.50 | 1.1 | 2 |
+  | 30 | +0.085 | +0.216 ± 0.034 | +0.023 | 0.081 | −2.66 | 0.72 | 0.57 | 1.4 | 4 |
+  | 35 | +0.098 | +0.219 ± 0.034 | +0.023 | 0.084 | −2.70 | 0.75 | 0.62 | 1.5 | 5 |
+  | 50 | +0.084 | +0.217 ± 0.036 | +0.022 | 0.093 | −2.84 | 0.80 | 0.71 | 2.1 | 10 |
+  | 100 | +0.071 | +0.207 ± 0.044 | +0.018 | **0.124** | −3.09 | 0.83 | 0.83 | 3.3 | 16 |
+  | 35, the unscaled hazard (sweep 2, 0.002) | +0.041 | +0.126 ± 0.038 | — | 0.075 | −2.78 | 0.91 | 0.92 | — | — |
+
+  **Three readings.** *The scaled hazard is confirmed on every seed:* at
+  35 ms and LR 0.002, paired on the seed with sweep 2's row (the same
+  seeds, the same epochs, only the factor changed), the correlation is
+  +0.093 higher, $t = 11.4$, ten of ten, and the fraction right +0.009
+  higher, ten of ten; at 5,000 epochs the scaled network is where the
+  unscaled one was at 25,000. *The estimator does not care about the
+  epoch length:* +0.20 to +0.22 at every length, every paired difference
+  within seed noise ($t$ of 0.3 for 100 against 20 ms). *The read does —
+  the longer the epoch the better:* the fraction right climbs
+  monotonically from 0.071 at 20 ms to 0.124 at 100 ms, twice chance and
+  the best read of any mnist run, higher at 100 than at 20 or 35 ms on
+  ten seeds of ten. Two things move with the epoch and both point the
+  same way (Claude's reading): a longer epoch holds more spikes, so the
+  same weights give the class sums a wider margin over their Poisson
+  noise at the read — the count read integrates longer — and the rest
+  escape has more hops to happen in, so the inputs' rate memory climbs
+  back from 0.43 to 0.83 and the output zone toward saturation (16 of 50
+  stuck on at 100 ms). The reward falls as the epoch grows for the same
+  first reason turned around: at a fixed $T$ the evidence critic reads
+  bigger counts as sharper log-odds, so a wrong guess costs more, and the
+  reward is not comparable across epoch lengths where the fraction right
+  is. What to try next, neither run: $T$ scaled with the epoch, or the
+  count read as a rate, so that the critic sees the same odds at every
+  length; and a longer epoch still, since 100 ms is the top of this
+  sweep and the read was still climbing.

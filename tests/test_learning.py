@@ -218,7 +218,11 @@ def test_rates_track_firing_and_stuck_neurons_are_counted():
 
 def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_inputs_are_not():
     from walnutbutter.learning import forced, homeostasis, update_rates
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = GridOfNeurons(across=4, rows=3, omega=0, seed=1)
+    # the forced drive: one stimulus at the input's moment, so a bit-1 input is forced for certain. Under the Poisson
+    # drive an input that keeps itself firing is refractory whenever its own stimuli land and is never marked forced --
+    # which is the rule (§4.3, §5.3), and made this test fail one run in five (found September 16, 2026)
+    grid.drive = "forced"
     grid.set_input([True, False, True, False])
     grid.fire_input()
     row = grid.input_row()

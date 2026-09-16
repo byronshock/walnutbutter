@@ -634,6 +634,19 @@ def test_the_driving_process_is_not_the_spike_train():
 
 # --- the same problem, only NOT (AUTHORITY.md §8) ------------------------------------
 
+def test_a_problem_can_carry_its_own_learning_rate():
+    """§8, mnist (Byron, September 16, 2026: "default LR to 0.002 for this task"): the constant unless the problem or --lr says."""
+    from walnutbutter.cli import apply_problem, build_parser
+    from walnutbutter.constants import LR
+    assert PROBLEMS["mnist"].lr == 0.002 and PROBLEMS["copy"].lr is None
+    args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
+    assert args.lr == 0.002
+    args = build_parser().parse_args(["--problem", "mnist", "--lr", "0.01"]); apply_problem(args)
+    assert args.lr == 0.01  # given, so kept
+    args = build_parser().parse_args(["--problem", "copy"]); apply_problem(args)
+    assert args.lr == LR
+
+
 def test_shallow_not_is_shallow_copy_with_the_target_complemented():
     from walnutbutter.learning import TARGETS, accuracy, teacher_score
 

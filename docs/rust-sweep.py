@@ -245,7 +245,7 @@ def run_arm(job: tuple) -> dict:
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
               "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
-              "critic": args.critic, "problem": problem,
+              "critic": args.critic, "problem": problem, "lr": args.lr,  # the rate the arm ran at, swept or the problem's own
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
@@ -326,7 +326,9 @@ def main() -> int:
     (ROOT / "runs" / args.name).mkdir(parents=True, exist_ok=True)
     swept, arms = grid_and_arms(args)
     if not args.summary:
-        workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 2) - 1))
+        # two cores short of the machine, not one: the driver takes one and Byron keeps one for a single run he can
+        # watch beside the sweep (September 16, 2026: "default to 30 workers" on the 32-core machine)
+        workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 3) - 2))
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
