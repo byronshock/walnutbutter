@@ -43,7 +43,8 @@ GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the flo
 GOO_PROJECTION = 0.2  # P(neuron i projects onto neuron j) for a pair with an interior end (AUTHORITY.md §3.4; Byron,
 # September 14, 2026: "P(i connects to j) = 0 if i == j; 0 if i in inputs or outputs AND j in inputs or outputs;
 # P_connection otherwise" -- and, correcting the verb, "I should have said projects. The connections are all one-way").
-# Every ordered pair, since Byron eliminated the zone rule (September 15, 2026); below 1 the seed decides the wiring. Set from Byron's two sweeps of
+# Pairs with both ends in a zone never project, and an interior-to-zone projection is scaled up so every neuron hears the
+# same number in expectation (§3.4); below 1 the seed decides the wiring. Set from Byron's two sweeps of
 # September 14-15 (§3.4): the plateau in P runs 0.15 to 0.5 with cliffs at 0.1 and from 0.6 up, and 0.2 sits inside it
 # with every seed learning on either side, the highest floor anywhere, and the fastest goo that learns -- about 650
 # projections at sixty neurons, four times the speed of the fully connected goo, which was 1 and the worst value

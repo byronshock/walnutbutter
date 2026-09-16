@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         const=GOO_COUNT,
         default=None,
         metavar="N",
-        help=f"goo: N neurons with no positions at all, every ordered pair projecting with probability --projection, no neighbourhood and no "
+        help=f"goo: N neurons with no positions at all, wired by the zone rule at --projection, no neighbourhood and no "
         f"shortcuts (default: {GOO_COUNT}, the working network since September 14, 2026). Goo has its own "
         f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
         f"--threshold and --minimum-potential override (a value equal to the grid's default is taken as not given). "
@@ -124,7 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=GOO_PROJECTION,
         metavar="P",
         help=f"goo's wiring (AUTHORITY.md §3.4): the probability an ordered pair with an interior end projects, one way, "
-        f"each direction its own draw, every ordered pair (default: {GOO_PROJECTION:g})",
+        f"each direction its own draw; pairs with both ends in a zone never project, and an interior-to-zone projection is "
+        f"scaled up so that every neuron hears the same number in expectation (default: {GOO_PROJECTION:g})",
     )
     parser.add_argument(
         "--no-scale-with-fan-in",
@@ -864,10 +865,10 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             elif args.goo is not None:
-                if args.goo < args.across + (args.outputs or args.across):
+                if args.goo <= args.across + (args.outputs or args.across):
                     print(
-                        f"error: goo's zones would overlap: --goo must be at least the zones together, "
-                        f"got {args.goo} for {args.across} in and {args.outputs or args.across} out",
+                        f"error: goo needs an interior for its zones to talk through: --goo must exceed the zones "
+                        f"together, got {args.goo} for {args.across} in and {args.outputs or args.across} out",
                         file=sys.stderr,
                     )
                     return 2
@@ -881,8 +882,8 @@ def _run(args: argparse.Namespace) -> int:
                     scale_with_fan_in=args.scale_with_fan_in is not False,
                     projection=args.projection, outputs=args.outputs,
                 )
-                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; {len(grid.interior())} neurons in "
-                      f"neither zone", file=sys.stderr)
+                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; the zones talk only through "
+                      f"the {len(grid.interior())} interior neurons", file=sys.stderr)
                 inner, edge = (grid.interior() or grid.all_neurons())[0], grid.all_neurons()[0]
                 if grid.scale_with_fan_in_on:
                     print(

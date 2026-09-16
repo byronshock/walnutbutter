@@ -71,7 +71,7 @@ PROBLEMS: dict[str, Problem] = {
         "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
         ACROSS, ROWS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
         read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
-        # goo the zones never projected onto each other under the rule of September 14 (§3.4); one probability serves every pair since
+        # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
     "sustain_inputs": Problem(
         "sustain_inputs",
