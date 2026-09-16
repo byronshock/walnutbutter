@@ -3650,3 +3650,30 @@ the layout, the inputs, and whether anything outside the network trains it.
   near the top. The Brier score keeps a variance term and so the same
   decoy. Whether the score should be the probability rather than its log is
   Byron's to call; the evidence reading stands either way.
+
+  *The task without hidden neurons (Byron, the same night: "One thing I
+  neglected to do is benchmark this task without any hidden neurons. How
+  will we know if they are buying us anything if they are always part of
+  the economy?").* The same fifteen arms on a goo of 445, `--hidden-neurons
+  0`, the outputs hearing the inputs directly at 22 synapses a neuron;
+  landed 02:52 MDT (`docs/mnist-evidence-h0.md`, `mnist-evidence-h0-score.png`).
+  Last tenth, this benchmark with the 199-hidden sweep in parentheses, and
+  chance as each network's learning-off level (a smaller goo is noisier at
+  rest, so lower here):
+
+  | $T$ \ LR | 0.001 | 0.003 | 0.006 | 0.01 | 0.03 | learning off |
+  |---|---|---|---|---|---|---|
+  | 1 | −4.26 (−3.94) | −4.01 (−4.06) | −3.62 (−3.65) | −3.34 (−3.38) | −2.62 (−2.98) | −6.61 (−5.60) |
+  | 2 | −2.89 (−2.76) | −2.88 (−2.83) | −2.80 (−2.83) | −2.72 (−2.75) | −2.67 (−2.62) | −3.84 (−3.39) |
+  | 4 | −2.58 (−2.47) | −2.50 (−2.43) | −2.46 (−2.46) | −2.41 (−2.41) | −2.44 (−2.42) | −2.76 (−2.60) |
+
+  The fraction right is 0.05 to 0.08 in every cell of both sweeps against
+  a learning-off 0.06 to 0.10, and the output zone's rate memory falls with
+  the learning rate, from 0.85 to 0.09 at $T = 1$: at LR 0.03 an output
+  spikes in one epoch in eleven, and a silent output zone is the uniform
+  estimate. **The same picture with or without the hidden neurons: every
+  arm above its chance by evening out and quieting, none classifying.**
+  The 199 hidden neurons buy nothing measurable yet, and not because they
+  are idle: nothing is learned in either economy, so there is nothing for
+  them to add to. The benchmark is to be rerun the day something learns,
+  and `hidden_neurons` is in place for it.

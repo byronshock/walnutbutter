@@ -161,12 +161,16 @@ def _rate_by_zone(grid, rates: list[float]) -> dict:
     return {"all": st.mean(rates)}
 
 
-def _output_counts(grid) -> list[int]:
-    """The output row's spike counts in the last epoch, as the network holds them after the run."""
-    try:
-        return list(grid.output_counts())
-    except Exception:  # a container without the count read
+def _output_counts(engine, grid) -> list[int]:
+    """The output zone's spike counts in the last epoch, from the engine, which holds them (the mesh's neurons do not).
+
+    Goo's outputs are its last `outputs` neurons, in the engine's order; for
+    any other container nothing is recorded.
+    """
+    if not hasattr(grid, "outputs"):
         return []
+    counts = engine.epoch_spike_counts()
+    return [int(c) for c in counts[len(counts) - grid.outputs:]]
 
 
 def arm_name(arm: dict) -> str:
@@ -216,7 +220,7 @@ def run_arm(job: tuple) -> dict:
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
-              "output_counts_last": [int(c) for c in _output_counts(grid)],  # the last epoch's output spikes, in order
+              "output_counts_last": _output_counts(engine, grid),  # the last epoch's output spikes, in order
               "container": repr(grid) if hasattr(grid, "count") else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result
@@ -245,7 +249,11 @@ def summarise(args) -> None:
         print("nothing on disk yet")
         return
     axes = [k for k in swept if k != "seed"]
-    container = ("goo " + " ".join(f"{g:g}" for g in args.goo) + ("" if args.scale else ", flat")) if args.goo else "hex grid"
+    from walnutbutter.problems import PROBLEMS
+    on_goo = (bool(args.goo) or args.hidden_neurons is not None or PROBLEMS[args.problem].goo is not None
+              or PROBLEMS[args.problem].hidden_neurons is not None)  # posed on goo: by the arms, or by the problem
+    sizes = (" " + " ".join(f"{g:g}" for g in args.goo)) if args.goo else ""
+    container = ("goo" + sizes + ("" if args.scale else ", flat")) if on_goo else "hex grid"
     lines = [f"# {args.name}: {args.problem} on the {container}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
              f"{args.eligibility} eligibility", ""]
     if len(axes) == 2:
