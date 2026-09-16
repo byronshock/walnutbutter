@@ -77,30 +77,43 @@ def test_the_trace_is_what_the_synapse_has_in_the_potential():
         assert p == pytest.approx(from_traces, abs=1e-9)
 
 
-def test_a_neuron_that_hears_nothing_keeps_the_deterministic_rule_in_every_engine():
-    """§5.2: a starting threshold of 0 -- no incoming synapses under the fan-in scaling -- has no width to quote, so the
-    neuron keeps the deterministic rule: at potential 0 against threshold 0 it fires at every wave it is not refractory,
-    seven times an epoch, whether or not the network is under the hazard. The array engine divided by the zero width and
-    silenced it (NaN) until September 16, 2026, the day the scaled rule made such neurons common on a small goo."""
+def test_a_neuron_that_hears_nothing_is_left_at_the_containers_threshold_in_every_engine():
+    """§5.2 (September 16, 2026): no incoming synapses under the fan-in scaling leaves a neuron at the quoted threshold
+    and floor, scale 1, with its width -- it fires at the hazard's rest like any neuron and never otherwise. At threshold
+    0 it was a pacemaker, seven spikes an epoch whatever its drive, which the feedforward network of §8 (every input
+    hearing nothing) made untenable; and the array engine had divided by the zero width and silenced it (NaN)."""
     np = pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD
     mesh, twin = goo(), goo()  # the scaled rule at 0.05 on forty neurons: two synapses a neuron in expectation
-    collapsed = [i for i, n in enumerate(mesh.all_neurons()) if not n.incoming]
-    assert len(collapsed) >= 3 and all(mesh.all_neurons()[i].threshold == 0.0 for i in collapsed)
+    deaf = [i for i, n in enumerate(mesh.all_neurons()) if not n.incoming]
+    assert len(deaf) >= 3
+    assert all(mesh.all_neurons()[i].threshold == GOO_THRESHOLD and mesh.all_neurons()[i].minimum_potential == GOO_MINIMUM_POTENTIAL for i in deaf)
     mesh.set_delta(0.455)
     twin.set_delta(0.455)
-    assert all(mesh.all_neurons()[i].delta == 0.0 for i in collapsed)  # no width
+    assert all(mesh.all_neurons()[i].delta == pytest.approx(0.455 * GOO_THRESHOLD) for i in deaf)  # a width to quote
     net = ArrayNetwork(twin)
-    for _ in range(5):
+    for _ in range(20):
         run_epoch(mesh, verbose=False, rng=random.Random(1))
         run_epoch(net, verbose=False, rng=random.Random(1))
         assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
-    assert all(mesh.all_neurons()[i].spikes == 7 * 5 for i in collapsed)  # seven an epoch: 35 ms at a 5 ms refractory period
+    rest = sum(mesh.all_neurons()[i].spikes for i in deaf) / (20 * len(deaf))  # the hazard's rest: 2.3 an epoch at 0.455
+    assert 1.0 < rest < 4.0 and all(mesh.all_neurons()[i].spikes < 7 * 20 for i in deaf)  # not a pacemaker
     if fast.available():
         g = goo()
         g.set_delta(0.455)
         assert fast.compare(g, epochs=20, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="hazard", target="copy",
                                                           homeostasis=0.01, unstick=0.1)) == []
+    # a threshold given as 0 outright is the deterministic comparison, and the engines agree on it too (no NaN)
+    a, b = (Goo(count=20, across=4, seed=1, weight=None, threshold=0.0, minimum_potential=0.0, scale_with_fan_in=False) for _ in range(2))
+    a.set_delta(0.455); b.set_delta(0.455)
+    assert all(n.delta == 0.0 for n in a.all_neurons())
+    net = ArrayNetwork(b)
+    for _ in range(3):
+        run_epoch(a, verbose=False, rng=random.Random(1)); run_epoch(net, verbose=False, rng=random.Random(1))
+        assert [n.spikes for n in a.all_neurons()] == net.spikes.tolist()
+    assert sum(n.spikes for n in a.interior()) / (3 * len(a.interior())) > 5.0  # a pacemaker, by the letter, where the
+    # threshold is 0 itself: nearly every wave it is not refractory (a wave is not always there the moment one ends)
 
 
 def test_the_hazard_eligibility_needs_escape_noise():

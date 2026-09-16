@@ -419,12 +419,16 @@ there is no distance to measure and nothing to be near, and what is left is
 the scaled rule (AUTHORITY.md §3.4, Byron, September 16, 2026): no neuron
 projects onto itself, no input neuron onto another, and every other
 ordered pair projects, one way, at the probability that gives its target
-N times `--scaling-factor` synapses in expectation -- N - 1 candidates for
-a neuron outside the input zone, N - I for one inside it (GOO_SCALING_FACTOR,
-0.05: 32 synapses a neuron on the mnist goo of 644, 3 on goo 60). Only the
-input zone is kept from talking to itself: an output hears the inputs
-directly, the other outputs and the interior alike, so no interior is
-needed, only that the zones not overlap. `--goo` makes 60 neurons
+N times `--scaling-factor` synapses in expectation over the sources it may
+hear (GOO_SCALING_FACTOR, 0.05: 32 synapses a neuron on the mnist goo of
+644, 3 on goo 60). The input zone is kept from talking to itself and the
+outputs are kept apart (Byron, the same night: "With hidden=0 we have no
+cycles ... a two-layer feedforward network"): an input hears the hidden
+neurons, an output hears the inputs directly and the hidden neurons and
+projects onto the hidden alone, so no interior is needed, only that the
+zones not overlap, and with none the goo is inputs -> outputs and nothing
+else. A neuron that hears nothing is left at the container's threshold
+(AUTHORITY.md §5.2). `--goo` makes 60 neurons
 (GOO_COUNT; it was the grid's 80 while the two were compared): about 180
 projections at 0.05, the seed's choice of them. `--wiring` reaches the three
 earlier rules at `--projection`: `zones-equal`, the zone rule of September
@@ -433,9 +437,8 @@ other and an interior-to-zone projection is scaled up so every neuron hears
 the same number; the rule until the 16th, and what every result below ran
 under; at 0.2 about 650 projections, at 1 the fully connected goo of 3,300),
 `zones` (without the equal fan-in) and `uniform` (one probability over every
-ordered pair). Under the scaled rule a neuron hearing nothing at all --
-three of goo 60 in expectation -- has a threshold of 0 and fires at every
-wave it is not refractory (AUTHORITY.md §5.2).
+ordered pair); `scaled-open` is the night's first scaled rule, the outputs
+open to every zone.
 
 With no rows there is no bottom row to be the input, so the zones go by
 index: the first `--across` neurons are the input zone and the last

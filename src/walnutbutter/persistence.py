@@ -204,8 +204,10 @@ def _restore_goo(data: dict) -> Goo:
     # without the afternoon's equal fan-in (§3.4)
     wiring = data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones")
     scaling_factor = data.get("scaling_factor", GOO_SCALING_FACTOR)
-    if wiring == "scaled":
-        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), scaling_factor, into) < 1.0 for into in (True, False))
+    if wiring in ("scaled", "scaled-open"):
+        outputs = data.get("outputs") or across_of(data)
+        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), outputs, scaling_factor, zone, wiring == "scaled-open") < 1.0
+                    for zone in ("input", "hidden", "output"))
         how = f"at scaling factor {scaling_factor:g}"
     else:
         drawn = data.get("projection", 1.0) < 1.0

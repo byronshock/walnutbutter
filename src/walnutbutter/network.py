@@ -157,7 +157,9 @@ class Network:
         if reference <= 0:
             raise ValueError(f"the reference fan-in must be positive, got {reference}")
         for neuron in self.all_neurons():
-            scale = len(neuron.incoming) / reference
+            # a neuron that hears nothing is left at the quoted threshold and floor (§5.2, September 16, 2026): there is
+            # nothing to scale by, and at 0 it was a pacemaker whatever its drive
+            scale = len(neuron.incoming) / reference if neuron.incoming else 1.0
             neuron.threshold = threshold * scale
             neuron.minimum_potential = minimum_potential * scale
 

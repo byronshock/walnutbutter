@@ -150,16 +150,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="S",
         help=f"goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026): every neuron hears N times S "
         f"synapses in expectation, each ordered pair projecting, one way, at that fan-in over the sources the target may "
-        f"hear -- everyone but itself, and for an input neuron everyone outside its zone -- stopped at 1. No neuron "
-        f"projects onto itself and no input neuron onto another; an output hears the inputs directly (default: "
-        f"{GOO_SCALING_FACTOR:g}: 32.2 synapses on the mnist goo of 644, 3 on goo 60)",
+        f"hear, stopped at 1: the hidden neurons for an input, the inputs and hidden neurons for an output, everyone else "
+        f"for a hidden neuron. No neuron projects onto itself, no input onto another input, and no output onto any zone "
+        f"(the outputs apart, Byron, September 16, 2026): an output hears the inputs directly and projects onto the hidden "
+        f"alone (default: {GOO_SCALING_FACTOR:g}: 32.2 synapses on the mnist goo of 644, 3 on goo 60)",
     )
     parser.add_argument(
         "--wiring",
         choices=WIRINGS,
         default="scaled",
-        help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor; "
-        "or one of the three before it at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
+        help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor, the "
+        "outputs apart since 03:05 that night; scaled-open, the night's first version, the outputs open to every zone; "
+        "or one of the three before them at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
         "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
         "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "
         "every ordered pair). The two zone wirings need an interior (default: scaled)",
@@ -1238,9 +1240,17 @@ def _run_nodes(args: argparse.Namespace, width: int, height: int) -> int:
 def _wiring_summary(grid: Goo) -> str:
     """One line on what goo's wiring lets talk to what, for the run's header."""
     if grid.wiring == "scaled":
+        hidden = grid.interior_count()
+        heard = (f"an input from the {hidden} hidden at P {grid.input_projection():.3g}" if hidden
+                 else "an input from no one, left at the container's threshold (§5.2)")
+        return (f"every neuron hears {grid.expected_fan_in():g} synapses in expectation where it has sources: {heard}, an "
+                f"output from the {grid.count - grid.outputs} inputs and hidden at {grid.output_projection():.3g}"
+                + (f", a hidden neuron from the {grid.count - 1} others at {grid.hidden_projection():.3g}" if hidden else "")
+                + "; the outputs project onto the hidden alone")
+    if grid.wiring == "scaled-open":
         return (f"every neuron hears {grid.expected_fan_in():g} synapses in expectation, an input neuron from the "
                 f"{grid.count - grid.across} outside its zone at P {grid.input_projection():.3g} and every other neuron "
-                f"from the {grid.count - 1} others at {grid.other_projection():.3g}")
+                f"from the {grid.count - 1} others at {grid.hidden_projection():.3g}")
     if grid.wiring == "uniform":
         return f"every ordered pair at P {grid.projection:g}, the zones included"
     return f"the zones talk only through the {len(grid.interior())} interior neurons"

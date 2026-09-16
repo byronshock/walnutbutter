@@ -81,7 +81,7 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
     goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
     goo.coding, goo.population, goo.read, goo.rule = "raw", 3, "count", "reinforce"
     assert goo.output_width() == 6 and len(goo.output_row()) == 6 and len(goo.input_row()) == 4
-    assert len(goo.interior()) == 10 and goo.input_zone_is_apart() and repr(goo).endswith("4 in, 10 hidden, 6 out, input zone apart)")
+    assert len(goo.interior()) == 10 and goo.input_zone_is_apart() and repr(goo).endswith("4 in, 10 hidden, 6 out, zones apart, inputs onto outputs)")
     patterns = [[True, False, True, False], [False, True, False, True]]
     goo.use_input_stream(patterns, [1, 0])
     run_epoch(goo, verbose=False, rng=random.Random(1))
@@ -265,11 +265,13 @@ def test_clock_neurons_lead_the_input_zone_and_fire_every_epoch():
     twin = make()
     net = ArrayNetwork(twin)
     rng_a, rng_b = random.Random(1), random.Random(1)
-    for _ in range(6):
+    for k in range(6):
         run_epoch(goo, verbose=False, rng=rng_a)
         run_epoch(net, verbose=False, rng=rng_b)
         clocks = goo.input_row()[:2]
-        assert all(n.epoch_spikes >= 1 for n in clocks)  # driven every epoch (a clock the mesh fired first still fired)
+        assert all(n.should_fire for n in clocks)  # driven every epoch
+        if k == 5:  # and spiking in nearly every one: a forced spike that lands in a refractory period is lost (§4.3)
+            assert all(n.spikes >= 5 for n in clocks)
         assert [n.spikes for n in goo.all_neurons()] == net.spikes.tolist()
     from walnutbutter.persistence import checkpoint, restore
     import tempfile, pathlib
@@ -287,5 +289,5 @@ def test_a_checkpoint_keeps_the_output_zone(tmp_path):
     data = checkpoint(goo, tmp_path / "zones.json")
     assert data["outputs"] == 6
     back, _ = restore(tmp_path / "zones.json")
-    assert back.outputs == 6 and len(back.output_row()) == 6 and back.input_zone_is_apart() and back.wiring == "scaled"
+    assert back.outputs == 6 and len(back.output_row()) == 6 and back.input_zone_is_apart() and back.outputs_are_apart() and back.wiring == "scaled"
     assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]

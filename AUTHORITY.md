@@ -756,6 +756,36 @@ rescaling wanting: a weight range scaling as $1/\sqrt{N}$, and the reading
 that THRESHOLD was never a constant of the substance but a constant of the
 grid.
 
+**The outputs apart (Byron, September 16, 2026, 03:05 MDT: "I would like
+the outputs kept apart from one another again. With hidden=0 we have no
+cycles, eliminate interference from other output neurons, a two-layer
+feedforward network").** The scaled rule below, amended: an output projects
+onto no zone — not onto another output and, *Claude's reading of "no
+cycles" and "feedforward", to be corrected in a word,* not onto the input
+zone either, since with no hidden neurons an output heard by the inputs is
+a cycle. So, with $I$ and $O$ the zones' widths and $A_j$ the sources $j$
+may hear — the $N - I - O$ hidden neurons for an input, the $N - O$ inputs
+and hidden neurons for an output, the $N - 1$ others for a hidden neuron:
+
+$$P(i \to j) = \begin{cases}
+0 & i = j \\
+0 & i, j \text{ both in the input zone} \\
+0 & i \text{ in the output zone},\ j \text{ in either zone} \\
+\min\!\big(1,\ Ns / A_j\big) & \text{otherwise}
+\end{cases}$$
+
+Every neuron still hears $Ns$ in expectation where it has sources enough:
+on the mnist goo of 644 an input hears the 199 hidden at 0.162, an output
+the 594 inputs and hidden at 0.054, a hidden neuron the 643 others at
+0.050; with no hidden neurons the goo of 445 is inputs → outputs and
+nothing else, the outputs hearing the 395 inputs at 0.056, 22 synapses
+each, and the inputs hearing nothing — which §5.2 now leaves at the
+container's own threshold rather than at 0. `Goo(wiring="scaled")` is this
+rule; the night's first version, the outputs open to every zone, is kept as
+`"scaled-open"` for the record (no checkpoint was ever saved under it).
+The two temperature sweeps of §8 before 03:05 ran under the open rule and
+stand as recorded.
+
 **The scaled rule (Byron, September 16, 2026, 01:18 MDT: "We're going to
 change the connectivity rule before we proceed").** In his words:
 
@@ -1892,21 +1922,27 @@ threshold is not positive — one with no incoming synapses under §5.2's
 scaling, whose whole axis has collapsed and carries no width to quote. A
 forced neuron fires by its stimulus and makes no decision that wave.
 
-*What the collapsed axis does (September 16, 2026, the day the scaled rule
-of §3.4 made such neurons common on a small goo — three of goo 60 at a
-fan-in of 3, none of the mnist goo at 32).* Every engine examines every
-neuron at every wave, touched or not, and the deterministic rule fires a
-neuron whose potential reaches its threshold: at potential 0 against
-threshold 0 that is every wave the neuron is not refractory, seven spikes
-an epoch at REFRACTORY 5 ms, a pacemaker at 200 Hz that drives whatever it
-projects onto — the same under $\Delta = 0$ and under the hazard, in the
-objects and in Rust. The array engine divided by the zero width, took NaN
-for the chance, and silenced such a neuron under the hazard alone, from
-the hazard's first day until this one: fixed, and the three engines agree
-again on the configuration (`tests/test_hazard.py`). *Whether a neuron
-that hears nothing should be a pacemaker, silent, or at the hazard's rest
-is Byron's to call; the letter of the rule above is the pacemaker, and
-that is what runs.*
+*A neuron that hears nothing (September 16, 2026).* Under the scaling of
+§5.2 a neuron with no incoming synapses had threshold 0, floor 0 and no
+width — a collapsed axis — and every engine examines every neuron at every
+wave, touched or not, so the deterministic comparison fired it at every
+wave it was not refractory: seven spikes an epoch, a pacemaker at 200 Hz
+driving whatever it projected onto, the same under $\Delta = 0$ and under
+the hazard, in the objects and in Rust (the array engine divided by the
+zero width, took NaN for the chance and silenced it instead, from the
+hazard's first day until this one; fixed, and it now takes the
+deterministic comparison too). That was the rule's letter for the morning,
+while such neurons were three of goo 60 and none of the mnist goo. At
+03:05 MDT the outputs were kept apart (§3.4) and the feedforward network
+of §8 left all 395 of its inputs hearing nothing, every one of them a
+pacemaker whatever its pixel, which no reading of the scaling can have
+meant. **So the scaling leaves a neuron with no incoming synapses at the
+container's quoted threshold and floor, scale 1 — there is nothing to
+scale by — and it has its width: it fires at the hazard's rest like any
+neuron, and by its drive if it is an input, and never otherwise.** *Claude's
+resolution of the question left open this morning, to be corrected in a
+word.* `tests/test_hazard.py` holds the three engines to it, and to the
+deterministic comparison for a threshold given as 0 outright.
 
 The draw is one uniform per neuron per wave, in neuron order, from the
 exploration stream of §6.1, taken in that draw's position — after the
