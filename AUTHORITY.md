@@ -123,7 +123,8 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | constant | value | meaning |
 |---|---|---|
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
-| CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing; graded, the fraction of the other groups the label's group out-spikes (§8, mnist); and the decoded and population critics of §4.3 and §6.13 |
+| CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing; graded, the fraction of the other groups the label's group out-spikes; evidence, the class sums read as evidence at TEMPERATURE — the softmax cross-entropy $\ln q_y$ with $q_k \propto e^{n_k/T}$, mnist's critic since September 16, 2026 (§8); and the decoded and population critics of §4.3 and §6.13 |
+| TEMPERATURE | 2 | the evidence critic's temperature $T$ (§8): the lead in spikes that makes one class $e$ times as likely as another; $T \to 0$ is the class critic, $T \to \infty$ pays every epoch $\ln 0.1$. *Byron, September 16, 2026: "We will have to sweep for temperature eventually." Set at the middle of the first sweep, {1, 2, 4}; the sweep's to set* |
 | ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's), a Hebbian ±1 (hebb), or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
@@ -3508,3 +3509,60 @@ the layout, the inputs, and whether anything outside the network trains it.
   7 → 9), one glyph blank after binarisation, and about ten of transcription.
   So the bits carry the digit to about 93%; nothing the network has
   produced on them is limited by the representation.
+
+  **Decision 4 — the evidence critic (Byron, September 16, 2026, the same
+  night).** *"Now to tackle the critic. What would happen if we took the
+  spikes to be a probabilistic estimate of the output class? What critic
+  would match this estimate?"* — and, on the example of a critic that
+  counts [7 0 0 0 1 5 3 4 0 0] spikes per class and reads the vote share
+  [.35 0 0 0 .05 .25 .15 .2 0 0], with the log score proposed as the
+  proper scoring rule for it: *"No, the spikes are EVIDENCE for now, not a
+  proper maximum-likelihood estimator. We will have to sweep for
+  temperature eventually."* So the class sums $n_k$ are read as evidence at
+  a temperature $T$ = TEMPERATURE (§1.3), the estimate is the Boltzmann
+  distribution over classes, and the reward is its log score, the softmax
+  cross-entropy of Bridle (1990) and Bishop (1995, §6.9):
+
+  $$q_k = \frac{e^{n_k/T}}{\sum_j e^{n_j/T}}, \qquad r = \ln q_y = \frac{n_y}{T} - \ln \sum_j e^{n_j/T}$$
+
+  with $y$ the label. Chance — a uniform estimate, which every silent or
+  evenly loud epoch gives — is $\ln 0.1 = -2.30$, a perfect epoch is 0, and
+  every count is finite evidence, so a silent label population scores a
+  number, not $-\infty$. Per spike, the reward moves by $(1 - q_y)/T$ on
+  the label's population and by $-q_k/T$ on class $k$: $T$ sets what a
+  spike is worth, $T \to 0$ is the class critic in log form (Bishop's
+  winner-take-all limit) and $T \to \infty$ pays $\ln 0.1$ whatever the
+  counts. On Byron's example counts, by label and temperature:
+
+  | label, count | $T$ = 0.5 | 1 | 2 | 3 | 5 | 10 | 20 | $\infty$ |
+  |---|---|---|---|---|---|---|---|---|
+  | 0, seven | −0.02 | −0.19 | −0.66 | −1.02 | −1.44 | −1.83 | −2.06 | −2.30 |
+  | 5, five | −4.02 | −2.19 | −1.66 | −1.68 | −1.84 | −2.03 | −2.16 | −2.30 |
+  | 7, four | −6.02 | −3.19 | −2.16 | −2.02 | −2.04 | −2.13 | −2.21 | −2.30 |
+  | 4, one | −12.02 | −6.19 | −3.66 | −3.02 | −2.64 | −2.43 | −2.36 | −2.30 |
+  | 1, none | −14.02 | −7.19 | −4.16 | −3.35 | −2.84 | −2.53 | −2.41 | −2.30 |
+
+  The populations sit at 11.5 ± 3.4 spikes at rest on this network, so $T$
+  near that spread is where one epoch's evidence is neither read as
+  certainty nor washed out. `--critic evidence` at `--temperature`; the
+  same function pays every engine; the reports draw chance at $-2.30$ and
+  the Rust driver logs the class critic's fraction right beside it, so a
+  fraction stays readable. The vote-share reading and its log score
+  (proposed, declined) are not built. *Byron: "Please build it. Then we are
+  going to sweep temperature in {1 2 4} x LR in {0.001 0.003 0.006 0.01
+  0.03} across ONE seed for 10,000 epochs. Let's start small."*
+
+  *What chance is under this critic, measured before the sweep (Claude;
+  seed 1, 300 epochs, learning off, Rust, the scaled goo, $T = 2$).* The
+  uniform estimate's $\ln 0.1 = -2.30$ is not the floor: the softmax reads
+  the hazard's rest noise as evidence, so with the counts independent of the
+  label the reward averages **−2.98 at GOO_THRESHOLD 0.2 and −3.34 at 0.6**,
+  with a spread of 1.5 an epoch and a range of −8.9 to −0.2 — Jensen's gap,
+  $E[\ln q_y] < \ln E[q_y]$, which widens as $T$ falls. So an arm's chance
+  is its own learning-off level at its temperature, to be drawn beside it,
+  and the class critic's fraction right, logged beside the score, is the
+  reading that has a fixed chance: 0.10 at threshold 0.6 and 0.03 at 0.2,
+  where the flood of §8's earlier runs still ties the top. Nothing stuck on
+  or off at either threshold in 300 epochs. The sweep therefore runs at
+  threshold 0.6 with the floor at −2.4, $\Delta$ 0.455, as the $\Delta$
+  sweep did.

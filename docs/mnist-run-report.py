@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import json
 import statistics
 from pathlib import Path
@@ -49,17 +50,24 @@ def main() -> None:
         ax.plot(epochs, rolling, color=colour, linewidth=2.0, label=f"{label}: last tenth {record['last_tenth']:.3f}")
         lines.append(f"{label}: mean {record['mean']:.3f}, last tenth {record['last_tenth']:.3f}, "
                      f"{record['epochs_per_second']} epochs/s, stuck on/off {record['stuck_on']}/{record['stuck_off']}")
-    chance = 0.1 if record.get("critic") == "class" else 0.5  # the class critic pays a tenth by luck, the graded one a half
+    critic = record.get("critic", "graded")
+    # chance by critic: the class critic pays a tenth by luck, the graded one a half, the evidence one ln 0.1 (§8)
+    chance = {"class": 0.1, "evidence": math.log(0.1)}.get(critic, 0.5)
     ax.axhline(chance, color=INK, linestyle="--", linewidth=1.0)
     ax.text(ax.get_xlim()[1], chance + 0.005, "chance, ten classes", ha="right", va="bottom", color=INK, fontsize=9)
     ax.set_xlabel("epoch", color=INK)
     ax.set_ylabel(f"reward, rolling mean of {args.window} samples ({args.window * step:,} epochs)", color=INK)
-    ax.set_ylim(0.0, max(chance + 0.4, max(max(l.get_ydata()) for l in ax.get_lines()) + 0.05))
+    low = min(min(l.get_ydata()) for l in ax.get_lines())
+    high = max(max(l.get_ydata()) for l in ax.get_lines())
+    if critic == "evidence":
+        ax.set_ylim(min(chance, low) - 0.2, max(0.0, high) + 0.1)  # the log score: chance -2.30, perfect 0
+    else:
+        ax.set_ylim(0.0, max(chance + 0.4, high + 0.05))
     ax.grid(axis="y", color="#e6e6e6")
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     ax.legend(frameon=False, loc="upper left")
-    fig.suptitle("mnist: the class critic's reward over the run", x=0.01, ha="left", color=INK, fontsize=12)
+    fig.suptitle(f"mnist: the {critic} critic's reward over the run", x=0.01, ha="left", color=INK, fontsize=12)
     fig.tight_layout()
     fig.savefig(ROOT / "docs" / f"{args.out}.png")
     print("\n".join(lines))

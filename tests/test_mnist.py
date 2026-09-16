@@ -126,7 +126,47 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
         goo.use_input_stream(patterns, [1])
 
 
-@pytest.mark.parametrize("critic", ["class", "graded"])
+def test_the_evidence_critic_reads_the_class_sums_as_log_odds_at_a_temperature():
+    """§8, decision 4 (Byron, September 16, 2026: "the spikes are EVIDENCE"): q_k = exp(n_k / T) / sum, reward ln q_label.
+
+    Byron's example counts, [7 0 0 0 1 5 3 4 0 0], at the temperatures the
+    answer tabulated; chance ln 0.1 for any uniform count, silence included;
+    and the same function pays the Rust driver.
+    """
+    import math
+    from walnutbutter.learning import evidence_reward, evidence_score
+    goo = Goo(count=24, across=4, outputs=10, seed=3, weight=None)
+    goo.coding, goo.population, goo.read, goo.rule = "raw", 1, "count", "reinforce"
+    goo.use_input_stream([[True, False, True, False]], [0])
+    run_epoch(goo, verbose=False, rng=random.Random(1))
+    counts = [7, 0, 0, 0, 1, 5, 3, 4, 0, 0]
+    for neuron, c in zip(goo.output_row(), counts):
+        neuron.spikes_at_reset, neuron.spikes = 0, c
+    for temperature, label, want in ((1, 0, -0.19), (2, 0, -0.66), (3, 0, -1.02), (5, 0, -1.44), (3, 5, -1.68), (3, 1, -3.35),
+                                     (0.5, 4, -12.02), (20, 1, -2.41)):
+        goo.temperature, goo.input_label = temperature, label
+        assert evidence_score(goo) == pytest.approx(want, abs=0.005)
+    assert evidence_reward(counts, 0, 3.0) == pytest.approx(7 / 3 - math.log(sum(math.exp(c / 3) for c in counts)))
+    assert evidence_reward(counts, 0, 3.0) == evidence_score(goo) if goo.temperature == 3.0 else True
+    for neuron in goo.output_row():  # silence, or any even count, is the uniform estimate: chance, ln 0.1, at any temperature
+        neuron.spikes = 4
+    for temperature in (0.5, 2.0, 1e6):
+        goo.temperature = temperature
+        assert evidence_score(goo) == pytest.approx(math.log(0.1))
+    assert evidence_reward([1000, 0, 0], 0, 0.01) == pytest.approx(0.0, abs=1e-12)  # a huge lead: no overflow, and certainty
+    with pytest.raises(ValueError, match="positive temperature"):
+        evidence_reward(counts, 0, 0.0)
+    goo.input_label = None
+    with pytest.raises(ValueError, match="labels"):
+        evidence_score(goo)
+    from walnutbutter.learning import Teacher
+    with pytest.raises(ValueError, match="target is label"):
+        Teacher(goo, target="copy", critic="evidence", rule="reinforce")
+    from walnutbutter.problems import PROBLEMS
+    assert PROBLEMS["mnist"].critic == "evidence"
+
+
+@pytest.mark.parametrize("critic", ["class", "graded", "evidence"])
 def test_the_three_engines_agree_under_the_class_critic(critic):
     pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
@@ -148,10 +188,16 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
     rewards = []
     for _ in range(40):
         rewards.append([t.epoch(verbose=False) for t in teachers])
-        assert rewards[-1][0] == rewards[-1][1] and 0.0 <= rewards[-1][0] <= 1.0
+        assert rewards[-1][0] == rewards[-1][1]
+        assert (rewards[-1][0] <= 0.0) if critic == "evidence" else (0.0 <= rewards[-1][0] <= 1.0)
         assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
         assert net.input_label == mesh.input_label
-    assert any(r[0] == 1.0 for r in rewards) and any(r[0] == 0.0 for r in rewards)
+    if critic == "evidence":  # the log score: never a clean 0 or 1, but on both sides of a uniform estimate over forty epochs
+        import math
+        uniform = math.log(1 / (6 // 3))  # two classes of three outputs on this goo
+        assert any(r[0] > uniform for r in rewards) and any(r[0] < uniform for r in rewards)
+    else:
+        assert any(r[0] == 1.0 for r in rewards) and any(r[0] == 0.0 for r in rewards)
     if fast.available():
         g = make()
         teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
@@ -159,7 +205,11 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
         g = make()
         mean, trace, engine, report = fast.train(g, 60, target="label", critic=critic, patterns=patterns, labels=labels,
                                                  eligibility="hazard", seed=7, trace_every=0)
-        assert 0.0 <= mean <= 1.0 and g.input_at == 60  # the stream of 50 went round again
+        assert g.input_at == 60  # the stream of 50 went round again
+        if critic == "evidence":  # the log score, with the class critic's fraction right logged beside it
+            assert mean <= 0.0 and 0.0 <= report["accuracy_last_tenth"] <= 1.0
+        else:
+            assert 0.0 <= mean <= 1.0 and report["accuracy_last_tenth"] is None
 
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
@@ -171,7 +221,7 @@ def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 644, 50, 5)
     args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
     assert args.unstick == 0.01 and args.homeostasis == 0.0  # given on the command line, it is kept
-    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "graded", "complement", "count", "mnist")
+    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "evidence", "complement", "count", "mnist")
     assert not problem.permute and problem.trained and problem.rule == "reinforce"
     assert dataset_stream(None, 1) is None
     with pytest.raises(ValueError, match="no dataset"):

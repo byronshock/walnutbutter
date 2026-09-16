@@ -116,7 +116,7 @@ def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine():
 def test_compare_refuses_what_it_cannot_mirror():
     from walnutbutter.learning import Teacher
     grid = mesh(rows=2, seed=1)
-    with pytest.raises(ValueError, match="row, class or graded critic"):
+    with pytest.raises(ValueError, match="row, class, graded or evidence critic"):
         fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", late="ignore", homeostasis=0.0, unstick=0.0))
 
 

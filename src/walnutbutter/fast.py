@@ -109,14 +109,17 @@ def _outputs_on(engine, grid, out) -> list[bool]:
 
 
 def _reward(engine, grid, out, critic, want_of) -> float:
-    """The epoch's reward from the engine's arrays: the row critic against the target, or the class critic (§8)."""
-    if critic in ("class", "graded"):
+    """The epoch's reward from the engine's arrays: the row critic against the target, or a label critic (§8)."""
+    if critic in ("class", "graded", "evidence"):
         counts = engine.epoch_spike_counts()
         pop = grid.population
         groups = [sum(counts[i] for i in out[c * pop:(c + 1) * pop]) for c in range(len(out) // pop)]
         label = grid.input_label
         if label is None:
             raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")
+        if critic == "evidence":
+            from .learning import evidence_reward  # the one function every engine pays it through
+            return evidence_reward(groups, label, grid.temperature)
         others = [g for c, g in enumerate(groups) if c != label]
         if critic == "class":
             return 1.0 if all(groups[label] > g for g in others) else 0.0
@@ -189,8 +192,8 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
 
     sigma = teacher.sigma if teacher is not None else 0.0
     if teacher is not None:
-        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded") or teacher.late != "count" or teacher.leaky:
-            raise ValueError("compare mirrors the reinforce rule with the row, class or graded critic, late = count and no trace only")
+        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence") or teacher.late != "count" or teacher.leaky:
+            raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic, late = count and no trace only")
         if teacher.grid is not grid:
             raise ValueError("the teacher must be teaching this grid")
     engine, neurons, index = build(
@@ -316,9 +319,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     stream. The row critic and late = count only.
 
     `critic` is row (the fraction of outputs matching the target), class (§8: the
-    label's group of outputs out-spikes every other group, or nothing) or graded (the
-    fraction of the other groups it out-spikes); the last two need `labels` beside
-    `patterns`, one per pattern, as `mnist.stream` gives them.
+    label's group of outputs out-spikes every other group, or nothing), graded (the
+    fraction of the other groups it out-spikes) or evidence (the group sums as
+    log-odds at `grid.temperature`, paid the softmax cross-entropy); the label critics
+    need `labels` beside `patterns`, one per pattern, as `mnist.stream` gives them.
+    Under the evidence critic the report also carries the class critic's fraction
+    over the last tenth, `accuracy_last_tenth`, so a fraction right stays readable.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -343,8 +349,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     sigma = sigma if eligibility == "perturb" else 0.0
     explore_rng = random.Random(seed) if (sigma > 0.0 or grid.hazard) else None  # the hazard's draws come from it too
 
-    if critic not in ("row", "class", "graded"):
-        raise ValueError(f"the Rust loop is paid by the row, class or graded critic, got {critic!r}")
+    if critic not in ("row", "class", "graded", "evidence"):
+        raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")
     if patterns is not None:
         grid.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
 
@@ -362,7 +368,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
                        unstick_target=unstick_target)
 
     baseline = None
-    total = tail = 0.0
+    total = tail = hits = 0.0
     tenth = max(1, epochs // 10)
     trace = []
     for epoch in range(epochs):
@@ -391,9 +397,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         total += reward
         if epoch >= epochs - tenth:
             tail += reward
+            if critic == "evidence":  # the fraction right beside the log score: did the label's class win outright?
+                hits += _reward(engine, grid, out, "class", want_of)
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
-              "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck}
+              "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
+              "accuracy_last_tenth": hits / tenth if critic == "evidence" else None}
     return total / epochs, trace, engine, report

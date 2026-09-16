@@ -173,6 +173,10 @@ WEIGHT_DECAY = 1e-4  # every weight moves toward 0 by this fraction each epoch: 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the top row should show, derived from the input row (learning.TARGETS)
 CRITIC = "row"  # how the reward is judged (learning.CRITICS)
+TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron, September 16, 2026: "the spikes are EVIDENCE"):
+# the class sums are read as log-odds at this scale, q_k = exp(n_k / T) / sum_j exp(n_j / T), and the reward is ln q_y; a lead of
+# T spikes makes a class e times as likely. 0 would be the class critic, infinity a flat ln 0.1. Set at the middle of the first
+# sweep, {1, 2, 4}; "We will have to sweep for temperature eventually"
 ELIGIBILITY = "perturb"  # what the global reward acts on when the threshold decides (learning.ELIGIBILITIES): the
 # pre-alpha's. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA > 0,
 # §5.2) unless told otherwise -- the eligibility every measurement at 0.455 was made with; additive noise on top of the

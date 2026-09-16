@@ -14,7 +14,7 @@ import random
 from typing import Iterable
 
 from .constants import (
-    EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
+    EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE, QUASH_K, QUASH_RATE,
     RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
 )
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
@@ -86,6 +86,7 @@ class Network:
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
+        self.temperature = TEMPERATURE  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
         self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
         # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
         self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked

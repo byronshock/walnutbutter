@@ -166,6 +166,39 @@ def graded_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
     return sum(1 for g in others if mine > g) / len(others)
 
 
+def evidence_reward(groups: Sequence[int], label: int, temperature: float) -> float:
+    """The evidence critic's reward from the class sums (§8): ln q_y, with q_k = exp(n_k / T) / sum_j exp(n_j / T).
+
+    Computed from the largest sum, so the exponentials cannot overflow at
+    any temperature; every engine pays the reward through this one function,
+    so they agree to the bit.
+    """
+    if temperature <= 0.0:
+        raise ValueError(f"the evidence critic needs a positive temperature, got {temperature}")
+    top = max(groups)
+    return (groups[label] - top) / temperature - math.log(sum(math.exp((g - top) / temperature) for g in groups))
+
+
+def evidence_score(grid: GridOfNeurons, target: str = "label") -> float:
+    """The evidence critic (§8, mnist; Byron, September 16, 2026: "the spikes are EVIDENCE for now, not a proper
+    maximum-likelihood estimator. We will have to sweep for temperature eventually").
+
+    The class sums as the class critic takes them, read as log-odds at the
+    network's `temperature` (TEMPERATURE, §1.3): the estimate is the softmax
+    of the sums over T and the reward is the log of the estimate the label
+    was given -- the softmax cross-entropy of Bridle (1990) and Bishop (1995,
+    §6.9). Chance, a uniform estimate, is ln 0.1 = -2.30; a perfect epoch is
+    0; a silent label population is weak evidence, not -infinity. T -> 0 is
+    the class critic in log form, T -> infinity pays ln 0.1 whatever the counts.
+    """
+    if grid.input_label is None:
+        raise ValueError("the evidence critic needs a stream that carries labels (a dataset, §8)")
+    counts = grid.output_counts()
+    pop = grid.population
+    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    return evidence_reward(groups, grid.input_label, grid.temperature)
+
+
 def output_fired(grid: GridOfNeurons) -> list[bool]:
     """Whether each output neuron is on, left to right, whichever engine runs the grid (see Network.output_fired)."""
     return grid.output_fired()
@@ -364,6 +397,7 @@ CRITICS = {
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
     "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
     "graded": graded_accuracy,  # the fraction of the other groups the label's group out-spikes (§8)
+    "evidence": evidence_score,  # the group sums as evidence at a temperature: the softmax cross-entropy ln q_label (§8)
 }
 
 
@@ -615,9 +649,9 @@ class Teacher:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
             raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic not in ("row", "population", "class", "graded") and target not in ("reversed", "copy"):
+        if critic not in ("row", "population", "class", "graded", "evidence") and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
-        if critic in ("class", "graded") and target != "label":
+        if critic in ("class", "graded", "evidence") and target != "label":
             raise ValueError(f"the {critic} critic scores a dataset's label (§8): its target is label")
         self.critic = critic
         if late not in LATE_RULES:

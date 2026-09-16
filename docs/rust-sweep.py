@@ -56,6 +56,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
     "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
+    "temperature": "--temperature",  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
     "projection": "--projection",  # the probability of goo's three earlier wirings, under --wiring (§3.4)
     "scaling_factor": "--scaling-factor",  # goo's scaled rule: every neuron hears N times this in expectation (§3.4)
     "seed": "--seed",
@@ -134,6 +135,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
                              threshold=args.threshold, minimum_potential=args.minimum_potential)
     grid.coding, grid.population, grid.clock = args.coding, args.population, args.clock
+    grid.temperature = args.temperature  # the evidence critic's (§8)
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.teacher_threshold = args.teacher_threshold  # the count read's line (§4.3)
     grid.interval, grid.drive = args.interval, args.drive
@@ -189,6 +191,8 @@ def run_arm(job: tuple) -> dict:
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knob
               "scaling_factor": getattr(grid, "scaling_factor", None),
+              "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
+              "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result

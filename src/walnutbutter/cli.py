@@ -20,7 +20,7 @@ from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
+    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
@@ -515,7 +515,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"how the reward is judged: row (fraction of output neurons matching the target), sustained (of the "
         f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), decoded "
         f"(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
-        f"(all data bits right or nothing). Default: {CRITIC}, or the problem's",
+        f"(all data bits right or nothing); class, graded and evidence score a dataset's label (§8): class pays 1 when the "
+        f"label's group of outputs out-spikes every other, graded the fraction of the other groups it out-spikes, and "
+        f"evidence reads the group sums as log-odds at --temperature and pays the softmax cross-entropy ln q_label, "
+        f"chance ln 0.1. Default: {CRITIC}, or the problem's",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=TEMPERATURE,
+        metavar="T",
+        help=f"the evidence critic's temperature (AUTHORITY.md §8): a lead of T spikes makes a class e times as likely; "
+        f"T -> 0 is the class critic, T -> infinity pays every epoch ln 0.1 (default: {TEMPERATURE:g})",
     )
     parser.add_argument(
         "--lr",
@@ -973,6 +984,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.explore, grid.rate_on = args.explore, args.rate_on
             grid.teacher_threshold = args.teacher_threshold
             grid.population = args.population
+            grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
             if args.data is not None:
                 patterns, labels = dataset_stream(args.data, args.input_seed if args.input_seed is not None else seed)
@@ -1263,6 +1275,8 @@ def _seed_worker(job: dict) -> dict:
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
     grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
+    grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
+    grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job.get("data") is not None:
         grid.use_input_stream(*dataset_stream(job["data"], job["input_seed"] if job.get("input_seed") is not None else seed))
@@ -1360,6 +1374,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "teacher_threshold": args.teacher_threshold, "delta": args.delta,
+                     "population": args.population, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":

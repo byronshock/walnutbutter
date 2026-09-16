@@ -67,7 +67,8 @@ def main() -> None:
 
     eligibility = one.get("eligibility", "hebb")  # what the arms ran (§6.7); the driver records it since September 14, 2026
     problem = one.get("problem", "copy")  # and the problem, since September 15; before that every goo sweep was copy
-    chance = 0.1 if one.get("critic") == "class" else 0.5  # the class critic pays a tenth by luck, the row critic a half
+    # chance by critic: the class critic pays a tenth by luck, the evidence critic ln 0.1, the row and graded critics a half
+    chance = {"class": 0.1, "evidence": math.log(0.1)}.get(one.get("critic"), 0.5)
     lines = [
         f"# Sweep {args.name} ({date.today().strftime('%B %-d, %Y')})",
         "",

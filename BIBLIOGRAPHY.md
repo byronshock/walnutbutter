@@ -75,3 +75,16 @@ they bear on the code. Each entry says what it contributes here.
   weight perturbation, node perturbation and backpropagation: why node
   perturbation's variance grows with the number of neurons, which is what
   the 14-column runs felt.
+- Bridle, J. S. (1990). Probabilistic interpretation of feedforward
+  classification network outputs, with relationships to statistical pattern
+  recognition. In F. Fogelman Soulié & J. Hérault (Eds.), *Neurocomputing:
+  Algorithms, Architectures and Applications* (NATO ASI Series F, Vol. 68,
+  pp. 227-236). Springer. Names the softmax and pairs it with the
+  log-likelihood of the true class: the evidence critic of §8 is this
+  reading of the class sums at a temperature.
+- Bishop, C. M. (1995). *Neural Networks for Pattern Recognition*. Oxford
+  University Press. §6.9, cross-entropy for multiple classes: the gradient
+  of the softmax cross-entropy with respect to its inputs is q_k - t_k,
+  which is the evidence critic's push of (1 - q_y)/T on the label's
+  population and cost of q_k/T on every other; and the softmax as a smooth
+  winner-take-all, the class critic being its T -> 0 limit.
