@@ -3713,3 +3713,78 @@ the layout, the inputs, and whether anything outside the network trains it.
   are idle: nothing is learned in either economy, so there is nothing for
   them to add to. The benchmark is to be rerun the day something learns,
   and `hidden_neurons` is in place for it.
+
+  **Decision 5 — the outputs apart, and the feedforward benchmark (Byron,
+  September 16, 2026, 03:05 MDT).** *"I would like the outputs kept apart
+  from one another again. With hidden=0 we have no cycles, eliminate
+  interference from other output neurons, a two-layer feedforward network.
+  Please do a comparable sweep to the one you just did with no_hidden so we
+  can narrow down the source of unlearning."* The rule is amended in §3.4:
+  an output projects onto the hidden alone, so the no-hidden goo of 445 is
+  the 395 inputs projecting onto the 50 outputs and nothing else — each
+  output hears 22 or 23 inputs at 0.056, the inputs hear nothing and sit at
+  the container's own threshold (§5.2, resolved for this), and there is no
+  cycle anywhere. The two sweeps above ran under the open rule (`scaled-open`)
+  and stand. Chance for the feedforward network with learning off (seed 1,
+  500 epochs; `runs/mnist-evidence-ff-chance.json`), against which the
+  benchmark is read:
+
+  | $T$ | 1 | 2 | 4 |
+  |---|---|---|---|
+  | learning-off reward | −5.51 | −3.40 | −2.63 |
+  | its spread, an epoch | 3.65 | 1.77 | 0.86 |
+  | class critic, fraction right | 0.06 | 0.06 | 0.06 |
+
+  *The benchmark (launched 03:17 MDT; its arms died at the record step on a
+  driver slip of the hour and ran again from 03:21):* the same fifteen arms — $T$ {1, 2,
+  4} × LR {0.001, 0.003, 0.006, 0.01, 0.03}, seed 1, 10,000 epochs,
+  threshold 0.6, floor −2.4, $\Delta$ 0.455 — on the feedforward goo of
+  445 (`runs/mnist-evidence-ff`), 61 epochs a second an arm alone. What it
+  can narrow down: with no cycle, no lateral interference among the outputs
+  and no hidden neuron, whatever the reward does is the estimator acting on
+  the 1,152 input-to-output synapses alone, the linear classifier's own
+  weights, which §8 above says carry 80 to 87% if found.
+
+  *Landed 03:25 MDT, three and a half minutes on fifteen workers
+  (`docs/mnist-evidence-ff.md`, `mnist-evidence-ff-score.png`).* Last tenth,
+  with the two open-rule sweeps in parentheses (no hidden; 199 hidden):
+
+  | $T$ \ LR | 0.001 | 0.003 | 0.006 | 0.01 | 0.03 | learning off |
+  |---|---|---|---|---|---|---|
+  | 1 | −4.24 (−4.26; −3.94) | −4.14 (−4.01; −4.06) | −3.75 (−3.62; −3.65) | −3.60 (−3.34; −3.38) | −2.55 (−2.62; −2.98) | −5.51 |
+  | 2 | −3.02 (−2.89; −2.76) | −2.97 (−2.88; −2.83) | −2.80 (−2.80; −2.83) | −2.76 (−2.72; −2.75) | −2.48 (−2.67; −2.62) | −3.40 |
+  | 4 | −2.54 (−2.58; −2.47) | −2.53 (−2.50; −2.43) | −2.49 (−2.46; −2.46) | −2.49 (−2.41; −2.41) | −2.40 (−2.44; −2.42) | −2.63 |
+
+  The fraction right is 0.06 to 0.09 in every cell against a learning-off
+  0.06; the output zone's rate memory falls with the learning rate from
+  0.92 to 0.07 at $T$ = 1, and the last epoch's class sums go from twelve
+  to eighteen a class at LR 0.001 — the rest, even across the ten — to one
+  or none at LR 0.03. **The same picture a third time, on a network with no
+  cycle, no lateral projection and no hidden neuron: the source of
+  unlearning is not the wiring but the estimator and its critic on a single
+  layer of synapses.** Two measurements on that layer, learning off
+  (`docs/mnist-evidence-gradient.py`):
+
+  *The gradient check.* Every epoch's hazard scores, weighted by the
+  advantage under three critics computed from the same counts, accumulate
+  to an estimated gradient per synapse; beside it the supervised direction
+  of a pixel-to-class weight, $P(\text{pixel on} \mid \text{class}) -
+  P(\text{pixel on})$. After 2,000 epochs at $T$ = 2 the estimate points
+  the supervised way on 0.547 of the synapses under the evidence
+  critic, 0.521 under the plain probability and 0.511 under the class
+  critic (chance 0.5; correlations +0.067, +0.044, +0.054), and more than
+  half of its size is a per-output mean push the label cannot see. The
+  discriminative signal is there and it is the small term; the weights walk
+  under the large one while a run accumulates it.
+
+  *The input code the outputs receive.* An on-pixel input fires 3.5 spikes
+  an epoch and an off-pixel input 1.75, each with a spread of a spike: the
+  off pixel is not silent but at the hazard's rest, escape noise applying to
+  every neuron at the same width (§5.2), the clocks firing 3.5 like an on
+  pixel. Each of an output's 22 synapses carries a pixel signal of 1.8
+  spikes on a rest of 1.8, and a synapse from an off pixel earns
+  eligibility as if its pixel were half on. Whether a driven input should
+  carry the hazard's rest at all is a rule about the neuron, and Byron's to
+  call; the plain probability against the log score is the other open
+  choice, and the gradient check puts them within a few hundredths of each
+  other on this layer.
