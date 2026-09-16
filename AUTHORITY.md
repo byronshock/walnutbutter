@@ -3314,4 +3314,34 @@ the layout, the inputs, and whether anything outside the network trains it.
   decisions on it, the same evening:* un-sticking and homeostasis off for
   this task; five outputs a class; and a sweep of GOO_THRESHOLD in
   $\{0.45, 0.55, 0.6, 0.65, 0.7, 0.8\}$, five seeds, 25,000 epochs, at
-  $P = 0.05$ with the floor at the grid's ratio of $-4$ — results below.
+  $P = 0.05$ with the floor at the grid's ratio of $-4$.
+
+  *Measured (launched 18:31 MDT, landed 20:02; `docs/mnist-threshold.md`,
+  `mnist-threshold-score.png`).* Thirty arms on thirty workers of sixteen
+  cores, five epochs a second each, 86 minutes an arm; no un-sticking
+  fired, as asked. Last tenth over five seeds:
+
+  | GOO_THRESHOLD | 0.45 | 0.55 | 0.6 | 0.65 | 0.7 | 0.8 |
+  |---|---|---|---|---|---|---|
+  | last tenth | 0.100 | 0.089 | 0.090 | 0.100 | 0.097 | 0.097 |
+  | worst seed | 0.090 | 0.078 | 0.081 | 0.092 | 0.090 | 0.088 |
+  | whole run | 0.094 | 0.090 | 0.094 | 0.098 | 0.093 | 0.093 |
+  | neurons firing in over 99% of epochs | 27% | 28% | 27% | 26% | 26% | 25% |
+
+  **Chance at every level, flat from the first window to the last**, the
+  2,500-epoch windows wandering 0.02–0.20 around a tenth with no trend at
+  any threshold, and the seed sd 0.006–0.009 leaves nothing between the
+  levels. The threshold was the wrong lever, as the fan-in was: it took the
+  network off the ceiling — the diagnosis above stands — and the reward did
+  not move. A quarter of the neurons fire in nearly every epoch at every
+  level, which is not the drive but the hazard's rest: at $\Delta = 0.455$
+  a neuron at rest fires 2.3 times an epoch, so an output fires whether or
+  not anything drives it, a class of five sums to about eleven spikes of
+  its own noise with a spread of three or four, and the label's five must
+  out-spike the loudest of nine such sums to be paid at all. What learning
+  has to build is a lift of five spikes on the label's group, every epoch,
+  out of a reward that is 1 on one epoch in ten and 0 on the rest, and in
+  25,000 epochs at this width it built none of it. The reading, for Byron:
+  the floor of noise under the class sums is the hazard's resting rate, and
+  only $\Delta$ lowers it; and a reward with no gradation pays the same
+  nothing for a near miss as for silence.

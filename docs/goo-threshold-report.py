@@ -66,16 +66,18 @@ def main() -> None:
         return [levels[level][s]["last_tenth"] for s in seeds]
 
     eligibility = one.get("eligibility", "hebb")  # what the arms ran (§6.7); the driver records it since September 14, 2026
+    problem = one.get("problem", "copy")  # and the problem, since September 15; before that every goo sweep was copy
+    chance = 0.1 if one.get("critic") == "class" else 0.5  # the class critic pays a tenth by luck, the row critic a half
     lines = [
         f"# Sweep {args.name} ({date.today().strftime('%B %-d, %Y')})",
         "",
-        f"{args.knob.upper()} against {len(seeds)} seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce "
+        f"{args.knob.upper()} against {len(seeds)} seeds of goo (AUTHORITY.md §3.4), the {problem} problem (§8), the reinforce "
         f"rule with the {eligibility} eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's "
         f"constants, everything else at the defaults in `constants.py`. {one['container']}. Every level at seed *s* "
         f"is given the same input stream (§4.5), so levels pair epoch by epoch. About {epochs_per_second:,.0f} epochs "
         f"a second an arm.",
         "",
-        f"Driver: `docs/rust-sweep.py --name {args.name} --problem copy --goo {DEFAULT_COUNT} --eligibility {eligibility} "
+        f"Driver: `docs/rust-sweep.py --name {args.name} --problem {problem} --goo ... --eligibility {eligibility} "
         f"--{args.knob.replace('_', '-')} ... "
         f"--seed 1 ... {max(seeds)} --epochs N`; report: `docs/goo-threshold-report.py --name {args.name} --knob "
         f"{args.knob}`; figure: `{args.name}-score.png`. Every arm's trace and summary is under `runs/{args.name}/` "
@@ -119,11 +121,11 @@ def main() -> None:
     lines.append(f"Best level: {args.knob} {best_level:g}, {best:.4f} over the last tenth, averaged over {len(seeds)} seeds.")
     lines.append("")
     (ROOT / "docs" / f"{args.name}.md").write_text("\n".join(lines) + "\n")
-    plot(args, levels, seeds, scale, default, eligibility)
+    plot(args, levels, seeds, scale, default, eligibility, chance)
     print("\n".join(lines))
 
 
-def plot(args, levels, seeds, scale, default, eligibility: str = "hebb") -> None:
+def plot(args, levels, seeds, scale, default, eligibility: str = "hebb", chance: float = 0.5) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -138,8 +140,8 @@ def plot(args, levels, seeds, scale, default, eligibility: str = "hebb") -> None
     ax.set_facecolor(SURFACE)
     ax.fill_between(xs, lo, hi, color=BLUE, alpha=0.13, linewidth=0)
     ax.plot(xs, mean, color=BLUE, linewidth=1.8, marker="o", markersize=3.5, label=f"mean over {len(seeds)} seeds; band is the range")
-    ax.axhline(0.5, color=INK2, linewidth=0.9, linestyle=(0, (4, 3)))
-    ax.annotate("chance", (0.995, 0.5), xycoords=("axes fraction", "data"), ha="right", va="bottom", color=INK2, fontsize=7)
+    ax.axhline(chance, color=INK2, linewidth=0.9, linestyle=(0, (4, 3)))
+    ax.annotate("chance", (0.995, chance), xycoords=("axes fraction", "data"), ha="right", va="bottom", color=INK2, fontsize=7)
     if default is not None and default in levels:
         ax.axvline(default, color=INK2, linewidth=0.8, linestyle=(0, (2, 3)))
         ax.annotate("default", (default, 1.0), xycoords=("data", "axes fraction"), ha="left", va="top", color=INK2, fontsize=7,
