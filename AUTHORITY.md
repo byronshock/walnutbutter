@@ -3495,3 +3495,16 @@ the layout, the inputs, and whether anything outside the network trains it.
   0.0501 — and an output now hears the inputs directly and the other
   outputs, which under the zone rule it never did. Nothing in the tables
   above ran under it; what runs next will.
+
+  *A reference for the representation (Byron, 01:40 MDT: "How do YOU do on
+  this task on the first thousand exemplars?").* Claude read the first
+  thousand of the seed-1 stream as the network sees them — 14 × 14 bits,
+  a hundred to an unlabelled sheet — and wrote every guess before a label
+  was looked at (`docs/mnist-by-eye.md`, the guesses included;
+  `docs/mnist-glyphs.png` shows ten of each class): **917 of 1,000**, against
+  936 for a 1-nearest-neighbour memoriser of the other 59,000 on the same
+  bits, 929 for 5-NN and 774 for the nearest class centroid. The errors are
+  thin digits the half-of-full threshold cuts to slivers (9 → 4, 8 → 1,
+  7 → 9), one glyph blank after binarisation, and about ten of transcription.
+  So the bits carry the digit to about 93%; nothing the network has
+  produced on them is limited by the representation.
