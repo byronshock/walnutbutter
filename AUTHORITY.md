@@ -3775,7 +3775,12 @@ the layout, the inputs, and whether anything outside the network trains it.
   critic (chance 0.5; correlations +0.067, +0.044, +0.054), and more than
   half of its size is a per-output mean push the label cannot see. The
   discriminative signal is there and it is the small term; the weights walk
-  under the large one while a run accumulates it.
+  under the large one while a run accumulates it. Over 10,000
+  epochs the correlations grow to +0.19, +0.17 and +0.11, about as the square
+  root of the epochs — a real signal accumulating under noise — while the
+  sign agreements stay at 0.555, 0.543 and 0.547, the per-output push
+  deciding most signs still (0.73 of the estimate's size under the evidence
+  critic, and by then a push toward quiet, the drift the sweeps show).
 
   *The input code the outputs receive.* An on-pixel input fires 3.5 spikes
   an epoch and an off-pixel input 1.75, each with a spread of a spike: the
