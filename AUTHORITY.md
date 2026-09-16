@@ -3847,3 +3847,24 @@ the layout, the inputs, and whether anything outside the network trains it.
   would take twenty times the epochs. The learning rate scales the two
   alike, so it is not the lever for the ratio; the epochs and the noise
   are.
+
+  *Watching one arm on (Byron, 04:45 MDT: "Which hazard checkpoint from
+  your report just now should we resume from? I'd like to watch what
+  happens, with the cumulative correlation reported every 1000 epochs in
+  the terminal, until I stop the process.")* There is no checkpoint: the
+  Rust driver records an arm's traces and never saved its network, which
+  §7's "the network keeps living" should have had it do. A seed reruns bit
+  for bit, so `docs/mnist-watch.py` rebuilds an arm as the sweep built it
+  and runs it from epoch 1 without end, its line every thousand epochs —
+  the reward, the fraction right, the cumulative correlation and sign
+  agreement, the window's correlation, the outputs' spikes a neuron — and
+  by 25,000 it is the sweep's arm to the bit (its first line equals the
+  record's) and then goes on; it saves a checkpoint of weights and
+  thresholds every five thousand epochs and at Ctrl-C, under `runs/watch/`,
+  which restores those weights but not the stream's position, the
+  exploration stream's state or the baseline, so a run from it is a
+  continuation, not the same run. The seed to watch is 4, whose correlation
+  ended highest at +0.180 (seed 1 next at +0.167, and highest at 10,000).
+  Saving every arm's network at the end of a sweep is the driver's next
+  duty. *And an issue opened the same minute, for later (#14): "Add
+  neurons to an existing network with --request_more_goo N."*
