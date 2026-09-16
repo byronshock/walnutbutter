@@ -3819,4 +3819,31 @@ the layout, the inputs, and whether anything outside the network trains it.
   its hazard arm at 0.001 is a replicate; 0.03, the constant, empties the
   output zone in a few thousand epochs. *Sweep 2* is LR {0.0005, 0.001,
   0.002, 0.005} under the hazard eligibility. Run one after the other, as
-  asked.
+  asked, from 04:28 MDT (`runs/mnist-ff-two-sweeps.sh`; sweep 1 on twenty
+  workers, sweep 2's forty arms after it).
+
+  *Sweep 1 landed 04:39 MDT (`docs/mnist-ff-eligibility-estimator.md`,
+  `mnist-ff-eligibility-estimator.png`).* Ten seeds each; the cumulative
+  correlation of the weight change with $d$, mean over seeds:
+
+  | epochs | 1,000 | 5,000 | 10,000 | 15,000 | 20,000 | 25,000 |
+  |---|---|---|---|---|---|---|
+  | hazard | +0.007 | +0.042 | +0.065 | +0.077 | +0.094 | +0.109 ± 0.045 |
+  | hebb | −0.013 | −0.001 | +0.009 | +0.008 | +0.012 | +0.012 ± 0.026 |
+
+  **Under the hazard eligibility the estimator is aligned with the
+  supervised direction and accumulates, about as the square root of the
+  epochs; under hebb it is not aligned at all** — its window correlation
+  over the last quarter is +0.001 against the hazard's +0.014, and its
+  final correlation is within a standard deviation of zero. Neither has
+  moved the read: reward −2.82 (hazard) and −2.88 (hebb) against a chance
+  of −3.40, the fraction right 0.074 for both against 0.06, the output zone
+  at its rest throughout (rate memory 0.93 and 0.96, about three spikes a
+  neuron in the last epoch) — at LR 0.001 the twenty-five thousand epochs
+  do not quiet it. The sign agreement sits at 0.43 for both, under a half:
+  the label-blind push decides most signs and leans against $d$'s. What
+  the square-root growth says: the hazard's signal accumulates linearly
+  and its noise as the root, and at this ratio a correlation of a half
+  would take twenty times the epochs. The learning rate scales the two
+  alike, so it is not the lever for the ratio; the epochs and the noise
+  are.
