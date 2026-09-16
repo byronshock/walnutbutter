@@ -196,7 +196,7 @@ def run_arm(job: tuple) -> dict:
     else:
         patterns, labels = data
     started = time.perf_counter()
-    mean, trace, _, report = fast.train(
+    mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
         eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
