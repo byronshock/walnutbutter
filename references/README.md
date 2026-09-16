@@ -5,6 +5,9 @@ contributing scholar's university), can you please download it and place it in t
 Fetched from the sources named, checked to be PDFs, and hashed; nothing from a publisher's paywall or a
 pirate mirror. A preprint is marked as one.
 
+The PDFs are not tracked in git (Byron, September 16, 2026: "please untrack the references
+folder"): only this list is. A fresh clone fetches them from the sources below.
+
 | file | entry | source | note | fetched | SHA-256 |
 |---|---|---|---|---|---|
 | `Williams92.pdf` | Williams (1992), Machine Learning 8(3-4), 229-256 | in the folder before this list (September 14, 2026) | Springer; the journal's own free copy | September 14, 2026 | `f033dd17e83c246e…` |
