@@ -157,6 +157,22 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     return grid, args
 
 
+def _save_network(engine, grid, report: dict, path) -> None:
+    """The arm's network at the end of the run: the engine's weights and thresholds written back to the mesh and checkpointed.
+
+    A run restored from it continues with those weights (the CLI's --load-weights, or
+    docs/mnist-watch.py); it is not a resume to the bit, since the stream's position,
+    the exploration stream's state and the baseline are not in a checkpoint.
+    """
+    from walnutbutter.persistence import checkpoint
+    edges = [c for n in grid.all_neurons() for c in n.outgoing]  # the engine's order (fast.build)
+    for c, w in zip(edges, engine.weights()):
+        c.weight = w
+    for n, theta in zip(grid.all_neurons(), report["thresholds"]):
+        n.threshold = theta
+    checkpoint(grid, path)
+
+
 def _rate_by_zone(grid, rates: list[float]) -> dict:
     """The final rate memories averaged over the input zone, the interior and the output zone (goo), or the whole grid."""
     import statistics as st
@@ -214,6 +230,7 @@ def run_arm(job: tuple) -> dict:
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
     )
     elapsed = time.perf_counter() - started
+    _save_network(engine, grid, report, path.with_name(path.stem + "-network.json"))  # so an arm can be resumed, not rerun
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["epoch", "score"])
