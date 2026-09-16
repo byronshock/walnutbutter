@@ -3566,3 +3566,69 @@ the layout, the inputs, and whether anything outside the network trains it.
   or off at either threshold in 300 epochs. The sweep therefore runs at
   threshold 0.6 with the floor at −2.4, $\Delta$ 0.455, as the $\Delta$
   sweep did.
+
+  *The first temperature sweep (launched 02:07 MDT, September 16, 2026):*
+  $T$ {1, 2, 4} × LR {0.001, 0.003, 0.006, 0.01, 0.03}, seed 1, 10,000
+  epochs, threshold 0.6, floor −2.4, $\Delta$ 0.455, fifteen arms on
+  fifteen workers (`runs/mnist-evidence`). Chance for each temperature,
+  measured with learning off (seed 1, 500 epochs, the same network;
+  `runs/mnist-evidence-chance.json`), against which each arm is read:
+
+  | $T$ | 1 | 2 | 4 |
+  |---|---|---|---|
+  | learning-off reward | −5.60 | −3.39 | −2.60 |
+  | its spread, an epoch | 3.24 | 1.58 | 0.78 |
+  | class critic, fraction right | 0.06 | 0.06 | 0.06 |
+
+  Both the reward's spread and the push per spike go as $1/T$, so the
+  temperature and the learning rate are confounded through the size of the
+  step, LR × advantage; what $T$ alone sets is which epochs carry the
+  weight — at $T = 1$ a lead of one spike is already odds of $e$, at 4 it
+  takes four.
+
+  *Landed 02:26 MDT, nineteen minutes on fifteen workers (`docs/mnist-evidence.md`,
+  `mnist-evidence-score.png`).* Reward over the last tenth, with each
+  temperature's learning-off level beside it, and the class critic's
+  fraction right over the same tenth (chance 0.06 with learning off):
+
+  | $T$ \ LR | 0.001 | 0.003 | 0.006 | 0.01 | 0.03 | learning off |
+  |---|---|---|---|---|---|---|
+  | 1 | −3.94 | −4.06 | −3.65 | −3.38 | −2.98 | −5.60 |
+  | 2 | −2.76 | −2.83 | −2.83 | −2.75 | −2.62 | −3.39 |
+  | 4 | −2.47 | −2.43 | −2.46 | −2.41 | −2.42 | −2.60 |
+  | right, $T$ = 1 | 0.09 | 0.09 | 0.07 | 0.08 | 0.06 | 0.06 |
+  | right, $T$ = 2 | 0.07 | 0.07 | 0.08 | 0.09 | 0.08 | 0.06 |
+  | right, $T$ = 4 | 0.07 | 0.09 | 0.08 | 0.08 | 0.07 | 0.06 |
+
+  **Every arm ends above its chance and none classifies.** A probe of four
+  arms every epoch over their first 2,500 (`docs/mnist-evidence-diag.py`)
+  says what the reward's rise is: the class critic's fraction right is at
+  chance in every window of a hundred epochs of every arm from the first,
+  no output ever reaches the refractory ceiling, and the reward climbs as
+  the spread of the ten class sums falls — from 3.1 to 2.3 at $T$ = 1, LR
+  0.001 with the counts held at three spikes a neuron, and from 3.7 to 1.5
+  at $T$ = 1, LR 0.03, where the outputs and the interior go quiet, 2.2 to
+  0.6 spikes a neuron, the $\Delta$ sweep's drift toward silence again.
+  The traces' early single-epoch samples near −1 are the log score's skew
+  at $T$ = 1, not learning: a label near the top by luck scores near −1,
+  one far below scores −8 to −15. So the estimator is following the log
+  score's own gradient: for a label-blind network $E[\ln q_y]$ rises
+  whenever the noise in $q$ falls, by Jensen, and the network has two
+  cheap ways to lower it, evening the populations out and quieting, both of
+  which it finds; the digit's gradient is the small term beside that
+  systematic one, and $\ln q_y$ approaches the uniform estimate's −2.30
+  without the label's class winning any more often. The "stuck on" column
+  of the sweep is not the ceiling but a spike in every epoch, which three
+  spikes an epoch at rest gives to much of the network over ten thousand
+  epochs.
+
+  *The decoy gradient is the log's, not the reading's.* Under the plain
+  probability at the same temperature, $r = q_y$, a label-blind network's
+  expected reward is exactly a tenth whatever the noise — the label is
+  drawn independently of the counts, so $E[q_y] = \tfrac{1}{10}\sum_k
+  E[q_k] = \tfrac{1}{10}$ — and its only gradient is the discriminative
+  one, $(1 - q_y)\,q_y / T$ per spike on the label's population and
+  $-q_y q_k / T$ on class $k$, largest where the label's class is already
+  near the top. The Brier score keeps a variance term and so the same
+  decoy. Whether the score should be the probability rather than its log is
+  Byron's to call; the evidence reading stands either way.

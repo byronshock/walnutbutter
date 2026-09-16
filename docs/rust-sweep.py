@@ -147,6 +147,24 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     return grid, args
 
 
+def _rate_by_zone(grid, rates: list[float]) -> dict:
+    """The final rate memories averaged over the input zone, the interior and the output zone (goo), or the whole grid."""
+    import statistics as st
+    if hasattr(grid, "across") and hasattr(grid, "outputs") and hasattr(grid, "count"):
+        i, o = grid.across, grid.outputs
+        return {"inputs": st.mean(rates[:i]), "interior": st.mean(rates[i:len(rates) - o]) if len(rates) > i + o else None,
+                "outputs": st.mean(rates[len(rates) - o:])}
+    return {"all": st.mean(rates)}
+
+
+def _output_counts(grid) -> list[int]:
+    """The output row's spike counts in the last epoch, as the network holds them after the run."""
+    try:
+        return list(grid.output_counts())
+    except Exception:  # a container without the count read
+        return []
+
+
 def arm_name(arm: dict) -> str:
     return "-".join(f"{knob}{value:g}" for knob, value in arm.items())
 
@@ -193,6 +211,8 @@ def run_arm(job: tuple) -> dict:
               "scaling_factor": getattr(grid, "scaling_factor", None),
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
+              "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
+              "output_counts_last": [int(c) for c in _output_counts(grid)],  # the last epoch's output spikes, in order
               "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result

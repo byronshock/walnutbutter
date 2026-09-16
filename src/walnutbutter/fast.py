@@ -298,7 +298,7 @@ def benchmark(grid, epochs=200, bits=None):
 
 def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
-          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None):
+          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -325,6 +325,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     need `labels` beside `patterns`, one per pattern, as `mnist.stream` gives them.
     Under the evidence critic the report also carries the class critic's fraction
     over the last tenth, `accuracy_last_tenth`, so a fraction right stays readable.
+
+    `probe(epoch, engine, grid, out, book)` is called after every `probe_every`-th
+    epoch's update, for a diagnostic to read the engine's counts and the rate
+    memories as the run goes; it must not change anything.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -401,6 +405,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
                 hits += _reward(engine, grid, out, "class", want_of)
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
+        if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
+            probe(epoch + 1, engine, grid, out, book)
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
