@@ -71,10 +71,13 @@ they bear on the code. Each entry says what it contributes here.
   The STDP window itself: potentiation for pre-before-post, depression for
   post-before-pre, over tens of milliseconds.
 - Werfel, J., Xie, X., & Seung, H. S. (2003). Learning curves for stochastic
-  gradient descent in linear feedforward networks. *NIPS 16*. Compares
-  weight perturbation, node perturbation and backpropagation: why node
+  gradient descent in linear feedforward networks. *NIPS 16*; extended in
+  *Neural Computation*, 17(12), 2699-2718 (2005). Compares weight
+  perturbation, node perturbation and backpropagation: why node
   perturbation's variance grows with the number of neurons, which is what
-  the 14-column runs felt.
+  the 14-column runs felt -- and why composing gradient-following updates
+  across units is free in expectation and paid for in variance (AUTHORITY.md
+  §0.1, §8).
 - Bridle, J. S. (1990). Probabilistic interpretation of feedforward
   classification network outputs, with relationships to statistical pattern
   recognition. In F. Fogelman Soulié & J. Hérault (Eds.), *Neurocomputing:
