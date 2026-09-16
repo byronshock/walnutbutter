@@ -1,8 +1,8 @@
 # Sweep goo-250k-hebb (September 14, 2026)
 
-Does goo learn once its potential axis is scaled with fan-in (AUTHORITY.md §5.2)? Three arms, 10 seeds each, 250,000 epochs per run, the reversal problem, the reinforce rule with the **hebb** eligibility (σ 0, as the Teacher sets it), the Rust wave loop (§6.15), everything else at the defaults in `constants.py`. Every arm at seed *s* is given the same input stream (§4.5), so the arms are paired epoch by epoch and not merely on average.
+Does goo learn once its potential axis is scaled with fan-in (AUTHORITY.md §5.2)? Three arms, 10 seeds each, 250,000 epochs per run, the reversal problem, the reinforce rule with the **wrong_hebb** eligibility (σ 0, as the Teacher sets it), the Rust wave loop (§6.15), everything else at the defaults in `constants.py`. Every arm at seed *s* is given the same input stream (§4.5), so the arms are paired epoch by epoch and not merely on average.
 
-Driver: `docs/rust-sweep.py --name goo-250k-hebb-<arm> --problem reversal [--goo [--no-scale-with-fan-in]] --eligibility hebb --seed 1 ... 10 --epochs 250000`, once per arm; report: `docs/goo-250k-report.py --name goo-250k-hebb --eligibility hebb --source rust`; figure: `goo-250k-hebb-score.png`. Every run's trace and summary is under `runs/goo-250k-hebb-<arm>/` (not in git).
+Driver: `docs/rust-sweep.py --name goo-250k-hebb-<arm> --problem reversal [--goo [--no-scale-with-fan-in]] --eligibility wrong_hebb --seed 1 ... 10 --epochs 250000`, once per arm; report: `docs/goo-250k-report.py --name goo-250k-hebb --eligibility wrong_hebb --source rust`; figure: `goo-250k-hebb-score.png`. Every run's trace and summary is under `runs/goo-250k-hebb-<arm>/` (not in git).
 
 | arm | accuracy, last 25,000 epochs | range over seeds | accuracy, to date | stuck on | stuck off |
 |---|---|---|---|---|---|

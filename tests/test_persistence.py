@@ -34,6 +34,21 @@ def test_checkpoint_round_trips_weights_settings_and_permutation(tmp_path):
     ]
 
 
+def test_a_checkpoint_keeps_the_expected_counts(tmp_path):
+    """§6.7: n_bar_j, the hebb eligibility's expectation, round-trips beside the rate memory; unset ones stay unset."""
+    grid = main(across=8, rows=4, seed=3)
+    teacher = Teacher(grid, seed=3, rule="reinforce", eligibility="hebb")
+    for _ in range(5):
+        teacher.epoch(verbose=False)
+    assert any(n.expected_count is not None for n in grid.all_neurons())
+    next(iter(grid.all_neurons())).expected_count = None  # an unset one stays unset across the round trip
+    counts = [n.expected_count for n in grid.all_neurons()]
+    data = checkpoint(grid, tmp_path / "e.json", teacher)
+    assert data["learning"]["eligibility"] == "hebb" and data["expected_counts"] == counts
+    back, _ = restore(tmp_path / "e.json")
+    assert [n.expected_count for n in back.all_neurons()] == counts
+
+
 def test_checkpoint_is_written_atomically_and_is_json(tmp_path):
     grid = GridOfNeurons(across=4, rows=3, seed=1)
     path = tmp_path / "w.json"

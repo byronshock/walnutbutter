@@ -81,6 +81,8 @@ class Network:
         self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
+        self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
+        # the x_ij of the hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
         self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
@@ -450,7 +452,7 @@ class Network:
             self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                  trace=self.rule == "adaline", explore=self.explorer())
+                                  trace=self.rule == "adaline" or self.tally, explore=self.explorer())
         self.forget()
         return waves
 
@@ -506,7 +508,7 @@ class Network:
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                 trace=self.rule == "adaline", explore=self.explorer())
+                                 trace=self.rule == "adaline" or self.tally, explore=self.explorer())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -516,9 +518,9 @@ class Network:
         """
         for neuron in self.all_neurons():
             neuron.reset(discharge)
-        if self.rule in ("teacher", "adaline"):
+        if self.rule in ("teacher", "adaline") or self.tally:
             for connection in self.connections.values():
-                connection.eligibility = 0.0  # a new epoch earns its own credit
+                connection.eligibility = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
         if self.hazard:
             for connection in self.connections.values():
                 connection.score = 0.0  # the hazard eligibility is the epoch's (§6.7); the trace is the potential's and stays

@@ -1,8 +1,8 @@
 # Sweep goo60-zones-threshold (September 14, 2026)
 
-projection P × THRESHOLD, 10 seeds, the copy problem (AUTHORITY.md §8), the reinforce rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants. Every arm at seed *s* is given the same input stream (§4.5). The floor follows the threshold at -4 × THRESHOLD, so floor / theta is -4 in every cell; goo then scales both by its fan-in over 18 (§5.2).
+projection P × THRESHOLD, 10 seeds, the copy problem (AUTHORITY.md §8), the reinforce rule with the wrong_hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants. Every arm at seed *s* is given the same input stream (§4.5). The floor follows the threshold at -4 × THRESHOLD, so floor / theta is -4 in every cell; goo then scales both by its fan-in over 18 (§5.2).
 
-Driver: `docs/rust-sweep.py --name goo60-zones-threshold --problem copy --goo ... --threshold ... --floor-ratio -4.0 --eligibility hebb --seed 1 ... 10 --epochs N`; report: `docs/goo-grid-report.py --name goo60-zones-threshold`; figure: `goo60-zones-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-zones-threshold/` (not in git).
+Driver: `docs/rust-sweep.py --name goo60-zones-threshold --problem copy --goo ... --threshold ... --floor-ratio -4.0 --eligibility wrong_hebb --seed 1 ... 10 --epochs N`; report: `docs/goo-grid-report.py --name goo60-zones-threshold`; figure: `goo60-zones-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-zones-threshold/` (not in git).
 
 **Accuracy over the last tenth, mean over seeds**
 

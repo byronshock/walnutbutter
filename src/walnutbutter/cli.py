@@ -567,8 +567,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--eligibility",
         choices=ELIGIBILITIES,
         default=None,
-        help=f"what the global reward acts on: the neuron's exploration noise (perturb), plain Hebbian (hebb), or the score "
-        f"of the escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: hazard "
+        help=f"what the global reward acts on: the neuron's exploration noise (perturb); the centred Hebbian term, what each "
+        f"synapse delivered times its target's spike count minus the target's own expectation of it (hebb); the uncentred "
+        f"+-1 by whether the target fired (wrong_hebb, the rule hebb replaced on September 16, 2026); or the score of the "
+        f"escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: hazard "
         f"when the network has escape noise, else {ELIGIBILITY})",
     )
     parser.add_argument(
@@ -1076,12 +1078,17 @@ def _run(args: argparse.Namespace) -> int:
                       f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             else:
                 grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
-                # the Teacher zeroes sigma for the hebb eligibility, so the network is deterministic: report what runs
+                # the Teacher zeroes sigma for the Hebbian eligibilities, so the network is deterministic: report what runs
                 effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
+                if effective_sigma or args.delta:
+                    exploring = ""
+                elif args.eligibility == "hebb":
+                    exploring = " (no injected noise: the centred Hebbian rule, explored by whatever varies the counts)"
+                else:
+                    exploring = " (no exploration: reward-modulated Hebb, not a policy gradient)"
                 print(f"rule: reinforce ({args.eligibility} eligibility"
                       f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
-                      f"sigma {effective_sigma:g} ({args.explore}), escape delta {args.delta:g}"
-                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma and not args.delta else ''}"
+                      f"sigma {effective_sigma:g} ({args.explore}), escape delta {args.delta:g}{exploring}"
                       f", no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"

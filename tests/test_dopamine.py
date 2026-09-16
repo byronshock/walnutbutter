@@ -410,12 +410,17 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
 
 
 def test_the_reinforce_banner_reports_the_sigma_that_actually_runs(capsys):
-    """The Teacher zeroes sigma for the hebb eligibility; the banner used to print the asked-for value."""
-    # --delta 0: on the deterministic neuron hebb explores nothing; under escape noise the hazard explores for it
-    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "hebb",
+    """The Teacher zeroes sigma for the Hebbian eligibilities; the banner used to print the asked-for value."""
+    # --delta 0: on the deterministic neuron wrong_hebb explores nothing; under escape noise the hazard explores for it
+    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "wrong_hebb",
                      "--sigma", "0.1", "--epochs", "3", "--no-save", "--delta", "0"]) == 0
     err = capsys.readouterr().err
     assert "sigma 0" in err and "not a policy gradient" in err
+    # the centred rule (§6.7) injects nothing either, and is explored by whatever varies the counts
+    assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "hebb",
+                     "--sigma", "0.1", "--epochs", "3", "--no-save", "--delta", "0"]) == 0
+    err = capsys.readouterr().err
+    assert "sigma 0" in err and "centred Hebbian rule" in err and "not a policy gradient" not in err
     assert cli_main(["--headless", "--problem", "shallow_copy", "--rule", "reinforce", "--eligibility", "perturb",
                      "--sigma", "0.1", "--epochs", "3", "--no-save", "--delta", "0"]) == 0
     err = capsys.readouterr().err

@@ -13,9 +13,9 @@ Ten seeds each at LR 0.001, T = 2, on the feedforward goo (AUTHORITY.md §8,
 the sweeps of 04:25 MDT). Under the hazard eligibility the cumulative
 correlation rises from +0.007 at 1,000 epochs through +0.042 at 5,000 and
 +0.065 at 10,000 to +0.109 at 25,000, about as the square root of the
-epochs; under hebb it ends at +0.012 with a window correlation of zero. So
+epochs; under wrong_hebb it ends at +0.012 with a window correlation of zero. So
 the hazard's estimator is aligned with the supervised direction and
-accumulates, and hebb's is not aligned at all. Neither moved the read in
+accumulates, and wrong_hebb's is not aligned at all. Neither moved the read in
 25,000 epochs: rewards -2.82 and -2.88 against a chance of -3.40, the
 fraction right 0.074 for both against 0.06, the output zone at its rest
 throughout. The sign agreement of 0.43 for both, under a half, is the

@@ -1,8 +1,8 @@
 # Sweep goo60-lr (September 14, 2026)
 
-LR against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3476 connections; 8 in, 8 out, no direct projection). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 7,082 epochs a second an arm.
+LR against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the wrong_hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3476 connections; 8 in, 8 out, no direct projection). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 7,082 epochs a second an arm.
 
-Driver: `docs/rust-sweep.py --name goo60-lr --problem reversal --goo --eligibility hebb --lr ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-lr --knob lr`; figure: `goo60-lr-score.png`. Every arm's trace and summary is under `runs/goo60-lr/` (not in git).
+Driver: `docs/rust-sweep.py --name goo60-lr --problem reversal --goo --eligibility wrong_hebb --lr ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-lr --knob lr`; figure: `goo60-lr-score.png`. Every arm's trace and summary is under `runs/goo60-lr/` (not in git).
 
 | lr | accuracy, last tenth | over seeds | stuck on | stuck off | vs default |
 |---|---|---|---|---|---|

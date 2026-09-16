@@ -1,4 +1,4 @@
-# mnist-ff-eligibility: mnist on the goo, 25,000 epochs an arm, the Rust wave loop (§6.15), hazard, hebb eligibility
+# mnist-ff-eligibility: mnist on the goo, 25,000 epochs an arm, the Rust wave loop (§6.15), hazard, wrong_hebb eligibility
 
 | arm | first tenth | last tenth | best |
 |---|---|---|---|

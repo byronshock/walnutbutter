@@ -1,8 +1,8 @@
 # Sweep goo60-nodirect-threshold (September 14, 2026)
 
-THRESHOLD against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3476 connections; 8 in, 8 out, no direct projection). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 2,116 epochs a second an arm.
+THRESHOLD against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the wrong_hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3476 connections; 8 in, 8 out, no direct projection). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 2,116 epochs a second an arm.
 
-Driver: `docs/rust-sweep.py --name goo60-nodirect-threshold --problem reversal --goo --eligibility hebb --threshold ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-nodirect-threshold --knob threshold`; figure: `goo60-nodirect-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-nodirect-threshold/` (not in git).
+Driver: `docs/rust-sweep.py --name goo60-nodirect-threshold --problem reversal --goo --eligibility wrong_hebb --threshold ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-nodirect-threshold --knob threshold`; figure: `goo60-nodirect-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-nodirect-threshold/` (not in git).
 
 Goo scales its potential axis by fan-in (§5.2), so the theta a goo neuron actually starts at is the level times 3.28, and the floor is MINIMUM_POTENTIAL × 3.28 = -3.28 throughout: sweeping THRESHOLD alone sweeps the floor-to-threshold ratio with it.
 

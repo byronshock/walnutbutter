@@ -1,8 +1,8 @@
 # Sweep goo60-teacher-threshold (September 14, 2026)
 
-TEACHER_THRESHOLD against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3540 connections; 8 in, 8 out). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 6,239 epochs a second an arm.
+TEACHER_THRESHOLD against 10 seeds of goo (AUTHORITY.md §3.4), the copy problem (§8), the reinforce rule with the wrong_hebb eligibility, the Rust wave loop (§6.15), homeostasis and un-sticking at the command line's constants, everything else at the defaults in `constants.py`. Goo(60 neurons fully connected, 3540 connections; 8 in, 8 out). Every level at seed *s* is given the same input stream (§4.5), so levels pair epoch by epoch. About 6,239 epochs a second an arm.
 
-Driver: `docs/rust-sweep.py --name goo60-teacher-threshold --problem reversal --goo --eligibility hebb --teacher_threshold ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-teacher-threshold --knob teacher_threshold`; figure: `goo60-teacher-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-teacher-threshold/` (not in git).
+Driver: `docs/rust-sweep.py --name goo60-teacher-threshold --problem reversal --goo --eligibility wrong_hebb --teacher_threshold ... --seed 1 ... 10 --epochs N`; report: `docs/goo-threshold-report.py --name goo60-teacher-threshold --knob teacher_threshold`; figure: `goo60-teacher-threshold-score.png`. Every arm's trace and summary is under `runs/goo60-teacher-threshold/` (not in git).
 
 | teacher_threshold | accuracy, last tenth | over seeds | stuck on | stuck off | vs default |
 |---|---|---|---|---|---|

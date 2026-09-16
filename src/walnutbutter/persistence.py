@@ -80,6 +80,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
         "floors": [n.minimum_potential for n in grid.all_neurons()],
         "rates": [n.rate for n in grid.all_neurons()],
+        "expected_counts": [n.expected_count for n in grid.all_neurons()],  # n_bar_j, the hebb eligibility's expectation (§6.7)
         # the state the clock leaves behind, so a resumed run continues rather than restarts
         "potentials": [n.potential for n in grid.all_neurons()],
         "fired_at": [n.fired_at for n in grid.all_neurons()],
@@ -285,6 +286,8 @@ def load_weights(grid: GridOfNeurons, data: dict) -> None:
         neuron.threshold = threshold
     for neuron, rate in zip(neurons, data.get("rates", [])):
         neuron.rate = rate
+    for neuron, expected in zip(neurons, data.get("expected_counts", [])):
+        neuron.expected_count = expected
     _restore_clock(grid, data)
 
 
@@ -328,6 +331,8 @@ def _restore_lattice(data: dict) -> CartesianNodes:
         neuron.threshold = threshold
     for neuron, rate in zip(neurons, data.get("rates", [])):
         neuron.rate = rate
+    for neuron, expected in zip(neurons, data.get("expected_counts", [])):
+        neuron.expected_count = expected
     _restore_clock(nodes, data)
     nodes.epoch = data["epoch"]
     return nodes

@@ -73,8 +73,10 @@ learning on mnist any instrument has shown. Its consequences:
    open, none hidden with the outputs apart — gave the same read: every
    arm above its chance by quieting and evening, none classifying. What
    remains is the estimator and its critic on one layer of synapses.
-2. **The hazard eligibility carries the digit; hebb does not.** Under hebb
-   the correlation stays at zero, +0.012 ± 0.026 at 25,000 epochs.
+2. **The hazard eligibility carries the digit; wrong_hebb does not.** Under wrong_hebb
+   the correlation stays at zero, +0.012 ± 0.026 at 25,000 epochs. (The ±1
+   rule, renamed that day; the centred Hebbian rule that took the name hebb,
+   §6.7, is measured in §8.)
 3. **The learning rate is not the lever.** Across a tenfold range, 0.0005
    to 0.005, the correlation ends within a few hundredths; the rate scales
    the estimator's signal and noise alike, and moves only the drift toward
@@ -86,9 +88,14 @@ learning on mnist any instrument has shown. Its consequences:
    which the plain probability does not have; the inputs' rest firing under
    escape noise (§5.2), which halves the pixel contrast the outputs
    receive; and the label-blind per-output push that decides most signs.
-5. **The read has not moved yet.** Through 25,000 epochs the fraction right
-   stays at 0.07 against 0.06 and the reward at −2.8 against a chance of
-   −3.40. A sweep to 100,000 epochs is running (§8).
+5. **The read moved, a little, at 100,000 epochs.** Through 25,000 epochs
+   the fraction right stayed at 0.07 against 0.06 and the reward at −2.8
+   against a chance of −3.40. The sweep to 100,000 epochs (§8, landed 09:27
+   MDT) took the correlation to +0.22 to +0.24 at LR 0.001 to 0.005 — the
+   square root of the epochs, as predicted — and the fraction right to
+   0.092 at LR 0.005, the first movement of the read; above 0.01 the rate
+   buys quiet, not learning. The centred Hebbian rule of §6.7, swept the
+   same morning, aligns several times faster and then stalls (§8).
 
 ## 1. Global constants — open
 
@@ -172,7 +179,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
 | CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing; graded, the fraction of the other groups the label's group out-spikes; evidence, the class sums read as evidence at TEMPERATURE — the softmax cross-entropy $\ln q_y$ with $q_k \propto e^{n_k/T}$, mnist's critic since September 16, 2026 (§8); and the decoded and population critics of §4.3 and §6.13 |
 | TEMPERATURE | 2 | the evidence critic's temperature $T$ (§8): the lead in spikes that makes one class $e$ times as likely as another; $T \to 0$ is the class critic, $T \to \infty$ pays every epoch $\ln 0.1$. *Byron, September 16, 2026: "We will have to sweep for temperature eventually." Set at the middle of the first sweep, {1, 2, 4}; the sweep's to set* |
-| ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's), a Hebbian ±1 (hebb), or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
+| ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's); the centred Hebbian term (hebb, §6.7, September 16, 2026) — what each synapse delivered this epoch times its target's spike count minus the target's own expectation of it, $x_{ij}(n_j - \bar n_j)$, Williams §8.4's $y - \bar y$; the uncentred Hebbian ±1 by whether the target fired (wrong_hebb — the rule called hebb until September 16, 2026, renamed at Byron's word because it is uncentred and points nowhere); or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
 | HOMEOSTASIS | 10⁻⁶ | per-epoch rate a threshold drifts toward its target firing rate; 0 = off |
@@ -181,6 +188,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | UNSTICK_TARGET | 0.5 | firing rate the un-sticking aims for |
 | ~~THRESHOLD_RANGE~~ | — | *eliminated, September 14, 2026 (Byron: "It's artificial"; §2, no artificial restrictions).* Homeostasis and un-sticking moved a threshold no further than [−5, 5]; now a threshold goes where the rules take it. What that clamp did to one sweep is in §3.4 |
 | RATE_MEMORY | 0.01 | per-epoch update of $r_j$: about the last 100 epochs |
+| COUNT_MEMORY | 0.01 | per-epoch update of $\bar n_j$, the expected spike count the hebb eligibility centres on (§6.7, September 16, 2026): the rate memory's window, about the last 100 epochs. It starts at the first count seen in an unforced epoch, so a neuron's first epoch moves nothing rather than everything; a starting value, to be swept |
 | STUCK_BELOW, STUCK_ABOVE | 0.01, 0.99 | a neuron with $r_j$ outside this band is stuck |
 | WINDOW | 200 | epochs the reported moving-average accuracy spans (reporting only) |
 
@@ -362,7 +370,7 @@ the two goos differ by 0.004 ($t = 0.5$) — a borderline edge for the
 baseline, measured against a baseline that itself learned nothing in a
 quarter of a million epochs. That is not a surprise this file did not already
 hold: §6.1 and §6.7 record the perturb rule at chance on the grid under both
-drives (0.543 under rate drive; 56.8% at five rows), while the hebb
+drives (0.543 under rate drive; 56.8% at five rows), while the wrong_hebb
 eligibility of the same rule reaches 0.80 and 0.978. The sweep ran the
 container's defaults, and the container's defaults are the rule that does not
 learn.
@@ -378,7 +386,7 @@ nothing; and (ii) 250,000 epochs of the perturb rule on this problem is not a
 learning run for any of the three, which the grid's own figure, 0.520, states
 on its own.
 
-**Swept again with the hebb eligibility (Byron, September 14, 2026: "the
+**Swept again with the wrong_hebb eligibility (Byron, September 14, 2026: "the
 exact same sweep with eligibility=hebb, since that's the rule where we are
 seeing learning emerge on the hex grid").** The same three arms, ten seeds,
 250,000 epochs, reversal, every arm at seed $s$ on the same input stream —
@@ -396,7 +404,7 @@ experiment. `docs/goo-250k-hebb.md`, `goo-250k-hebb-score.png`.
 on the seed, scaled goo beats the grid by 0.011 ($t = 1.9$) and flat goo by
 0.007 ($t = 1.1$); flat goo beats the grid by 0.004 ($t = 1.2$). None of it
 survives, and the grid at 0.502 is the number to read: **on reversal, at ten
-rows, the hex grid does not learn under the hebb eligibility either.** The
+rows, the hex grid does not learn under the wrong_hebb eligibility either.** The
 0.978 and 0.80 that §6.7 records for that eligibility are on shallow_copy —
 twelve across, *two* rows, one hop — and the 0.64 of §4.3's CV sweep is on
 reaching_copy, five rows wired to REACH 5 so that the bottom row synapses
@@ -429,7 +437,7 @@ the comparisons, and the count sweep below, are posed on copy
 actually have too many neurons. FOR NOW."* Counted as synapses per raw bit of
 task rather than as neurons, the day's evidence lines up behind it:
 
-| network | neurons | connections | synapses per raw bit | hebb, best seen |
+| network | neurons | connections | synapses per raw bit | wrong_hebb, best seen |
 |---|---|---|---|---|
 | shallow_copy | 24 | 215 | ~54 | **0.978** (§6.7) |
 | reaching_copy | 80 | 3,122 | ~780 | 0.64 (§4.3) |
@@ -451,7 +459,7 @@ threshold (and resulting floor) in {0.15 0.2 0.25 0.3 0.5} for 100000 epochs
 across 10 seeds").** Goo's count against THRESHOLD, the floor following the
 threshold at the grid's ratio of −4 so that every cell moves the whole axis
 and not the ratio, and goo then scaling both by $(N - 1)/18$; copy (§8), the
-hebb eligibility, the Rust loop, 300 arms in 742 seconds.
+wrong_hebb eligibility, the Rust loop, 300 arms in 742 seconds.
 `docs/goo-count-threshold.md`, `goo-count-threshold-score.png`. Accuracy over
 the last tenth, mean of ten seeds; stuck-on counts beneath:
 
@@ -590,9 +598,9 @@ configuration.
 
 **The ceiling is the rule's, not the network's.** Every configuration that
 escapes saturation — 24 neurons or 120, $\theta$ 0.32 or 5 — lands at
-0.60–0.64 at 100,000 epochs, where the hebb eligibility also lands on
+0.60–0.64 at 100,000 epochs, where the wrong_hebb eligibility also lands on
 reaching_copy, and its shape over the run is a fast catch and a long drift.
-That is what the reinforce rule with the hebb eligibility does on a one-hop
+That is what the reinforce rule with the wrong_hebb eligibility does on a one-hop
 copy, whatever it is given to do it with. Moving past it is a question about
 the rule (§6.7), not about the container, the count or the threshold — and
 the container has now done the one thing it was built to do, which is to
@@ -653,7 +661,7 @@ to chance without the direct projection, the reading above was right and
 what the rule had learned was one synapse.
 
 **Tested the same day: the reading was right.** The working network — goo
-60, copy, hebb, the count read at 40 Hz — ten seeds, 100,000 epochs, on
+60, copy, wrong_hebb, the count read at 40 Hz — ten seeds, 100,000 epochs, on
 the Rust loop corrected as §6.15 records, with the direct projection and
 without it. `docs/goo60-direct.md`, `docs/goo60-nodirect.md`, and the
 traces `goo60-direct-goo60-trace.png` and `goo60-nodirect-goo60-trace.png`.
@@ -680,7 +688,7 @@ all, the outputs never fire, and all-off scores 0.500 by arithmetic; the
 un-sticking nudged the outputs' thresholds 110,000 times toward a rate
 nothing could deliver. So this arm decides what the earlier figures were
 made of, and it does. It does not yet say whether the reinforce rule with
-the hebb eligibility can learn a copy that has to cross the interior; that
+the wrong_hebb eligibility can learn a copy that has to cross the interior; that
 needs an interior that fires — THRESHOLD on the no-direct goo, from where
 the count × threshold sweep found small goos alive (0.15–0.3), ten seeds,
 a minute on the loop — and it is Byron's to call.
@@ -711,7 +719,7 @@ threshold is *stable* rather than where it merely fires — which is the
 sweep that follows, 0.10 to 0.50 by 0.01, ten seeds each.
 
 **Swept: THRESHOLD 0.10 to 0.50 by 0.01, with every neuron un-sticking.**
-Goo 60 with no direct projection, copy, hebb, the count read at one spike,
+Goo 60 with no direct projection, copy, wrong_hebb, the count read at one spike,
 the floor following at −4, ten seeds, 100,000 epochs, on the Rust loop:
 410 arms in fifteen minutes, a live goo running at a third of a dead one's
 speed (2,000 epochs a second against 6,000). `docs/goo60-nodirect-threshold.md`
@@ -774,17 +782,17 @@ over the run, `goo60-count-goo60-trace.png` and
 
 | eligibility | last 10,000 epochs | over seeds | seeds above 0.55 | stuck on / off, of 60 | epochs a second |
 |---|---|---|---|---|---|
-| hebb | **0.556** | 0.511–0.630 | 5 of 10 | 4.5 / 16.2 | 7,449 |
+| wrong_hebb | **0.556** | 0.511–0.630 | 5 of 10 | 4.5 / 16.2 | 7,449 |
 | perturb, $\sigma$ 0.1 | 0.514 | 0.493–0.553 | 2 of 10 | 3.3 / 23.0 | 5,021 |
 
-Paired on the seed hebb beats perturb by 0.043, $t = 3.8$, on nine seeds
+Paired on the seed wrong_hebb beats perturb by 0.043, $t = 3.8$, on nine seeds
 of ten: the perturb rule at chance again, as §6.1 and §6.7 have found it
-everywhere it has been tried, and the hebb eligibility the one that learns.
+everywhere it has been tried, and the wrong_hebb eligibility the one that learns.
 It learns *less* under this read than under the old one — 0.556 against
 the 0.63–0.64 the same goo scored when one stray spike counted as a one —
 and that is the read doing its job: an output must now fire at least twice
 in the epoch to be on, and the rule had been getting credit for background.
-The ceiling moved down, not up. Over the run hebb reaches 0.55 at epoch
+The ceiling moved down, not up. Over the run wrong_hebb reaches 0.55 at epoch
 15,000 rather than 6,000, peaks near 0.60 at 45,000, dips to 0.52 at 57,000
 and wanders between 0.53 and 0.59 to the end, one seed finishing at chance;
 the whole-run means, 0.559 and 0.511, sit on the last-tenth figures, so
@@ -978,7 +986,7 @@ the 0.20 it chose are figures for that goo; the first thing to do on this
 one is to run the working point again.
 
 *Run again, the same day, on the rule.* Goo 60 at $P = 1$, GOO_THRESHOLD
-0.2 — the interior at $\theta$ 0.656, the zones at 0.489 — copy, hebb, the
+0.2 — the interior at $\theta$ 0.656, the zones at 0.489 — copy, wrong_hebb, the
 count read at one spike, every neuron un-sticking, ten seeds, 100,000
 epochs: **0.519** over the last tenth, 0.501–0.609, one seed of ten above
 0.55, six neurons stuck on and seventeen off; the whole-run mean, 0.544, is
@@ -1096,20 +1104,20 @@ arms pair with it epoch by epoch (`docs/goo60-hazard-delta.md`,
 `goo60-hazard-delta-score.png`; the trace of seed 5 at 0.7 in
 `goo60-hazard-delta-delta0.7-goo60-trace-seed5.png`):
 
-| $\Delta$ | last tenth | sd | worst | best | seeds > 0.60 | stuck on / off | against hebb, paired on the seed |
+| $\Delta$ | last tenth | sd | worst | best | seeds > 0.60 | stuck on / off | against wrong_hebb, paired on the seed |
 |---|---|---|---|---|---|---|---|
 | 0.7 | **0.658** | 0.032 | 0.601 | 0.705 | 10 | 0 / 0 | **+0.032**, $t = 3.3$, better on 8 of 10 |
 | 1.05 | 0.620 | 0.048 | 0.562 | 0.687 | 5 | 0 / 0 | −0.006, $t = -0.4$, 3 of 10 |
 | 1.4 | 0.567 | 0.030 | 0.523 | 0.614 | 2 | 0 / 0 | −0.058, $t = -5.0$, 0 of 10 |
-| hebb, the default run above | 0.626 | 0.026 | 0.600 | 0.688 | 10 | 0.1 / 0.0 | — |
+| wrong_hebb, the default run above | 0.626 | 0.026 | 0.600 | 0.688 | 10 | 0.1 / 0.0 | — |
 
 Three things, in order of weight.
 
 1. **The gradient rule learns, and at $\Delta = 0.7$ it beats the rule that
    abandoned the gradient.** Every earlier form of REINFORCE on this
    substance sat at chance (§6.1; perturb 0.514 on goo 60 under the count
-   read, above). The hazard eligibility at 0.7 is 0.658, above hebb's 0.626
-   on eight seeds of ten, every seed above 0.60 where hebb's floor was
+   read, above). The hazard eligibility at 0.7 is 0.658, above wrong_hebb's 0.626
+   on eight seeds of ten, every seed above 0.60 where wrong_hebb's floor was
    0.600. The difference is the one §6.7 derived: the score is zero in
    expectation at every margin and credits every decision, where perturb
    kept one unit-variance draw per epoch.
@@ -1121,15 +1129,15 @@ Three things, in order of weight.
    nearly half of epochs, and the count read scores that as on.
 3. **Nothing ends stuck.** Every hazard arm ends with no neuron stuck on
    or off. The un-sticking of §1.3 still fired along the way — 72,520
-   nudges an arm at 0.7 against hebb's 102,254 — so a hazard neuron can
+   nudges an arm at 0.7 against wrong_hebb's 102,254 — so a hazard neuron can
    pin near 0 or 1 for a hundred epochs, but the draw and the nudge between
-   them always bring it back, where hebb's arms end with 0.1 stuck
+   them always bring it back, where wrong_hebb's arms end with 0.1 stuck
    on and 0.0 stuck off apiece.
 
 The best seed's trace (5 at 0.7, 0.705): its rolling mean crosses 0.55 at
 16,000 epochs, reaches 0.74 by 25,000, and holds between 0.65 and 0.83 for
 the rest of the run — learned in the first quarter and living after (§4.2).
-3,000–3,200 epochs a second an arm, 34 s a run: a third of hebb's 9,900 on
+3,000–3,200 epochs a second an arm, 34 s a run: a third of wrong_hebb's 9,900 on
 the same goo, since the network is busier and every decision settles the
 traces of its synapses.
 
@@ -1171,19 +1179,19 @@ ten seeds, with the worst seed beneath:
 2. **The best cells are LR 0.03 at $\Delta$ 0.55 (0.681, worst 0.619) and
    $\Delta$ 0.3 (0.672, worst 0.631, the highest floor on the grid).** They
    are not distinguishable from each other or from their neighbours in the
-   two top rows, which run 0.64–0.68 with a seed sd of 0.03. Against hebb
+   two top rows, which run 0.64–0.68 with a seed sd of 0.03. Against wrong_hebb
    paired on the seed, 0.55 at 0.03 is **+0.056** ($t = 3.4$, better on 9
    of 10); against $\Delta$ 0.7 at 0.03 it is +0.023 ($t = 1.8$, 6 of 10),
    within noise. At LR 0.02 and above every $\Delta$ from 0.25 up has every
    seed above 0.58; at 0.01 and above every cell but one has every seed
    above 0.55; at 0.005 nothing does, the rate being too slow for the run.
 3. **Nothing sticks, at any cell:** 0 to 3 stuck neurons of 600 per cell,
-   against hebb's un-sticking keeping the interior alive. The hazard arms
+   against wrong_hebb's un-sticking keeping the interior alive. The hazard arms
    run at 2,500–3,000 epochs a second, and the slower ones are the
    low-LR arms, whose networks learn less and stay busier.
 
 *Claude's recommendation:* ESCAPE_DELTA 0.55 with LR left at 0.03: the best
-mean, the best column averaged over LR, nine seeds of ten over hebb, and a
+mean, the best column averaged over LR, nine seeds of ten over wrong_hebb, and a
 floor within noise of the grid's best. 0.3 is the choice by the floor
 alone. The next question is LR above 0.03, which the grid's top row has not
 closed.
@@ -1199,7 +1207,7 @@ stated end — ten seeds, 100,000 epochs, the new default width, the hazard
 eligibility, 31 s an arm (`docs/goo60-hazard-lr.md`,
 `goo60-hazard-lr-score.png`):
 
-| LR | last tenth | sd | worst | best | seeds > 0.65 | vs hebb 0.626, paired on the seed | vs the grid's 0.03 × 0.45 (0.655) |
+| LR | last tenth | sd | worst | best | seeds > 0.65 | vs wrong_hebb 0.626, paired on the seed | vs the grid's 0.03 × 0.45 (0.655) |
 |---|---|---|---|---|---|---|---|
 | 0.0275 | 0.656 | 0.051 | 0.594 | 0.767 | 5 | +0.031, $t = 1.9$, 6 of 10 | +0.002 |
 | 0.04 | 0.667 | 0.044 | 0.618 | 0.762 | 7 | +0.042, $t = 3.1$, 8 of 10 | +0.013 |
@@ -1209,10 +1217,10 @@ eligibility, 31 s an arm (`docs/goo60-hazard-lr.md`,
 The climb has flattened. From 0.0275 to 0.0525 the mean rises 0.020 ($t =
 1.7$, 6 of 10) and no single step is significant ($t$ 0.3–0.8): LR is a
 plateau from about 0.025 to 0.0525 at 0.66–0.68, nothing collapses at the
-top, no neuron ends stuck, and hebb is beaten on every seed at 0.05 and
+top, no neuron ends stuck, and wrong_hebb is beaten on every seed at 0.05 and
 0.0525. The seed sd is 0.04–0.05 here against 0.03 on the grid's top rows,
 so ten seeds do not tell these levels apart. LR stays at 0.03 until Byron
-moves it; the case for moving it is a tenth of the gap to hebb, and what
+moves it; the case for moving it is a tenth of the gap to wrong_hebb, and what
 would settle it is more seeds, not more levels.
 
 **LR, fine (Byron, September 15, 2026: "Welp, I swept it wrong. Please
@@ -1225,13 +1233,13 @@ two levels shared with the sweep above reproduce it to the bit.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | last tenth | 0.669 | 0.656 | 0.668 | 0.664 | 0.663 | 0.674 | **0.676** | 0.668 | 0.662 | 0.674 | 0.661 | 0.667 |
 | worst seed | 0.614 | 0.594 | 0.620 | 0.602 | 0.596 | 0.617 | 0.582 | 0.606 | 0.579 | **0.629** | 0.607 | 0.618 |
-| vs hebb, $t$ | 4.4 | 1.9 | 3.6 | 2.3 | 2.5 | 3.5 | 3.4 | 3.6 | 2.5 | 4.3 | 2.7 | 3.1 |
+| vs wrong_hebb, $t$ | 4.4 | 1.9 | 3.6 | 2.3 | 2.5 | 3.5 | 3.4 | 3.6 | 2.5 | 4.3 | 2.7 | 3.1 |
 
 Flat. The twelve level means span 0.656–0.676 with a standard deviation of
 0.006, less than half the 0.013 that ten seeds put on any one of them, so
 the levels differ by less than seed noise would make them differ if they
 were all the same level; the slope over the range is +0.0002 a step and
-the two ends are equal ($-0.002$, $t = -0.2$). Every level beats hebb
+the two ends are equal ($-0.002$, $t = -0.2$). Every level beats wrong_hebb
 paired on the seed, from $t = 1.9$ at 0.0275 to 4.4 at 0.02625, and
 nothing sticks. LR 0.03 stands: on this task and network any LR from
 0.02625 to 0.04 is the same choice, and the seed is the larger variable.
@@ -1906,7 +1914,7 @@ further instruction.
 
 *Measured, September 14, 2026 (§3.4, two count × threshold sweeps):* the
 rule's shape is right and its slope is about half what is needed. On copy
-under hebb, goo 80 saturates at every THRESHOLD up to 0.3 — $\theta$ up to
+under wrong_hebb, goo 80 saturates at every THRESHOLD up to 0.3 — $\theta$ up to
 1.32 — and comes alive at 0.5, $\theta$ 2.19; read from the stuck-on counts
 the saturation edge sits near $\theta \approx 0.028\,d$ from 63 incoming
 synapses up, against this rule's $0.014\,d$; a goo of 24 or 40 is 15–40%
@@ -2183,7 +2191,7 @@ while the per-epoch arms sit flat at 0.53–0.54 throughout. Slow, small, and
 not yet worth anything.
 
 Nothing measured before this revision is affected by it. The hook is off
-whenever $\sigma$ is 0, which is what the hebb eligibility runs at, so every
+whenever $\sigma$ is 0, which is what the wrong_hebb eligibility runs at, so every
 result in §6.7 and §8 obtained with that eligibility stands unchanged.
 
 *The hazard's draws, September 15, 2026.* Under escape noise (§5.2,
@@ -2298,7 +2306,7 @@ $A = R - b$. For every connection $i \to j$ that carried a signal this
 epoch into a neuron $j$ not forced this epoch,
 $w_{ij} \leftarrow \mathrm{clip}(w_{ij} + \text{LR} \cdot A \cdot e_j)$ with
 $e_j = \xi_j/\sigma$ (ELIGIBILITY = perturb) or $\pm 1$ by whether $j$ fired
-(hebb). LATE says what a signal arriving after its target fired earns:
+(wrong_hebb). LATE says what a signal arriving after its target fired earns:
 count, ignore, or depress. The Teacher also keeps each unforced neuron's
 firing rate ($r_j$, RATE_MEMORY) and drifts thresholds toward TARGET_RATE
 (HOMEOSTASIS), nudging stuck neurons faster (UNSTICK — every neuron and not
@@ -2331,14 +2339,14 @@ apart, so all of them take $e^{-\text{hop}/\text{TAU}} = 0.435$ and only the
 scale changes. Evaluating the trace at the horizon instead — the first
 reading, built and measured — annihilates that half of the signal entirely:
 at TAU 2 ms over a 20 ms epoch the trace there is $5\times10^{-5}$, and
-since $e_j = -1$ for a non-firing neuron under the hebb eligibility, it is
+since $e_j = -1$ for a non-firing neuron under the wrong_hebb eligibility, it is
 exactly the **depressive** half that vanishes. Measured on shallow_copy at
 two rows it took the rule from 0.948 to 0.626 and the activity from 12.8 to
 14.1 spikes an epoch, and at five rows from 26 to 129.
 
 *Measured, September 13, 2026, and it is the largest result on the branch so
 far.* The trace hurts this rule wherever it is tried — but trying it turned
-up what does work. With ELIGIBILITY = hebb the Teacher sets $\sigma$ to zero,
+up what does work. With ELIGIBILITY = wrong_hebb the Teacher sets $\sigma$ to zero,
 so there is no exploration noise at all and $e_j = \pm 1$ by whether $j$
 fired: the rule is then **reward-modulated Hebb**, a Hebbian sign times a
 global advantage $A = R - b$, with no per-neuron target and no perturbation
@@ -2347,8 +2355,8 @@ was trained with:
 
 | rule | 2 rows | 5 rows, $\omega$ 0 (two hops) |
 |---|---|---|
-| REINFORCE, hebb | 90.5%, 14/16 responses | **97.5%, 16/16, all twelve right in 88.2% of epochs** |
-| REINFORCE, hebb + leaky trace | — | 54.0%, 4/16 |
+| REINFORCE, wrong_hebb | 90.5%, 14/16 responses | **97.5%, 16/16, all twelve right in 88.2% of epochs** |
+| REINFORCE, wrong_hebb + leaky trace | — | 54.0%, 4/16 |
 | REINFORCE, perturb | 75.4%, 16/16 | 56.8% |
 | ADALINE | 97.1%, 16/16 | 61.3%, 5/16 |
 
@@ -2383,9 +2391,9 @@ rather than bugs to fix:
 2. **The eligibility says nothing about a refire.** $e_j = \xi_j/\sigma$ is
    the exploration noise added to $j$'s potential at $t_e$; a forced neuron
    spikes regardless of it and resets, so the draw cannot explain whether it
-   refired 6 ms later. $e_j = \pm 1$ by `has_fired` (hebb) is $+1$ for every
+   refired 6 ms later. $e_j = \pm 1$ by `has_fired` (wrong_hebb) is $+1$ for every
    forced neuron by construction. In one measured epoch the five forced
-   neurons read True, True, True, True, True under hebb while the read they
+   neurons read True, True, True, True, True under wrong_hebb while the read they
    are scored on was False, True, True, True, False.
 
 Three forms follow, and which one is meant is open. (a) The rule exactly as
@@ -2424,7 +2432,7 @@ and at the read $w_{ij} \leftarrow \mathrm{clip}(w_{ij} + \text{LR} \cdot A
 score is folded into the rate: Williams sets the Gaussian unit's rate to
 $\alpha\sigma^2$ so the step does not blow up as the unit sharpens, and
 $\Delta_j$ is this unit's $\sigma$; a per-neuron constant in the rate factor
-is within his Theorem 1 and keeps LR on the scale the hebb eligibility set
+is within his Theorem 1 and keeps LR on the scale the wrong_hebb eligibility set
 it at. Read it as: a spike earns about one when it was unlikely and less
 the more expected it was; every silent decision costs the spikes it was
 expected to produce; over an epoch a synapse's eligibility is the neuron's
@@ -2443,22 +2451,105 @@ nothing, as it does to the potential. A neuron that fires more than once an
 epoch is credited for every decision, which the one-draw-per-epoch record
 of the perturb eligibility never was.
 
-*The forms not taken.* The per-wave probit score under additive noise (the
-conditional mean of §6.1's $\xi_j$ given the outcome) and the hebb rule
-centred on the neuron's own rate, Williams §8.4's $y - \bar y$, were the
-two smaller experiments proposed alongside this one; neither is built.
+*The forms not taken, then.* The per-wave probit score under additive noise
+(the conditional mean of §6.1's $\xi_j$ given the outcome) and the Hebbian
+rule centred on the neuron's own rate, Williams §8.4's $y - \bar y$, were
+the two smaller experiments proposed alongside this one. The first is not
+built; the second was, on September 16, 2026, and is the hebb eligibility
+at the end of this section.
 
 *Measured (§3.4, September 15, 2026; Byron: "build and sweep Delta in {0.7
 1.05 1.4} across 10 seeds for 100000 intervals").* $\Delta = 0.7$ scores
-0.658 over ten seeds, **+0.032 on hebb** paired on the seed ($t = 3.3$, 8 of
-10), every seed above 0.60 and no neuron stuck; 1.05 ties hebb and 1.4
+0.658 over ten seeds, **+0.032 on wrong_hebb** paired on the seed ($t = 3.3$, 8 of
+10), every seed above 0.60 and no neuron stuck; 1.05 ties wrong_hebb and 1.4
 loses. It is the first gradient form on this substance to learn at all.
 The $\Delta \times$ LR grid that followed (§3.4, 660 arms) puts the plateau
 in $\Delta$ at 0.25–0.7 and makes LR the lever: 0.03 × 0.55 scores 0.681,
-**+0.056 on hebb** (9 of 10). ESCAPE_DELTA is 0.455 since (Byron's word),
-and at that width LR is a plateau from 0.025 to 0.0525 at 0.66–0.68, hebb
+**+0.056 on wrong_hebb** (9 of 10). ESCAPE_DELTA is 0.455 since (Byron's word),
+and at that width LR is a plateau from 0.025 to 0.0525 at 0.66–0.68, wrong_hebb
 beaten on every seed at 0.05, and twelve levels from 0.02625 to 0.04 by
 0.00125 are flat to within seed noise (§3.4). LR 0.03 stands.
+
+**The centred Hebbian eligibility — built September 16, 2026, and the ±1
+rule renamed.** *Byron, that morning: "Escape noise is destroying the
+network as N². We need escape noise but also need a second learning rule
+that is more Hebbian in nature. Assuming there is no escape noise, what is
+REINFORCE rule at the synapse?"* — and, on the answer: *"Please build and
+test the rule ... I'd like to rename the old 'hebb' rule wrong_hebb where we
+refer to it."* So the Hebbian ±1 of this section is **wrong_hebb** from
+that day: every earlier mention and every quotation of *hebb* in this file
+names it, and so do the checkpoints and sweep records written before that
+day (a record naming hebb with no `count_memory` beside it is one of
+those). The name **hebb** belongs to the rule below.
+
+*Claude's derivation, asked for that morning.* Williams's rule at a synapse
+is the advantage times the characteristic eligibility, $\partial \ln
+P(y_j)/\partial w_{ij}$. For a Bernoulli-logistic unit that derivative is
+$(y_j - p_j)\,x_i$: presynaptic activity times postsynaptic activity minus
+its expectation — a Hebbian rule with the mean subtracted, the covariance
+rule — and the hazard eligibility above is the same shape written per
+decision, spike minus expected spike in the hazard's own units on the
+synapse's trace. Reward-modulated Hebbian learning and REINFORCE are one
+rule when the postsynaptic term is centred. **With no escape noise there
+is no rule at all:** a deterministic neuron's $P(y_j)$ is 0 or 1, its
+logarithm 0 or $-\infty$, and the derivative is zero everywhere but at a
+threshold crossing, where it is a delta — in the formula above, the limit
+$\Delta \to 0$: below threshold $m \to 0$ and so does $-m$, above it $m \to
+\infty$ and the spike's score $m e^{-m}/(1 - e^{-m}) \to 0$ too. A neuron
+that took no chance has nothing to be credited or blamed for, which is why
+spiking gradient methods need escape noise or a pretend derivative at
+threshold. What survives is the Bernoulli form with the expectation
+*estimated*: replace $p_j$, which a deterministic neuron does not have, by
+a running estimate of the neuron's own activity —
+
+$$e_{ij} = x_{ij}\,(n_j - \bar n_j), \qquad
+w_{ij} \leftarrow \mathrm{clip}\big(w_{ij} + \text{LR} \cdot A \cdot e_{ij}\big),$$
+
+with $x_{ij}$ the signals synapse $i \to j$ delivered this epoch that $j$
+integrated (a signal dropped while $j$ is refractory counts nothing, as it
+adds nothing to the potential), $n_j$ the target's spike count this epoch,
+and $\bar n_j$ its expected count from its own history: an exponential
+moving average of its counts over the epochs in which it was not forced,
+moved by COUNT_MEMORY after the update has used it and started at the
+first count seen, so a neuron's first epoch moves nothing rather than
+everything. Every $j$ not forced this epoch; LATE does not apply and
+neither does the leaky trace, the tally being the rule's own presynaptic
+term. This is the reward-modulated covariance rule of Legenstein, Pecevski
+and Maass [4] and of Frémaux and Gerstner's review [5], and *minus its
+expectation* is the term that makes it follow the gradient at all: it is a
+per-neuron baseline, and removes to first order the label-blind loudness
+push that decided most signs in every gradient check of §8. Its
+exploration is whatever actually makes $n_j$ vary — the drive's Poisson
+times, the other neurons' fluctuations, and the escape noise when it is
+on. It is an exact gradient estimate only when those deviations are the
+neuron's own relative to what $\bar n_j$ predicts, and biased otherwise,
+but it climbs, which is Legenstein's result. It composes with the hazard
+eligibility by addition, both being estimates of the same gradient, one
+exact and one approximate; the sum is not built as an option yet.
+
+*Why wrong_hebb pointed nowhere, and why it once learned (Claude's
+reading).* It has no centring and no presynaptic magnitude. At the
+hazard's rest nearly every neuron fires in nearly every epoch, so its
+eligibility is $+1$ on almost every synapse — a constant, and a constant
+correlates with nothing about the label: that is sweep 1's flat line (§8).
+On the two-hop shallow_copy of the table above a neuron fired once or not
+at all in an epoch, so the ±1 was $2(y_j - \tfrac12)$, centred at a half
+whatever the neuron's own rate — near enough when neurons fire in about
+half the epochs, and worthless when they fire in all of them.
+
+*Built in every engine (§6.15).* The objects tally deliveries on
+`Connection.eligibility` as the ADALINE rule does, `Network.tally`
+switched on by a Teacher with this eligibility; the arrays do the same in
+vector form; the Rust loop keeps the tally under `earn` and
+`reinforce_hebb` pays it, the expectation $\bar n_j$ being the Teacher's,
+kept in Python beside $r_j$ and handed over per epoch (the ±1 rule is
+`reinforce_wrong_hebb`). `Neuron.expected_count` is checkpointed beside the
+rate memory. The three engines agree to the bit on goo under escape noise
+with learning on (`tests/test_hazard.py`, `tests/test_arrays.py`,
+`tests/test_fast.py`) — the array engine too, the rule being integer counts
+and one moving average — and `fast.compare` agreed on the mnist feedforward
+goo of §8 itself, two seeds, learning on, before the sweep below was
+launched. *Measured:* §8, the learning-rate sweep of September 16, 2026.
 
 ### 6.8 Earned activity — decided for now
 
@@ -2645,7 +2736,7 @@ the cycle. It is local, lazy, needs no external signal, and runs under
 every rule, so it composes with the teacher rather than replacing it;
 *Measured, September 13, 2026: the quash is not optional.* On shallow_copy at
 five rows with no shortcuts — a genuine two-hop copy — the rule of §6.7 with
-the hebb eligibility reaches 0.978 with QUASH_RATE 0.02 and 0.965 with 0.1,
+the wrong_hebb eligibility reaches 0.978 with QUASH_RATE 0.02 and 0.965 with 0.1,
 and **0.502 with the quash off**, where the mesh reverberates at 220 spikes an
 epoch against 28 and learns nothing at all. Byron's reading of the refractory
 period was right: without something that closes short loops the network has
@@ -2757,7 +2848,7 @@ shallow_copy, with SYNAPSE_TAU at 2, 10 and 50 ms:
 | 2 rows, leaky_hebb, any leak | 1–2/16 | 85–89% | 97–98% |
 | 5 rows, untrained | 5/16 | 76.6% | 84.3% |
 | 5 rows, leaky_hebb, any leak | 8–12/16 | **15–17%** | 42–45% |
-| 5 rows, REINFORCE hebb | 16/16 | 58.0% | 57.7% |
+| 5 rows, REINFORCE wrong_hebb | 16/16 | 58.0% | 57.7% |
 
 At two rows it collapses to one all-on answer whatever the leak. At five it
 does the opposite and answers almost at random — the count of distinct
@@ -2825,7 +2916,7 @@ a bored neuron's threshold when it is silent and nothing raises it when it
 is overactive. Making that symmetric would be the smallest addition
 consistent with the head of §6, and is not yet decided.
 3. *Name.* leaky_hebb, and it is a local rule with its own rate
-   (HEBB_RATE), not a value of RULE. ELIGIBILITY = hebb inside the reinforce
+   (HEBB_RATE), not a value of RULE. ELIGIBILITY = wrong_hebb inside the reinforce
    rule (§6.7) is something else, $\pm 1$ by whether $j$ fired.
 
 ### 6.13 The kinder teacher — decided, built
@@ -2940,7 +3031,7 @@ same uniforms in the same order as the other two engines, pairs them by the
 same Box-Muller (§6.1), and hands the state back so Python's stream carries on
 from where Rust left it. The draws are equal, not approximately equal;
 `tests/test_fast.py` compares them with `==`, and compares the three engines
-wave by wave and weight by weight under both eligibilities of §6.7. The
+wave by wave and weight by weight under every eligibility of §6.7. The
 per-wave draw lands in propagation.py's position exactly: after the floor,
 before anything fires, and a neuron that has already fired keeps the draw it
 decided under.
@@ -3014,6 +3105,15 @@ goo of 40 under it had six. Fixed the same day — the collapsed neuron takes
 the deterministic comparison, as the other two engines give it — and the
 agreement on the configuration is in `tests/test_hazard.py`. The lesson of
 §7 again: agreement is proven on the configuration, not carried over.
+
+*The centred Hebbian eligibility, September 16, 2026.* The loop tallies
+what each synapse delivered under `earn`, as it does for the teacher's
+eligibility, and `reinforce_hebb` pays the tally times the centred count
+the Teacher's book hands it each epoch — $\bar n_j$ is kept in Python
+beside $r_j$, in the object engine's order, and moved after the update. The
+±1 rule is `reinforce_wrong_hebb`. Agreement to the bit on goo under escape
+noise and on the mnist feedforward goo, learning on (`tests/test_hazard.py`,
+`tests/test_fast.py`).
 
 *What it still lacks:* the dopamine rule's in-loop weight updates
 (§6.2–6.6), the teacher (§6.9) and ADALINE (§6.10) as updates rather than
@@ -3859,7 +3959,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   `docs/mnist-estimator-report.py` draws it). Both sweeps run on the
   feedforward goo of 445 at threshold 0.6, floor −2.4, $\Delta$ 0.455,
   $T$ = 2, the evidence critic, 25,000 epochs, seeds 1 to 10, traced every
-  250 epochs. *Sweep 1* is eligibility {hazard, hebb} at LR 0.001 —
+  250 epochs. *Sweep 1* is eligibility {hazard, wrong_hebb} at LR 0.001 —
   *Claude's choice of the fixed learning rate, stated:* the smallest of the
   grid just swept, so that the weights move slowly enough for the
   correlation to be read over 25,000 epochs, and the one sweep 2 shares, so
@@ -3876,14 +3976,14 @@ the layout, the inputs, and whether anything outside the network trains it.
   | epochs | 1,000 | 5,000 | 10,000 | 15,000 | 20,000 | 25,000 |
   |---|---|---|---|---|---|---|
   | hazard | +0.007 | +0.042 | +0.065 | +0.077 | +0.094 | +0.109 ± 0.045 |
-  | hebb | −0.013 | −0.001 | +0.009 | +0.008 | +0.012 | +0.012 ± 0.026 |
+  | wrong_hebb | −0.013 | −0.001 | +0.009 | +0.008 | +0.012 | +0.012 ± 0.026 |
 
   **Under the hazard eligibility the estimator is aligned with the
   supervised direction and accumulates, about as the square root of the
-  epochs; under hebb it is not aligned at all** — its window correlation
+  epochs; under wrong_hebb it is not aligned at all** — its window correlation
   over the last quarter is +0.001 against the hazard's +0.014, and its
   final correlation is within a standard deviation of zero. Neither has
-  moved the read: reward −2.82 (hazard) and −2.88 (hebb) against a chance
+  moved the read: reward −2.82 (hazard) and −2.88 (wrong_hebb) against a chance
   of −3.40, the fraction right 0.074 for both against 0.06, the output zone
   at its rest throughout (rate memory 0.93 and 0.96, about three spikes a
   neuron in the last epoch) — at LR 0.001 the twenty-five thousand epochs
@@ -3939,7 +4039,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   last epoch's counts — the replicate the choice of rate was made for. So
   after two sweeps and sixty arms: the hazard estimator points the
   supervised way and accumulates as the root of the epochs at any rate;
-  hebb does not point at all; and nothing in the learning rate changes the
+  wrong_hebb does not point at all; and nothing in the learning rate changes the
   ratio of signal to noise, which is where the next lever has to be.
 
   **The 100,000-epoch sweep (Byron, September 16, 2026, on watching seed 4
@@ -3953,3 +4053,100 @@ the layout, the inputs, and whether anything outside the network trains it.
   continued rather than rerun — with those weights, not to the bit (the
   stream's position, the exploration stream's state and the baseline are
   not in a checkpoint).
+
+  **The centred Hebbian rule's learning-rate sweep (Byron, September 16,
+  2026, 08:15 MDT: "Escape noise is destroying the network as N². We need
+  escape noise but also need a second learning rule that is more Hebbian
+  in nature" — and, on the derivation now in §6.7: "Please build and test
+  the rule, and please sweep three seeds for LR with the new hebb in {0.03
+  0.05 0.02 0.01 0.005 0.003}").** The rule is §6.7's hebb eligibility,
+  $e_{ij} = x_{ij}(n_j - \bar n_j)$, built and agreeing in all three
+  engines that morning; the ±1 rule is wrong_hebb since. The sweep: the
+  same feedforward goo of 445 as the sweeps above — threshold 0.6, floor
+  −2.4, $\Delta$ 0.455 (escape noise stays on, as Byron said it must; the
+  rule needs none of it and is explored by whatever varies the counts),
+  $T$ = 2, the evidence critic, traced every 250 epochs — LR {0.003, 0.005,
+  0.01, 0.02, 0.03, 0.05} × seeds {1, 2, 3}, eighteen arms on eighteen
+  workers beside the last ten arms of the 100,000-epoch hazard sweep,
+  100,000 epochs an arm. *Claude's choice of the length, stated:* Byron
+  named none; the hazard sweep still running is 100,000 epochs at seeds 1
+  to 10 over {0.003, 0.005, 0.01, 0.02, 0.03}, so at that length every
+  shared cell is a paired comparison, seed for seed and epoch for epoch,
+  and the correlation has the epochs it needs to be read. Launched 08:46
+  MDT (`runs/mnist-ff-hebb-lr`; `docs/mnist-ff-hebb-lr.md` and
+  `-estimator.md` when it lands).
+
+  *The hazard sweep landed 09:27 MDT (`docs/mnist-ff-lr100k.md`,
+  `-estimator.md`, `-estimator.png`), seventy arms of 47 to 55 minutes.*
+  Ten seeds a rate; the correlation with $d$ over the run, and the read:
+
+  | LR | 5,000 | 25,000 | 100,000 | window, last quarter | reward, last tenth | right | outputs' rate memory |
+  |---|---|---|---|---|---|---|---|
+  | 0.001 | +0.042 | +0.109 | +0.226 ± 0.037 | +0.010 | −2.72 | 0.082 | 0.90 |
+  | 0.002 | +0.041 | +0.126 | +0.238 ± 0.025 | +0.011 | −2.66 | 0.086 | 0.82 |
+  | 0.003 | +0.042 | +0.116 | +0.219 ± 0.038 | +0.009 | −2.60 | 0.087 | 0.73 |
+  | 0.005 | +0.059 | +0.124 | +0.220 ± 0.024 | +0.007 | −2.50 | **0.092** | 0.52 |
+  | 0.01 | +0.043 | +0.107 | +0.191 ± 0.028 | +0.005 | −2.43 | 0.081 | 0.28 |
+  | 0.02 | +0.032 | +0.094 | +0.162 ± 0.030 | +0.008 | −2.34 | 0.063 | 0.07 |
+  | 0.03 | +0.049 | +0.102 | +0.158 ± 0.025 | +0.006 | −2.33 | 0.063 | 0.06 |
+
+  **The square root held, and the read moved.** At LR 0.001 the correlation
+  doubled from +0.109 at 25,000 epochs to +0.226 at 100,000 — a factor of
+  2.07 for four times the epochs — and the window correlation is still
+  positive over the last quarter at every rate: the hazard's estimator
+  keeps pointing the supervised way and keeps accumulating. At LR 0.005 the
+  fraction right is 0.092 against a chance of 0.06, the first movement of
+  the read on mnist, with the correlation as high as anywhere and the
+  output zone at half its rest. Above 0.01 the rate buys quiet, not
+  learning: the reward climbs to −2.33 because the output zone goes silent
+  (rate memory 0.07), and a silent zone is scored as a uniform estimate,
+  $\ln 0.1 = -2.30$, above the loud network's chance of −3.40, while the
+  fraction right falls back to 0.06. The sign agreement is under a half at
+  every rate: the label-blind push still decides most signs.
+
+  *The centred rule's sweep landed 09:28 MDT (`docs/mnist-ff-hebb-lr.md`,
+  `-estimator.md`, `-estimator.png`), eighteen arms of 30 to 42 minutes.*
+  Three seeds a rate; the correlation with $d$ over the run, its peak, and
+  the read:
+
+  | LR | 1,000 | 5,000 | 25,000 | 60,000 | 100,000 | peak | window, last quarter | reward, last tenth | right | outputs' rate memory | outputs stuck on, by seed |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | 0.003 | +0.084 | +0.152 | +0.222 | +0.259 | +0.206 ± 0.028 | +0.272 at 66,750 | −0.006 | −2.72 | 0.072 | 0.32 | 12, 10, 19 |
+  | 0.005 | +0.109 | +0.155 | +0.235 | +0.243 | +0.179 ± 0.041 | +0.249 at 42,500 | +0.003 | −2.58 | 0.063 | 0.35 | 11, 16, 23 |
+  | 0.01 | +0.076 | +0.133 | +0.169 | +0.186 | +0.160 ± 0.007 | +0.195 at 66,750 | −0.001 | −2.44 | 0.063 | 0.62 | 31, 30, 32 |
+  | 0.02 | +0.065 | +0.108 | +0.100 | +0.131 | +0.141 ± 0.031 | +0.150 at 98,000 | +0.001 | −2.47 | 0.067 | 0.87 | 52, 40, 43 |
+  | 0.03 | +0.040 | +0.039 | +0.097 | +0.103 | +0.097 ± 0.019 | +0.119 at 66,750 | +0.001 | −2.50 | 0.059 | 1.00 | 51, 49, 53 |
+  | 0.05 | +0.019 | +0.053 | +0.056 | +0.056 | +0.059 ± 0.018 | +0.078 at 71,000 | +0.000 | −2.51 | 0.058 | 1.00 | 49, 50, 51 |
+
+  **The centred rule aligns several times faster, then stalls; the hazard
+  is slower and keeps going.** Paired on the seed at the five shared rates
+  (seeds 1 to 3, the same epochs in the same order): at 1,000 epochs hebb's
+  correlation is +0.08 to +0.11 where the hazard's is +0.01 to +0.02; at
+  5,000 it is +0.10 above the hazard's at LR 0.003 and 0.005, and +0.09 to
+  +0.10 above at 25,000 — the sign agreement of §0.1's wrong_hebb sweep was
+  0.42, and this rule's is 0.46, the highest measured. Then it peaks, at
+  +0.25 to +0.27 between 40,000 and 70,000 epochs, and *falls*, to +0.21
+  and +0.18 at 100,000, with a window correlation of zero over the last
+  quarter: the aligned signal stops growing while the noise keeps
+  accumulating, and the cumulative correlation dilutes. The hazard's on the
+  same seeds climbs through +0.26 and +0.21 at 100,000 and is higher on
+  fourteen of the fifteen paired arms by then. The read did not move under
+  hebb — 0.058 to 0.072 right against 0.06, below the hazard's on the
+  paired seeds by 0.015 to 0.024 at the rates where the hazard's moved —
+  and the reward is lower at every shared rate, by 0.02 to 0.17.
+
+  *Claude's reading of the stall.* The centred rule takes the output zone
+  to the rails, where its own eligibility vanishes. At LR 0.03 and 0.05
+  every output is stuck on by the end (rate memory 1.00): a count with no
+  variance has $n_j - \bar n_j = 0$, and nothing moves. At 0.003 and 0.005
+  the zone splits into a saturated minority of 10 to 23 and a quiet
+  majority (rate memory 0.32 to 0.35, one spike a neuron in the last
+  epoch), and neither varies enough to be credited; the hazard at the same
+  rates leaves 17 to 21 outputs on and none off, and a hazard neuron at a
+  rail is still a decision with a score. So the centred term does what it
+  was built for — while the neurons vary it is the better estimator, by a
+  wide margin — and it wants what the hazard has: a neuron at the rail
+  that can still take a chance. Two experiments follow and neither is run:
+  the composition, hazard plus hebb by addition (§6.7), not built as an
+  option yet; and rates below 0.003, where the hazard's read moved and
+  where the centred rule's drift to the rails would be slower.

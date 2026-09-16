@@ -28,7 +28,9 @@ delivered and settled before any neuron of that wave decides to fire, forced neu
 before touched ones, then every other neuron checked for a threshold that has fallen with
 its silence (§5.4). Plus the two local rules that must run inside the loop because they
 change weights the rest of the epoch sees: the quash (§6.11) and leaky Hebb (§6.12), and
-the eligibility a teacher pays at the read (§6.9).
+the eligibility a teacher pays at the read (§6.9) -- the same tally the centred Hebbian
+eligibility of §6.7 reads (`reinforce_hebb`, September 16, 2026; the ±1 rule it replaced is
+`reinforce_wrong_hebb`).
 
 Exploration noise (§6.1) and the perturb eligibility of §6.7 as well, since September
 14, 2026: the engine runs Python's own MT19937, seeded by handing over `rng.getstate()`,

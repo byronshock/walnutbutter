@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--seed", type=int, default=4)
-    parser.add_argument("--eligibility", choices=("hazard", "hebb", "perturb"), default="hazard")
+    parser.add_argument("--eligibility", choices=("hazard", "hebb", "wrong_hebb", "perturb"), default="hazard")
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--temperature", type=float, default=2.0)
     parser.add_argument("--hidden-neurons", type=int, default=0)

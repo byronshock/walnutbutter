@@ -50,6 +50,8 @@ class Neuron:
         self.draw = 1.0  # this wave's uniform for the decision, set by the network's explorer hook; 1 never fires
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
+        self.expected_count: float | None = None  # n_bar_j: the running expectation of this neuron's spikes an epoch, which
+        # the hebb eligibility centres on (AUTHORITY.md §6.7); None until its first unforced epoch, which sets it
         self.has_fired = False  # fired in the current epoch
         self.fired_in_wave: int | None = None  # the wave of the current epoch it (last) fired in; None until it fires
         self.forced = False  # forced to fire by the stimulus in the current epoch

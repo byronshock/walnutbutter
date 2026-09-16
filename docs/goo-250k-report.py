@@ -2,7 +2,7 @@
 """Read a goo-250k sweep's arms off disk and write docs/<name>.md and docs/<name>-score.png.
 
     .venv/bin/python docs/goo-250k-report.py                    # runs/goo-250k, the perturb eligibility, --seeds on arrays
-    .venv/bin/python docs/goo-250k-report.py --name goo-250k-hebb --eligibility hebb --source rust
+    .venv/bin/python docs/goo-250k-report.py --name goo-250k-hebb --eligibility wrong_hebb --source rust
 
 Two sources. `--source seeds` (the default) reads what `walnutbutter --seeds`
 leaves: a checkpoint per seed with the Teacher's ten progress reports, and the
@@ -128,7 +128,9 @@ def main() -> None:
     global RUNS
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--name", default="goo-250k", help="runs/<name> in, docs/<name>.md and docs/<name>-score.png out")
-    parser.add_argument("--eligibility", default="perturb", choices=("perturb", "hebb"), help="for the report's text only")
+    parser.add_argument("--eligibility", default="perturb", choices=("perturb", "wrong_hebb", "hebb"),
+                        help="for the report's text only (the runs of September 14, 2026 recorded the +-1 rule as hebb; it "
+                             "is wrong_hebb since September 16)")
     parser.add_argument("--source", default="seeds", choices=("seeds", "rust"),
                         help="what left the runs on disk: walnutbutter --seeds (arrays), or docs/rust-sweep.py")
     args = parser.parse_args()

@@ -41,9 +41,19 @@ the synapse). A neuron nudged towards firing in an
 
 This is the REINFORCE / node-perturbation estimator of the reward gradient,
 a three-factor rule: presynaptic activity x postsynaptic perturbation x
-global reward. With `eligibility="hebb"` the perturbation is replaced by a
-plain Hebbian term (+1 if the target fired, -1 if not) and no noise is
-injected, which is the classic reward-modulated Hebbian rule. With
+global reward. With `eligibility="wrong_hebb"` the perturbation is replaced
+by a plain Hebbian term (+1 if the target fired, -1 if not) and no noise is
+injected: the classic reward-modulated Hebbian rule, uncentred, which is why
+it points nowhere on a network whose neurons nearly all fire every epoch,
+and why it was so named on September 16, 2026. With `eligibility="hebb"` the
+term is centred (AUTHORITY.md §6.7): each synapse's eligibility is the
+signals it delivered this epoch, x_ij, times its target's spike count minus
+the target's own running expectation of that count, n_j - n_bar_j
+(Williams's y - y_bar, [1] §8.4; the expectation moves by COUNT_MEMORY an
+epoch and starts at the first count seen). That is the reward-modulated
+covariance rule, the Bernoulli-logistic REINFORCE term (y - p) x with the
+probability estimated rather than known; no noise is injected either, and
+whatever varies the counts is its exploration. With
 `eligibility="hazard"` the firing decision itself is the draw (escape noise,
 AUTHORITY.md §5.2: the network was given a positive ESCAPE_DELTA) and the
 eligibility is Williams's own, the score of each decision summed over the
@@ -76,7 +86,8 @@ from typing import Callable, Sequence
 from .grid import GridOfNeurons
 from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
 from .constants import (
-    BASELINE_RATE, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA, STUCK_ABOVE, STUCK_BELOW,
+    BASELINE_RATE, COUNT_MEMORY, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA,
+    STUCK_ABOVE, STUCK_BELOW,
     TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
 from .dopamine import Dopamine, apply_teacher
@@ -97,7 +108,9 @@ TARGETS: dict[str, Target] = {
 RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
 # means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
 # are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
-ELIGIBILITIES = ("perturb", "hebb", "hazard")  # hazard: the score of the escape-noise decision (§5.2) on each synapse's trace (§6.7)
+ELIGIBILITIES = ("perturb", "wrong_hebb", "hebb", "hazard")  # wrong_hebb: the +-1 by whether the target fired; hebb: what the
+# synapse delivered times the target's count minus its expectation (§6.7); hazard: the score of the escape-noise decision
+# (§5.2) on each synapse's trace (§6.7)
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
 
 
@@ -412,15 +425,23 @@ def forced(neuron: Neuron) -> bool:
 
 
 def update_rates(grid: GridOfNeurons) -> None:
-    """Move every neuron's running firing-rate estimate toward what it did this epoch.
+    """Move every neuron's running firing-rate estimate, and its expected spike count, toward what it did this epoch.
 
-    A neuron forced this epoch is skipped: that firing says nothing about the network.
+    A neuron forced this epoch is skipped: that firing says nothing about the
+    network. The expected count, n_bar_j, is what the hebb eligibility centres
+    on (AUTHORITY.md §6.7); it starts at the first count seen and then moves
+    by COUNT_MEMORY an epoch, after the update has used it.
     """
     if arrays(grid):
         return grid.update_rates()
     for neuron in grid.all_neurons():
         if not forced(neuron):
             neuron.rate += RATE_MEMORY * ((1.0 if neuron.has_fired else 0.0) - neuron.rate)
+            count = float(neuron.epoch_spikes)
+            if neuron.expected_count is None:
+                neuron.expected_count = count  # its first unforced epoch sets the expectation
+            else:
+                neuron.expected_count += COUNT_MEMORY * (count - neuron.expected_count)
 
 
 def stuck_neurons(grid: GridOfNeurons) -> tuple[list[Neuron], list[Neuron]]:
@@ -547,6 +568,9 @@ def reinforce(
             raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
         if late != "count" or leaky:
             raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
+    if eligibility == "hebb" and (late != "count" or leaky):
+        raise ValueError("the hebb eligibility carries its own tally of what each synapse delivered: late = count and no "
+                         "leaky trace (§6.7)")
     if arrays(grid):
         return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
     if not advantage:
@@ -559,6 +583,25 @@ def reinforce(
             if not connection.score or connection.target.forced:
                 continue  # nothing accumulated, or a forced input: its firing was not the network's doing
             weight = connection.weight + step * connection.score
+            if weight < low:
+                weight = low
+            elif weight > high:
+                weight = high
+            connection.weight = weight
+            changed += 1
+        return changed
+    if eligibility == "hebb":  # §6.7: what each synapse delivered times its target's count minus the target's expectation
+        changed = 0
+        for connection in grid.connections.values():
+            target = connection.target
+            if not connection.eligibility or target.forced:
+                continue  # delivered nothing this epoch, or a forced input: its firing was not the network's doing
+            if target.expected_count is None:
+                continue  # the target's first unforced epoch: the expectation is this count, and the eligibility zero
+            e = connection.eligibility * (target.epoch_spikes - target.expected_count)
+            if not e:
+                continue  # exactly as many spikes as expected: nothing to credit or blame
+            weight = connection.weight + step * e
             if weight < low:
                 weight = low
             elif weight > high:
@@ -596,7 +639,7 @@ def reinforce(
                 # A target that never fired has no moment at which its synapses can be told apart, so
                 # the trace is exp(-hop/TAU) for all of them: the scale changes, the resolution does not.
                 # Reading it at the horizon instead annihilates the whole non-firing half (5e-5 at TAU 2,
-                # a 35 ms epoch), which is the depressive half of the hebb eligibility.
+                # a 35 ms epoch), which is the depressive half of the wrong_hebb eligibility.
                 e = e * math.exp(-(when - connection.last_signal + hop) / tau)
             weight = connection.weight + step * e
             if weight < low:
@@ -686,6 +729,7 @@ class Teacher:
         self.lr = lr
         self.sigma = sigma if eligibility == "perturb" else 0.0
         self.eligibility = eligibility
+        grid.tally = eligibility == "hebb"  # the tally of what each synapse delivered, the x_ij of §6.7, in whichever engine
         self.baseline_rate = baseline_rate
         self.window = window
         self.rng = random.Random(seed)

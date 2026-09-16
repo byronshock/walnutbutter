@@ -81,7 +81,7 @@ def test_it_draws_pythons_own_stream_bit_for_bit_and_hands_it_back():
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-@pytest.mark.parametrize("eligibility", ["perturb", "hebb"])
+@pytest.mark.parametrize("eligibility", ["perturb", "wrong_hebb", "hebb"])
 def test_it_agrees_with_the_object_engine_under_the_reinforce_rule(eligibility):
     """§7: a rule is implemented in every engine and passes the same tests. The perturb rule, per-wave draws and all."""
     from walnutbutter.learning import Teacher
@@ -99,13 +99,14 @@ def test_it_agrees_with_the_object_engine_under_the_reinforce_rule(eligibility):
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine():
+@pytest.mark.parametrize("eligibility", ["wrong_hebb", "hebb"])
+def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine(eligibility):
     """§3.4 on §6.15: the container the sweep is about, on the engine the sweep runs on, bit for bit."""
     from walnutbutter.goo import Goo
     from walnutbutter.learning import Teacher
     goo = Goo(count=40, across=8, seed=3, weight=None)
     goo.rule, goo.drive = "reinforce", "rate"
-    teacher = Teacher(goo, seed=7, rule="reinforce", eligibility="hebb", homeostasis=0.01, unstick=0.1)
+    teacher = Teacher(goo, seed=7, rule="reinforce", eligibility=eligibility, homeostasis=0.01, unstick=0.1)
     parted = fast.compare(goo, epochs=60, teacher=teacher)
     assert parted == [], parted
     from walnutbutter.constants import GOO_THRESHOLD
@@ -128,8 +129,13 @@ def test_train_runs_the_perturb_rule_from_a_seeded_stream():
     assert list(a[2].weights()) == list(b[2].weights())  # the same seed, the same run
     assert list(a[2].weights()) != list(c[2].weights())  # a different stream, a different one
     assert set(a[3]) >= {"last_tenth", "rates", "thresholds", "stuck_on", "stuck_off"} and 0 <= a[3]["last_tenth"] <= 1
-    flat = fast.train(mesh(rows=2, seed=4), 30, homeostasis=0.0, unstick=0.0)
+    flat = fast.train(mesh(rows=2, seed=4), 30, homeostasis=0.0, unstick=0.0)  # the default eligibility, hebb (§6.7)
     assert flat[3]["thresholds"] == [0.25] * len(flat[3]["thresholds"])  # nothing moved them
+    assert len(flat[3]["expected_counts"]) == len(flat[3]["rates"]) and any(e is not None for e in flat[3]["expected_counts"])
+    old = fast.train(mesh(rows=2, seed=4), 30, eligibility="wrong_hebb", homeostasis=0.0, unstick=0.0)
+    assert list(old[2].weights()) != list(flat[2].weights())  # the +-1 rule and the centred one are not the same rule
+    with pytest.raises(ValueError, match="eligibility must be"):
+        fast.train(mesh(rows=2), 1, eligibility="magic")
     moved = fast.train(mesh(rows=2, seed=4), 30, homeostasis=0.01, unstick=0.1)
     assert moved[3]["thresholds"] != flat[3]["thresholds"]
     with pytest.raises(ValueError, match="positive sigma"):

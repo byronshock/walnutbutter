@@ -117,10 +117,10 @@ def test_reinforce_with_zero_advantage_changes_nothing():
     assert [c.weight for c in grid.connections.values()] == before
 
 
-def test_hebbian_eligibility_uses_target_firing_and_keeps_weights_in_range():
+def test_the_wrong_hebb_eligibility_uses_target_firing_and_keeps_weights_in_range():
     grid = main(across=8, rows=4, weight=None, seed=4)
     before = {c.id: c.weight for c in grid.connections.values()}
-    reinforce(grid, advantage=-1.0, lr=0.5, eligibility="hebb")
+    reinforce(grid, advantage=-1.0, lr=0.5, eligibility="wrong_hebb")
     for c in delivered_connections(grid):
         if c.target.forced:
             continue
@@ -161,8 +161,9 @@ def test_teacher_validates_tracks_and_reports():
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
     assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
-    hebb = Teacher(grid, eligibility="hebb")
-    assert hebb.sigma == 0.0  # no exploration noise for the Hebbian variant
+    for hebbian in ("wrong_hebb", "hebb"):
+        assert Teacher(grid, eligibility=hebbian).sigma == 0.0  # no injected noise for either Hebbian variant
+    assert grid.tally  # the last Teacher, hebb's, switched the tally of what each synapse delivers on (§6.7)
 
 
 def test_teacher_with_seed_is_reproducible():
@@ -412,8 +413,8 @@ def test_a_late_signal_counts_by_default_and_is_ignored_or_depressed_on_request(
     assert changed == 2
     assert a_b.weight == pytest.approx(1.0) and a_c.weight == pytest.approx(1.0)  # clipped at the top
     assert c_b.weight == 0.5  # untouched: it changed nothing in this epoch
-    reinforce(Tiny, advantage=-1.0, lr=0.1, eligibility="hebb", late="ignore")
-    assert c_b.weight == 0.5  # the Hebbian variant respects timing too, when late signals are ignored
+    reinforce(Tiny, advantage=-1.0, lr=0.1, eligibility="wrong_hebb", late="ignore")
+    assert c_b.weight == 0.5  # the +-1 Hebbian variant respects timing too, when late signals are ignored
     assert a_b.weight < 1.0
     assert reinforce(Tiny, advantage=1.0, lr=0.1, sigma=0.1) == 3  # by default the late signal counts
     assert c_b.weight == pytest.approx(0.6)  # pre fired, post fired, reward was good: local rule, global signal
@@ -446,3 +447,62 @@ def test_unstick_reaches_every_stuck_neuron_and_leaves_a_forced_one_alone():
     assert interior.threshold == pytest.approx(before[interior] - 0.05) and out.threshold == pytest.approx(before[out] + 0.05)
     assert forced_in.threshold == before[forced_in]
     assert all(n.threshold == before[n] for n in grid.all_neurons() if n not in (interior, out))
+
+
+def test_the_hebb_eligibility_is_what_the_synapse_delivered_times_the_centred_count():
+    """§6.7 (September 16, 2026): e_ij = x_ij (n_j - n_bar_j) -- the signals the target integrated along the synapse this
+    epoch, times its spike count minus its own running expectation. A forced target is skipped, a target with no
+    expectation yet moves nothing, and the rule carries its own tally, so late = count and no leaky trace."""
+    from walnutbutter.grid import GridOfNeurons
+    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=4, omega=0)
+    grid.rule, grid.drive = "reinforce", "rate"
+    teacher = Teacher(grid, eligibility="hebb", seed=3, rule="reinforce")
+    assert grid.tally and teacher.sigma == 0.0
+    run_epoch(grid, verbose=False)
+    tallies = {c.id: c.eligibility for c in grid.connections.values()}
+    assert any(tallies.values())  # signals were delivered, and counted
+    assert all(n.expected_count is None for n in grid.all_neurons())  # nothing has been seen yet
+    before = {c.id: c.weight for c in grid.connections.values()}
+    assert reinforce(grid, advantage=0.7, lr=0.1, eligibility="hebb") == 0  # a first epoch centres on itself
+    assert {c.id: c.weight for c in grid.connections.values()} == before
+    for k, n in enumerate(grid.all_neurons()):
+        n.expected_count = 0.5 * (k % 5)  # set by hand, so the arithmetic can be checked to the bit
+    changed = reinforce(grid, advantage=0.7, lr=0.1, eligibility="hebb")
+    moved = 0
+    for c in grid.connections.values():
+        t = c.target
+        e = tallies[c.id] * (t.epoch_spikes - t.expected_count)
+        if t.forced or not e:
+            assert c.weight == before[c.id]
+        else:
+            assert c.weight == max(-1.0, min(1.0, before[c.id] + 0.1 * 0.7 * e))
+            moved += 1
+    assert changed == moved > 0
+    with pytest.raises(ValueError, match="late = count"):
+        reinforce(grid, advantage=1.0, eligibility="hebb", late="ignore")
+    with pytest.raises(ValueError, match="no leaky trace"):
+        reinforce(grid, advantage=1.0, eligibility="hebb", leaky=True)
+
+
+def test_update_rates_keeps_the_expected_count_from_the_first_epoch_seen():
+    """§6.7: n_bar_j starts at the first count seen in an unforced epoch and then moves by COUNT_MEMORY an epoch."""
+    from walnutbutter.constants import COUNT_MEMORY
+    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.learning import update_rates
+    grid = GridOfNeurons(across=6, rows=3, weight=None, seed=2, omega=0)
+    grid.drive = "rate"
+    run_epoch(grid, verbose=False)
+    update_rates(grid)
+    assert any(n.forced for n in grid.all_neurons()) and any(not n.forced for n in grid.all_neurons())
+    for n in grid.all_neurons():
+        assert n.expected_count == (None if n.forced else float(n.epoch_spikes))
+    seen = {n: n.expected_count for n in grid.all_neurons()}
+    run_epoch(grid, verbose=False)
+    update_rates(grid)
+    for n in grid.all_neurons():
+        if n.forced:
+            assert n.expected_count == seen[n]  # a forced epoch says nothing about the network
+        elif seen[n] is None:
+            assert n.expected_count == float(n.epoch_spikes)
+        else:
+            assert n.expected_count == seen[n] + COUNT_MEMORY * (float(n.epoch_spikes) - seen[n])

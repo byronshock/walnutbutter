@@ -221,10 +221,10 @@ def test_cli_learns_by_default_and_no_learn_switches_it_off(capsys):
 
 
 def test_cli_eligibility_and_sigma_options(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--eligibility", "hebb",
+    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--eligibility", "wrong_hebb",
             "--sigma", "0.3", "--lr", "0.02", "--epochs", "20", "--rule", "reinforce"]
     assert cli_main(args) == 0
-    assert "learning reversed (hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001)" in capsys.readouterr().err
+    assert "learning reversed (wrong_hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001)" in capsys.readouterr().err
 
 
 def test_cli_saves_and_loads_weights(tmp_path, capsys):

@@ -16,10 +16,12 @@ its count can be swept, its potential axis scaled with fan-in unless `--no-scale
 The Teacher's homeostasis and un-sticking run at the constants the command line uses, so an arm
 here is the run `walnutbutter --seeds` would do.
 
-The reinforce rule with the row critic and late = count. `--eligibility hebb` (the default,
-sigma 0) or `--eligibility perturb`, which draws its noise per wave (§6.1) from the arm's
-seed -- the same stream a Teacher with that seed would use -- and `--sigma` is then a knob
-like any other.
+The reinforce rule with the row critic and late = count. `--eligibility hazard` (the default
+under escape noise), `hebb` (the default when the threshold decides, sigma 0: the centred
+Hebbian rule of §6.7, what each synapse delivered times its target's count minus the
+target's own expectation), `wrong_hebb` (the ±1 rule hebb replaced on September 16, 2026)
+or `perturb`, which draws its noise per wave (§6.1) from the arm's seed -- the same stream
+a Teacher with that seed would use -- and `--sigma` is then a knob like any other.
 
 Each arm's inputs are drawn up front from the input stream of §4.5, keyed to the arm's
 seed alone, so every arm at seed s sees the same epochs in the same order however the
@@ -37,7 +39,7 @@ import statistics
 import sys
 import time
 
-from walnutbutter.constants import ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
+from walnutbutter.constants import COUNT_MEMORY, ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -80,11 +82,12 @@ def parse() -> argparse.Namespace:
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
-    parser.add_argument("--eligibility", nargs="+", choices=("hebb", "perturb", "hazard"),
+    parser.add_argument("--eligibility", nargs="+", choices=("hebb", "wrong_hebb", "perturb", "hazard"),
                         default=["hazard" if ESCAPE_DELTA > 0 else "hebb"],
-                        help="what the reward acts on (§6.7): a Hebbian +-1, the perturbation the neuron decided under, or "
-                             "the score of the escape-noise decision on each synapse's trace (hazard; needs --delta). More "
-                             "than one value sweeps it, an arm per value")
+                        help="what the reward acts on (§6.7): the centred Hebbian term (hebb), the uncentred +-1 it replaced "
+                             "(wrong_hebb), the perturbation the neuron decided under (perturb), or the score of the "
+                             "escape-noise decision on each synapse's trace (hazard; needs --delta). More than one value "
+                             "sweeps it, an arm per value")
     parser.add_argument("--epochs", type=int, default=1_000_000)
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
@@ -170,6 +173,8 @@ def _save_network(engine, grid, report: dict, path) -> None:
         c.weight = w
     for n, theta in zip(grid.all_neurons(), report["thresholds"]):
         n.threshold = theta
+    for n, expected in zip(grid.all_neurons(), report.get("expected_counts") or []):
+        n.expected_count = expected  # the hebb eligibility's expectation (§6.7), so a continuation starts centred
     checkpoint(grid, path)
 
 
@@ -243,6 +248,8 @@ def run_arm(job: tuple) -> dict:
               "critic": args.critic, "problem": problem,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
+              "count_memory": COUNT_MEMORY if eligibility == "hebb" else None,  # the centred rule's memory (§6.7); a record
+              # naming hebb without it is from before September 16, 2026, when hebb named the +-1 rule now called wrong_hebb
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knob
               "scaling_factor": getattr(grid, "scaling_factor", None),
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and

@@ -17,8 +17,8 @@ the same bits. `compare()` is the harness for that.
 from __future__ import annotations
 
 from .constants import (
-    HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK, UNSTICK_TARGET,
-    WEIGHT_RANGE,
+    COUNT_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK,
+    UNSTICK_TARGET, WEIGHT_RANGE,
 )
 from .neuron import Neuron
 
@@ -135,23 +135,40 @@ class _Thresholds:
     The Rust engine owns the potentials; the Teacher owns each neuron's running
     firing rate and moves its threshold from that once an epoch, in Python, which
     is cheap and keeps the arithmetic in the same order as the object engine's.
+    The expected spike count the hebb eligibility centres on (§6.7) is the
+    Teacher's too, kept here the same way: `centred()` hands the engine this
+    epoch's counts against it, and `step()` then moves it.
     """
 
-    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, rate_memory=RATE_MEMORY):
+    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, rate_memory=RATE_MEMORY,
+                 count_memory=COUNT_MEMORY):
         self.engine, self.out = engine, out
         self.rates = [n.rate for n in neurons]
+        self.expected = [n.expected_count for n in neurons]  # n_bar_j; None until the neuron's first unforced epoch
         self.thresholds = [n.threshold for n in neurons]
         self.homeostasis, self.target_rate = homeostasis, target_rate
         self.unstick, self.unstick_target = unstick, unstick_target
-        self.rate_memory = rate_memory
+        self.rate_memory, self.count_memory = rate_memory, count_memory
         self.unstuck = 0
+
+    def centred(self) -> list[float]:
+        """n_j - n_bar_j for every neuron, this epoch's count against the expectation as it stands (§6.7's hebb eligibility).
+
+        A neuron with no expectation yet centres on itself, so its first unforced
+        epoch moves nothing -- the object engine's reading, operation for operation.
+        """
+        counts = self.engine.epoch_spike_counts()
+        return [float(c) - (float(c) if e is None else e) for c, e in zip(counts, self.expected)]
 
     def step(self) -> None:
         fired, forced = self.engine.fired_this_epoch(), self.engine.forced_flags()
-        rates, thresholds = self.rates, self.thresholds
+        rates, thresholds, expected = self.rates, self.thresholds, self.expected
+        counts = self.engine.epoch_spike_counts()
         for i in range(len(rates)):
             if not forced[i]:
                 rates[i] += self.rate_memory * ((1.0 if fired[i] else 0.0) - rates[i])
+                count = float(counts[i])
+                expected[i] = count if expected[i] is None else expected[i] + self.count_memory * (count - expected[i])
         moved = False
         if self.homeostasis > 0:
             for i in range(len(rates)):
@@ -200,7 +217,7 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
         grid,
         quash_rate=grid.quash_rate, quash_k=grid.quash_k,
         hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau,
-        weight_range=grid.weight_range, earn=grid.rule in ("teacher", "adaline"),
+        weight_range=grid.weight_range, earn=grid.rule in ("teacher", "adaline") or grid.tally,
         sigma=sigma, explore_rng=teacher.rng if teacher is not None else None,
     )
     edges = [c for neuron in neurons for c in neuron.outgoing]
@@ -216,7 +233,7 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             run_epoch(grid, bits, verbose=False)
         else:
             reward = teacher.epoch(bits, verbose=False)
-        engine.reset(False, grid.rule in ("teacher", "adaline"))
+        engine.reset(False, grid.rule in ("teacher", "adaline") or grid.tally)
         for place, when in (grid.input_events or []):
             engine.stimulus(index[grid.input_row()[place]], when)
         engine.run(grid.horizon)
@@ -231,12 +248,16 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
                 engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
             elif teacher.eligibility == "hazard":
                 engine.reinforce_hazard(reward - baseline, teacher.lr)
+            elif teacher.eligibility == "hebb":
+                engine.reinforce_hebb(reward - baseline, teacher.lr, book.centred())
             else:
-                engine.reinforce_hebb(reward - baseline, teacher.lr)
+                engine.reinforce_wrong_hebb(reward - baseline, teacher.lr)
             book.step()
             baseline += teacher.baseline_rate * (reward - baseline)
             if [n.rate for n in neurons] != book.rates:
                 parted.append((epoch, "firing-rate memories differ"))
+            if [n.expected_count for n in neurons] != book.expected:
+                parted.append((epoch, "expected counts differ"))
             if [n.threshold for n in neurons] != book.thresholds:
                 parted.append((epoch, "thresholds differ after homeostasis / un-sticking"))
 
@@ -254,6 +275,11 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             theirs = list(engine.scores())
             if mine != theirs:
                 parted.append((epoch, f"hazard scores differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
+        if teacher is not None and teacher.eligibility == "hebb":
+            mine = [c.eligibility for c in edges]
+            theirs = list(engine.eligibilities())
+            if mine != theirs:
+                parted.append((epoch, f"tallies differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
         mine = [c.weight for c in edges]
         theirs = list(engine.weights())
         worst = max((abs(a - b) for a, b in zip(mine, theirs)), default=0.0)
@@ -312,12 +338,14 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     order. Without it the bits come from the grid's own stream, which a differently built
     network consumes differently.
 
-    `eligibility` is hebb (sigma is then 0, as the Teacher sets it), perturb, which
-    needs a positive `sigma` and draws its noise per wave (§6.1) from `random.Random(seed)`,
-    the stream a Teacher with that seed would use, so a Rust run and a Python run of the
-    same seed take the same draws, or hazard, which needs the grid to have been given a
-    positive ESCAPE_DELTA (`grid.set_delta`, §5.2) and draws its decisions from the same
-    stream. The row critic and late = count only.
+    `eligibility` is hebb (the centred Hebbian rule of §6.7: the engine tallies what each
+    synapse delivered and the book keeps each neuron's expected count; sigma is then 0, as
+    the Teacher sets it), wrong_hebb (the ±1 rule it replaced on September 16, 2026, sigma
+    0 too), perturb, which needs a positive `sigma` and draws its noise per wave (§6.1)
+    from `random.Random(seed)`, the stream a Teacher with that seed would use, so a Rust
+    run and a Python run of the same seed take the same draws, or hazard, which needs the
+    grid to have been given a positive ESCAPE_DELTA (`grid.set_delta`, §5.2) and draws its
+    decisions from the same stream. The row critic and late = count only.
 
     `critic` is row (the fraction of outputs matching the target), class (§8: the
     label's group of outputs out-spikes every other group, or nothing), graded (the
@@ -354,8 +382,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
 
     from .learning import TARGETS
 
-    if eligibility not in ("hebb", "perturb", "hazard"):
-        raise ValueError(f"eligibility must be hebb, perturb or hazard, got {eligibility!r}")
+    if eligibility not in ("wrong_hebb", "hebb", "perturb", "hazard"):
+        raise ValueError(f"eligibility must be hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
     if eligibility == "perturb" and sigma <= 0.0:
         raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
     if eligibility == "hazard" and not grid.hazard:
@@ -371,7 +399,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     engine, neurons, index = build(
         grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
         hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau, weight_range=grid.weight_range,
-        sigma=sigma, explore_rng=explore_rng,
+        sigma=sigma, explore_rng=explore_rng, earn=eligibility == "hebb",  # the tally of §6.7's hebb eligibility
     )
     row = grid.output_row()
     out = [index[neuron] for neuron in row]
@@ -408,7 +436,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         grid.epoch += 1
         events = grid.input_schedule()
         grid.horizon = grid.time + grid.interval
-        engine.reset(False, False)
+        engine.reset(False, eligibility == "hebb")  # a new epoch tallies afresh
         if events:
             engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
         engine.run(grid.horizon)
@@ -420,8 +448,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
             engine.reinforce_hazard(reward - baseline, lr)
         elif sigma > 0.0:
             engine.reinforce_perturb(reward - baseline, lr, sigma)
+        elif eligibility == "hebb":
+            engine.reinforce_hebb(reward - baseline, lr, book.centred())
         else:
-            engine.reinforce_hebb(reward - baseline, lr)
+            engine.reinforce_wrong_hebb(reward - baseline, lr)
         book.step()
         baseline += baseline_rate * (reward - baseline)
         total += reward
@@ -440,7 +470,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
             probe(epoch + 1, engine, grid, out, book)
     on, off = book.stuck()
-    report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
+    report = {"last_tenth": tail / tenth, "rates": book.rates, "expected_counts": book.expected, "thresholds": book.thresholds,
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
               "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
               "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given

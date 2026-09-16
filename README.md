@@ -484,8 +484,8 @@ That is activity, not learning. Swept twice at 250,000 epochs and ten seeds
 against the same goo run flat and against the grid (AUTHORITY.md §3.4,
 `docs/goo-250k.md`, `docs/goo-250k-hebb.md`): **all three at chance both
 times** -- under the perturb eligibility grid 0.520, flat goo 0.511, scaled
-goo 0.507; under hebb scaled goo 0.513, flat goo 0.506, grid 0.502. The grid
-does not learn reversal at ten rows under either rule; where hebb learns
+goo 0.507; under wrong_hebb scaled goo 0.513, flat goo 0.506, grid 0.502. The grid
+does not learn reversal at ten rows under either rule; where wrong_hebb learns
 (§6.7's 0.98, §4.3's 0.64) the task is one hop wide. The rescaling fixed the
 read carrying nothing, not the rule learning nothing, and the comparison goo
 was built for wants a one-hop task the grid can do: reaching_copy, which is
@@ -493,7 +493,7 @@ the grid with its depth taken away, against goo, which is the grid with its
 depth and its locality taken away. `--no-scale-with-fan-in` runs goo flat,
 and `--scale-with-fan-in` offers the rule to any other container.
 
-Then, on copy under hebb, goo's count against THRESHOLD with the floor
+Then, on copy under wrong_hebb, goo's count against THRESHOLD with the floor
 following at the grid's ratio (`docs/goo-count-threshold.md`, 300 arms):
 **at the shipped threshold fewer neurons is much better** -- goo 24 scores
 0.609, goo 80 0.524, t 6.5 -- **but the best cell of all is goo 80 at
@@ -508,11 +508,11 @@ twofold range of count. The threshold's only job is to get a goo out of
 saturation. At goo 120 most of the goo can be silent -- 55 to 77 of 120
 neurons stuck off -- and the copy survives on the eight inputs projecting
 straight onto the eight outputs. Everything that escapes saturation lands at
-0.60-0.64, where the hebb eligibility also lands on reaching_copy: the
+0.60-0.64, where the wrong_hebb eligibility also lands on reaching_copy: the
 ceiling is the rule's, not the network's.
 
 Under the count read (§4.3) the working network -- goo 60 at its own
-constants, copy -- scores **0.556** with the hebb eligibility and 0.514
+constants, copy -- scores **0.556** with the wrong_hebb eligibility and 0.514
 (chance) with perturb over ten seeds and 100,000 epochs
 (`docs/goo60-count.md`, `docs/goo60-count-perturb.md`), at 7,000 epochs a
 second: the read that stops counting a stray spike as a one moves the
@@ -598,8 +598,13 @@ reward, the epoch's accuracy, is compared with a running average to give an
 *advantage*, and every connection that carried a signal into a neuron that
 was not a forced input moves by `lr * advantage * eligibility`, where the
 eligibility is the target neuron's exploration noise (node-perturbation
-REINFORCE) or, with `--eligibility hebb`, +1 if the target fired and -1 if
-not. Forced inputs are never adjusted and weights stay within [-1, 1].
+REINFORCE); with `--eligibility hebb`, what the synapse delivered times the
+target's spike count minus the target's own running expectation of it (the
+centred Hebbian rule, AUTHORITY.md §6.7); with `--eligibility wrong_hebb`, +1
+if the target fired and -1 if not (the uncentred rule hebb replaced on
+September 16, 2026); or with `--eligibility hazard` the score of the
+escape-noise decision on each synapse's trace. Forced inputs are never
+adjusted and weights stay within [-1, 1].
 
 The **mnist** problem (AUTHORITY.md §8) reads the handwritten digits from
 `mnist/` (the training split's two IDX files, not in git; `mnist/README.md`

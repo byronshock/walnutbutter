@@ -1,4 +1,4 @@
-# goo60-default: copy on the goo 60, 100,000 epochs an arm, the Rust wave loop (§6.15), hebb eligibility
+# goo60-default: copy on the goo 60, 100,000 epochs an arm, the Rust wave loop (§6.15), wrong_hebb eligibility
 
 | arm | first tenth | last tenth | best |
 |---|---|---|---|

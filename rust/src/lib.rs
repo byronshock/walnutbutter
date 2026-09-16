@@ -371,9 +371,10 @@ impl Engine {
         Ok(())
     }
 
-    /// §6.7 with the hebb eligibility: every connection that delivered into an unforced neuron moves by
-    /// `lr * advantage * (+1 if that neuron fired, else -1)`. Returns connections changed.
-    fn reinforce_hebb(&mut self, advantage: f64, lr: f64) -> usize {
+    /// §6.7 with the wrong_hebb eligibility (the ±1 rule, so named September 16, 2026): every connection that
+    /// delivered into an unforced neuron moves by `lr * advantage * (+1 if that neuron fired, else -1)`.
+    /// Returns connections changed.
+    fn reinforce_wrong_hebb(&mut self, advantage: f64, lr: f64) -> usize {
         if advantage == 0.0 {
             return 0;
         }
@@ -393,6 +394,45 @@ impl Engine {
             changed += 1;
         }
         changed
+    }
+
+    /// §6.7 with the hebb eligibility: every synapse into an unforced neuron moves by `lr * advantage * x_ij * c_j`,
+    /// x_ij the signals it delivered this epoch that its target integrated (the tally, kept when `earn` is set) and
+    /// c_j the target's spike count minus its expected count, which the Teacher keeps in Python (fast.py) as it keeps
+    /// the rate memory, and hands over per epoch. Returns connections changed.
+    fn reinforce_hebb(&mut self, advantage: f64, lr: f64, centred: Vec<f64>) -> PyResult<usize> {
+        if centred.len() != self.neurons {
+            return Err(PyValueError::new_err("one centred count per neuron"));
+        }
+        if !self.earn {
+            return Err(PyValueError::new_err(
+                "the hebb eligibility needs the tally: build the engine with earn = True, so every synapse counts \
+                 what it delivered (§6.7)",
+            ));
+        }
+        if advantage == 0.0 {
+            return Ok(0);
+        }
+        let step = lr * advantage;
+        let mut changed = 0;
+        for edge in 0..self.weight.len() {
+            let x = self.eligibility[edge];
+            if x == 0.0 {
+                continue; // delivered nothing this epoch
+            }
+            let target = self.edge_target[edge] as usize;
+            if self.forced[target] {
+                continue; // a forced input: its firing was not the network's doing
+            }
+            let e = x * centred[target];
+            if e == 0.0 {
+                continue; // exactly as many spikes as expected, or a first epoch: nothing to credit or blame
+            }
+            let w = self.weight[edge] + step * e;
+            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     /// §6.7 with the perturb eligibility: every connection that delivered into an unforced
