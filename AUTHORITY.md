@@ -3372,4 +3372,48 @@ the layout, the inputs, and whether anything outside the network trains it.
   0.2 — *Claude's choice, stated:* the measurement above puts a fifth of
   the neurons at the ceiling at 0.2, where $\Delta$ made no difference, and
   0.6 is where the ceiling empties, so a $\Delta$ sweep at 0.2 would have
-  measured the drive and not the width. Sixty arms; results below.
+  measured the drive and not the width. Sixty arms, 80 minutes each on
+  31 workers, landed 23:13 MDT (`docs/mnist-delta.md`,
+  `mnist-delta-score.png`). Last tenth over ten seeds, chance a half:
+
+  | $\Delta$ | 0.1 | 0.15 | 0.2 | 0.225 | 0.25 | 0.275 |
+  |---|---|---|---|---|---|---|
+  | last tenth | 0.373 | 0.394 | 0.438 | 0.439 | 0.445 | 0.455 |
+  | worst seed | 0.329 | 0.358 | 0.423 | 0.424 | 0.429 | 0.438 |
+  | first 2,500 epochs | 0.470 | 0.483 | 0.527 | 0.496 | 0.483 | 0.437 |
+  | stuck off / on, of 6,440 | 1,462 / 43 | 116 / 50 | 8 / 101 | 0 / 142 | 0 / 221 | 0 / 307 |
+
+  **Below chance at every level, and falling over the run**: the first
+  window sits at chance and the last tenth is 0.05–0.13 under it, the
+  wider the width the less the fall (0.275 to 0.1: $t = 6$ between the
+  ends, monotone), and no seed at any level ends above 0.47. At the narrow
+  end the network goes quiet — 1,462 neurons of 6,440 stuck off at
+  $\Delta = 0.1$ — and at the wide end it goes loud; the graded critic pays
+  nothing for a tie, so either drift is scored as losing. The diagnosis
+  that separates the rule learning to lose from the network drifting into
+  ties:
+
+  *Learning on against learning off (Claude, 23:15 MDT; seed 1, 3,000
+  epochs, $\Delta$ 0.275 and 0.1, everything else as the sweep).* With
+  learning off the graded reward sits at **0.44–0.47 at both widths and
+  stays there**: a fifth of the epochs tie at the top, a tie is not
+  beaten, and so this critic's chance on this network is about 0.45, not
+  a half — the sweep's first windows and its wide levels' last tenths are
+  at chance, not below it. With learning on the activity falls steadily and
+  monotonically — the class sums from 10.5 to 7.9 spikes in 3,000 epochs at
+  0.275 and from 8.8 to 5.6 at 0.1, the interior from 2.5 to 1.8 and 1.4
+  spikes an epoch — while with learning off it does not move; ties rise as
+  the sums fall, and over the sweep's 25,000 epochs that is the fall below
+  chance, steepest where the width is narrowest and the network nearest
+  silence. The label's class wins outright in 7–10% of epochs throughout,
+  learning on or off: **nothing about the digits was learned at any
+  width; what the rule learned was to be quiet.** That is not the
+  objective's gradient — by symmetry the graded reward has none on a
+  class's loudness, since louder helps on the tenth of epochs the class is
+  the label and hurts on the nine tenths it is not, in equal measure — so
+  the drift is the estimator's: a random walk of twenty thousand weights
+  under a zero-mean advantage, which the floor and the ceiling do not
+  treat alike. The width was not the lever either. Two facts for the next
+  decision: the credit for a digit must reach the interior through a
+  scalar that ties a fifth of the time and moves by a ninth, and at LR
+  0.03 the estimator's noise moves the network faster than its signal.
