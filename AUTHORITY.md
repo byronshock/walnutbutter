@@ -3868,3 +3868,29 @@ the layout, the inputs, and whether anything outside the network trains it.
   Saving every arm's network at the end of a sweep is the driver's next
   duty. *And an issue opened the same minute, for later (#14): "Add
   neurons to an existing network with --request_more_goo N."*
+
+  *Sweep 2 landed 04:59 MDT (`docs/mnist-ff-lr-estimator.md`,
+  `mnist-ff-lr-estimator.png`).* Ten seeds a learning rate under the hazard;
+  the cumulative correlation with $d$, mean over seeds, and the read:
+
+  | LR | 5,000 | 10,000 | 25,000 | reward, last tenth | right | outputs' rate memory |
+  |---|---|---|---|---|---|---|
+  | 0.0005 | +0.034 | +0.049 | +0.087 ± 0.041 | −2.87 | 0.072 | 0.94 |
+  | 0.001 | +0.042 | +0.065 | +0.109 ± 0.045 | −2.82 | 0.074 | 0.93 |
+  | 0.002 | +0.041 | +0.069 | +0.126 ± 0.036 | −2.78 | 0.075 | 0.91 |
+  | 0.005 | +0.059 | +0.079 | +0.124 ± 0.031 | −2.73 | 0.077 | 0.75 |
+
+  **As predicted, the learning rate is not the lever:** across a tenfold
+  range the correlation ends within a few hundredths, rising a little with
+  the rate as the weights move further from where they started, and the
+  window correlation over the last quarter is +0.011 to +0.015 at every
+  rate. What the rate does move is the drift: at 0.005 the output zone has
+  begun to quiet (a rate memory of 0.75, two spikes a neuron against three
+  at rest) and the reward is a tenth higher for it, while the fraction
+  right stays at 0.072 to 0.077 against 0.06. The arm at 0.001 equals
+  sweep 1's hazard arm to the bit on all ten seeds — trace, last tenth and
+  last epoch's counts — the replicate the choice of rate was made for. So
+  after two sweeps and sixty arms: the hazard estimator points the
+  supervised way and accumulates as the root of the epochs at any rate;
+  hebb does not point at all; and nothing in the learning rate changes the
+  ratio of signal to noise, which is where the next lever has to be.
