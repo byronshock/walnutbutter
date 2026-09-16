@@ -149,3 +149,48 @@ def stream(split: str = "train", seed: int = 1, folder: Path | str = FOLDER) -> 
     random.Random(f"walnutbutter mnist {split} {seed}").shuffle(order)
     order = np.array(order, dtype=np.int64)
     return Patterns(bits, order), labels[order].tolist()
+
+
+_pixel_statistics = None  # (P(coded input on), P(coded input on | class)) over the training split, computed once
+
+
+def pixel_statistics(clock: int = 0, folder: Path | str = FOLDER) -> tuple[np.ndarray, np.ndarray]:
+    """P(coded input on) and P(coded input on | class), (clock + 2 * BITS,) and (CLASSES, clock + 2 * BITS), over the split.
+
+    The coded input is the network's input zone in order: `clock` neurons
+    always on, the 196 on-off bits, their 196 complements (§4.3, §8).
+    """
+    global _pixel_statistics
+    if _pixel_statistics is None or _pixel_statistics[0] != clock:
+        bits, labels = bits_of("train", folder)
+        coded = np.concatenate([np.ones((len(bits), clock), dtype=bool), bits, ~bits], axis=1)
+        on = coded.mean(0)
+        on_given = np.stack([coded[labels == k].mean(0) for k in range(CLASSES)])
+        _pixel_statistics = (clock, on, on_given)
+    return _pixel_statistics[1], _pixel_statistics[2]
+
+
+def supervised_direction(grid, folder: Path | str = FOLDER):
+    """The supervised direction of a network's input-to-output synapses (§8): a function of the engine's edges.
+
+    For a synapse from input i onto an output of class k the direction is
+    P(coded input i on | class k) - P(coded input i on), the sign a linear
+    classifier's gradient has on average; every other synapse is outside the
+    mask. `fast.train(direction=...)` takes it, and records the estimator's
+    correlation with it over the run.
+    """
+    on, on_given = pixel_statistics(grid.clock, folder)
+    inputs = {neuron: i for i, neuron in enumerate(grid.input_row())}
+    outputs = {neuron: k // grid.population for k, neuron in enumerate(grid.output_row())}
+
+    def direction(edges):
+        d = np.zeros(len(edges))
+        mask = np.zeros(len(edges), dtype=bool)
+        for e, c in enumerate(edges):
+            i, k = inputs.get(c.source), outputs.get(c.target)
+            if i is not None and k is not None:
+                d[e] = on_given[k, i] - on[i]
+                mask[e] = True
+        return d, mask
+
+    return direction

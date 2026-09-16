@@ -298,7 +298,8 @@ def benchmark(grid, epochs=200, bits=None):
 
 def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
-          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0):
+          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
+          direction=None):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -329,6 +330,15 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     `probe(epoch, engine, grid, out, book)` is called after every `probe_every`-th
     epoch's update, for a diagnostic to read the engine's counts and the rate
     memories as the run goes; it must not change anything.
+
+    `direction(edges)`, given the engine's edges in order, returns a per-edge
+    supervised direction `d` and a mask of the edges it is defined on (§8: for
+    mnist, P(pixel on | the output's class) - P(pixel on) on the input-to-output
+    synapses). With it the report carries `estimator`: at every `trace_every`
+    epochs, over the masked edges, the Pearson correlation and the sign agreement
+    of the weight change since the start with `d`, and the correlation of the
+    change since the previous trace point -- the estimator integrated, which is
+    what the weights are, under any eligibility.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -375,6 +385,22 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     total = tail = hits = 0.0
     tenth = max(1, epochs // 10)
     trace = []
+    estimator = None
+    if direction is not None:
+        import numpy as np
+        edges = [c for neuron in neurons for c in neuron.outgoing]  # the engine's order (see compare)
+        d, mask = direction(edges)
+        d, mask = np.asarray(d, dtype=float), np.asarray(mask, dtype=bool)
+        if len(d) != len(edges) or len(mask) != len(edges):
+            raise ValueError(f"the direction covers {len(d)} edges, the engine has {len(edges)}")
+        d_masked = d[mask]
+        w0 = w_prev = np.array(engine.weights())
+        estimator = []
+
+        def _corr(x):
+            if x.std() == 0.0 or d_masked.std() == 0.0:
+                return None
+            return float(np.corrcoef(x, d_masked)[0, 1])
     for epoch in range(epochs):
         grid.reset()
         grid.new_random_input()
@@ -405,10 +431,17 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
                 hits += _reward(engine, grid, out, "class", want_of)
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
+            if estimator is not None:
+                w = np.array(engine.weights())
+                cum, window = (w - w0)[mask], (w - w_prev)[mask]
+                estimator.append({"epoch": epoch + 1, "corr_cum": _corr(cum), "corr_window": _corr(window),
+                                  "sign_cum": float((np.sign(cum) == np.sign(d_masked)).mean())})
+                w_prev = w
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
             probe(epoch + 1, engine, grid, out, book)
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
-              "accuracy_last_tenth": hits / tenth if critic == "evidence" else None}
+              "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
+              "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given
     return total / epochs, trace, engine, report

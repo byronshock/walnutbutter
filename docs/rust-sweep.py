@@ -80,9 +80,11 @@ def parse() -> argparse.Namespace:
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
-    parser.add_argument("--eligibility", choices=("hebb", "perturb", "hazard"), default="hazard" if ESCAPE_DELTA > 0 else "hebb",
+    parser.add_argument("--eligibility", nargs="+", choices=("hebb", "perturb", "hazard"),
+                        default=["hazard" if ESCAPE_DELTA > 0 else "hebb"],
                         help="what the reward acts on (§6.7): a Hebbian +-1, the perturbation the neuron decided under, or "
-                             "the score of the escape-noise decision on each synapse's trace (hazard; needs --delta)")
+                             "the score of the escape-noise decision on each synapse's trace (hazard; needs --delta). More "
+                             "than one value sweeps it, an arm per value")
     parser.add_argument("--epochs", type=int, default=1_000_000)
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
@@ -96,7 +98,11 @@ def parse() -> argparse.Namespace:
 
 def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None,
             wiring: str | None = None):
-    """The network the command line would build for this problem, with the arm's knobs applied."""
+    """The network the command line would build for this problem, with the arm's knobs applied.
+
+    An arm carrying `eligibility` (a swept one) overrides the argument.
+    """
+    eligibility = arm.get("eligibility", eligibility)
     from walnutbutter.cli import apply_problem, build_parser
     from walnutbutter.goo import Goo
     from walnutbutter.grid import GridOfNeurons
@@ -118,7 +124,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     elif on_goo and "minimum_potential" not in arm:
         argv += ["--minimum-potential", f"{GOO_MINIMUM_POTENTIAL:g}"]
     for knob, value in arm.items():
-        if knob in ("seed", "rows") or knob in DERIVED:
+        if knob in ("seed", "rows", "eligibility") or knob in DERIVED:
             continue
         argv += [KNOBS[knob], f"{value:g}"]
     if "rows" in arm:
@@ -174,7 +180,7 @@ def _output_counts(engine, grid) -> list[int]:
 
 
 def arm_name(arm: dict) -> str:
-    return "-".join(f"{knob}{value:g}" for knob, value in arm.items())
+    return "-".join(f"{knob}{value}" if isinstance(value, str) else f"{knob}{value:g}" for knob, value in arm.items())
 
 
 def run_arm(job: tuple) -> dict:
@@ -188,6 +194,11 @@ def run_arm(job: tuple) -> dict:
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
     grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring)
+    eligibility = arm.get("eligibility", eligibility)
+    direction = None
+    if PROBLEMS[problem].data == "mnist" and hasattr(grid, "outputs"):  # the estimator's correlation over time (§8)
+        from walnutbutter.mnist import supervised_direction
+        direction = supervised_direction(grid)
     first = grid.all_neurons()[0]
     started_at = {"theta": first.threshold, "floor": first.minimum_potential}  # what a neuron starts at, scaling applied
     data = dataset_stream(PROBLEMS[problem].data, int(arm["seed"]))  # a dataset's images with their labels (§8), or
@@ -200,7 +211,7 @@ def run_arm(job: tuple) -> dict:
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
         eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
-        unstick_target=args.unstick_target, critic=args.critic,
+        unstick_target=args.unstick_target, critic=args.critic, direction=direction,
     )
     elapsed = time.perf_counter() - started
     with open(path, "w", newline="") as handle:
@@ -220,6 +231,7 @@ def run_arm(job: tuple) -> dict:
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
+              "estimator": report.get("estimator"),  # the estimator's correlation over time (§8), for a dataset on goo
               "output_counts_last": _output_counts(engine, grid),  # the last epoch's output spikes, in order
               "container": repr(grid) if hasattr(grid, "count") else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
@@ -228,6 +240,8 @@ def run_arm(job: tuple) -> dict:
 
 def grid_and_arms(args):
     given = {knob: getattr(args, knob) for knob in KNOBS if knob != "seed" and getattr(args, knob) is not None}
+    if len(args.eligibility) > 1:
+        given["eligibility"] = list(args.eligibility)  # a swept eligibility, an arm per value (the only string-valued knob)
     given["seed"] = list(args.seed)
     swept = [knob for knob, values in given.items() if len(values) > 1]
     return swept, [dict(zip(given, values)) for values in itertools.product(*given.values())]
@@ -255,20 +269,21 @@ def summarise(args) -> None:
     sizes = (" " + " ".join(f"{g:g}" for g in args.goo)) if args.goo else ""
     container = ("goo" + sizes + ("" if args.scale else ", flat")) if on_goo else "hex grid"
     lines = [f"# {args.name}: {args.problem} on the {container}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
-             f"{args.eligibility} eligibility", ""]
+             f"{', '.join(args.eligibility)} eligibility", ""]
     if len(axes) == 2:
         x, y = axes
         xs = sorted({r["arm"][x] for r in rows})
         ys = sorted({r["arm"][y] for r in rows})
+        fmt = lambda v: v if isinstance(v, str) else f"{v:g}"  # eligibility is the one string-valued knob
         lines += ["Mean score over the last tenth of each run, averaged over seeds.", "",
-                  "| " + y + " \\ " + x + " | " + " | ".join(f"{v:g}" for v in xs) + " |",
+                  "| " + y + " \\ " + x + " | " + " | ".join(fmt(v) for v in xs) + " |",
                   "|" + "---|" * (len(xs) + 1)]
         for v in ys:
             cells = []
             for u in xs:
                 got = [r["last_tenth"] for r in rows if r["arm"][x] == u and r["arm"][y] == v]
                 cells.append(f"{statistics.fmean(got):.4f}" if got else "—")
-            lines.append(f"| {v:g} | " + " | ".join(cells) + " |")
+            lines.append(f"| {fmt(v)} | " + " | ".join(cells) + " |")
         lines.append("")
     lines += ["| arm | first tenth | last tenth | best |", "|---|---|---|---|"]
     for r in sorted(rows, key=lambda r: -r["last_tenth"]):
@@ -289,7 +304,7 @@ def main() -> int:
         workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 2) - 1))
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
-        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility, args.scale,
+        jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
                  args.floor_ratio, args.wiring) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):

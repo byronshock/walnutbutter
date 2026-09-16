@@ -291,3 +291,41 @@ def test_a_checkpoint_keeps_the_output_zone(tmp_path):
     back, _ = restore(tmp_path / "zones.json")
     assert back.outputs == 6 and len(back.output_row()) == 6 and back.input_zone_is_apart() and back.outputs_are_apart() and back.wiring == "scaled"
     assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]
+
+
+def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
+    """§8: d = P(coded input on | class) - P(coded input on) on the input-to-output synapses, and the Rust driver's trace of the
+    weight change's correlation with it at every trace interval, under any eligibility."""
+    pytest.importorskip("numpy")
+    if not mnist.available() or not fast.available():
+        pytest.skip("needs the mnist data and the Rust engine")
+    from walnutbutter.cli import apply_problem, build_parser
+    args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
+    goo = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
+              permute=False)
+    goo.coding, goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = "complement", 5, 3, "count", "reinforce", "rate", 2.0
+    goo.set_delta(0.455)
+    direction = mnist.supervised_direction(goo)
+    edges = [c for n in goo.all_neurons() for c in n.outgoing]
+    d, mask = direction(edges)
+    assert len(d) == len(mask) == len(edges) == 1152 and mask.all()  # every synapse of the feedforward goo is input -> output
+    assert np.abs(d).max() <= 1.0 and all(d[e] == 0.0 for e, c in enumerate(edges) if c.source in goo.input_row()[:3])  # clocks: no direction
+    assert 0.3 < (np.abs(d) > 0.02).mean() < 0.7  # a good part of the synapses have a direction worth the name
+    on, on_given = mnist.pixel_statistics(3)
+    assert on.shape == (395,) and on_given.shape == (10, 395) and on[:3].tolist() == [1.0, 1.0, 1.0]
+    assert np.allclose(on[3:199] + on[199:], 1.0)  # a bit and its complement
+    patterns, labels = dataset_stream("mnist", 1)
+    mean, trace, engine, report = fast.train(goo, 40, lr=0.001, target="label", trace_every=10, patterns=patterns, labels=labels,
+                                             eligibility="hazard", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence",
+                                             direction=direction)
+    est = report["estimator"]
+    assert [e["epoch"] for e in est] == [10, 20, 30, 40]
+    assert all(e["corr_cum"] is None or -1.0 <= e["corr_cum"] <= 1.0 for e in est)
+    assert all(0.0 <= e["sign_cum"] <= 1.0 for e in est) and est[-1]["corr_window"] is not None
+    goo2 = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
+               permute=False)
+    goo2.coding, goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = "complement", 5, 3, "count", "reinforce", "rate", 2.0
+    goo2.set_delta(0.455)
+    _, _, _, plain = fast.train(goo2, 10, lr=0.001, target="label", trace_every=5, patterns=patterns, labels=labels,
+                                eligibility="hebb", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence")
+    assert plain["estimator"] is None  # without a direction there is no trace, and hebb runs under the evidence critic too

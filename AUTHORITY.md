@@ -3793,3 +3793,30 @@ the layout, the inputs, and whether anything outside the network trains it.
   call; the plain probability against the log score is the other open
   choice, and the gradient check puts them within a few hundredths of each
   other on this layer.
+
+  **The estimator's correlation over time, and two sweeps of it (Byron,
+  September 16, 2026, 04:25 MDT).** *"Please modify the code so we can plot
+  the correlation of the estimator over time after a run. Please build,
+  commit, push, and SWEEP separately: 1. This eligibility rule x eligibility
+  = 'hebb' x 10 seeds x 25000 epochs with the parameters you just used
+  otherwise. 2. LR in {0.0005 0.001 0.002 0.005} x 10 seeds x 25000
+  epochs."* The instrument: at every trace interval of a run the Rust
+  driver reads the weights and records, over the input-to-output synapses,
+  the Pearson correlation and the sign agreement between the weight change
+  since the start and the supervised direction $d_{ij} = P(\text{pixel } i
+  \text{ on} \mid \text{class of } j) - P(\text{pixel } i \text{ on})$,
+  and the correlation of the change since the previous interval with it —
+  the estimator integrated, which is what the weights are, under any
+  eligibility (`fast.train(direction=...)`, `mnist.supervised_direction`,
+  the `estimator` field of every mnist arm's record;
+  `docs/mnist-estimator-report.py` draws it). Both sweeps run on the
+  feedforward goo of 445 at threshold 0.6, floor −2.4, $\Delta$ 0.455,
+  $T$ = 2, the evidence critic, 25,000 epochs, seeds 1 to 10, traced every
+  250 epochs. *Sweep 1* is eligibility {hazard, hebb} at LR 0.001 —
+  *Claude's choice of the fixed learning rate, stated:* the smallest of the
+  grid just swept, so that the weights move slowly enough for the
+  correlation to be read over 25,000 epochs, and the one sweep 2 shares, so
+  its hazard arm at 0.001 is a replicate; 0.03, the constant, empties the
+  output zone in a few thousand epochs. *Sweep 2* is LR {0.0005, 0.001,
+  0.002, 0.005} under the hazard eligibility. Run one after the other, as
+  asked.
