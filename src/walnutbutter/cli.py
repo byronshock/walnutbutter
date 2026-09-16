@@ -726,6 +726,10 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
     if not problem.trained:
         args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
+    if problem.homeostasis is not None and args.homeostasis == HOMEOSTASIS:
+        args.homeostasis = problem.homeostasis  # the problem's, unless --homeostasis was given (a value equal to the default is taken as not given)
+    if problem.unstick is not None and args.unstick == UNSTICK:
+        args.unstick = problem.unstick
     if problem.target is not None:
         args.target = problem.target
     if args.critic is None:

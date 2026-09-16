@@ -3214,8 +3214,11 @@ the layout, the inputs, and whether anything outside the network trains it.
      clock neurons** (§4.3, always driven), **the 196 on-off pixels, and
      the 196 complement-coded pixels** — 395 input neurons, no permutation,
      so exactly 199 of them are driven every epoch whatever the digit.
-  2. **Output: population per class.** Ten classes on 30 output neurons,
-     three a class in a row (POPULATION), read by count.
+  2. **Output: population per class.** Ten classes on output neurons in
+     groups, read by count: three a class at first, **five a class (50
+     outputs) since the evening of September 15** (Byron: "Let's have a
+     population of five neurons per output class"), so a class's sum is
+     over five and ties at the top are rarer.
   3. **The critic: class.** The label's three must out-spike every other
      class's three; the reward is then 1 and otherwise 0 — a tie loses,
      and so does silence, which is why the row critic would not do (one-hot
@@ -3223,10 +3226,12 @@ the layout, the inputs, and whether anything outside the network trains it.
      itself.
   The target is `label`, the label's population code over the output zone,
   for any critic that wants a pattern. Posed on goo (§3.4) with zones of
-  two widths, 395 in and 30 out, and **an interior of 199 unless `--goo`
+  two widths, 395 in and 50 out, and **an interior of 199 unless `--goo`
   says otherwise** (Byron: "Goo that is not an input or output: please
-  default to 199 neurons"; 624 in all), by the reinforce rule under escape
-  noise; the train split in the seeded shuffle of §4.5,
+  default to 199 neurons"; 644 in all), by the reinforce rule under escape
+  noise, **with homeostasis and un-sticking off** (Byron, the same evening:
+  "Please turn off for this task" — a problem may now set either, and the
+  command line keeps them unless told otherwise); the train split in the seeded shuffle of §4.5,
   cycling, so 100,000 epochs is one and two thirds of a pass. **The test
   split is not fetched** (Byron, the same day: *"we do not dare touch the
   test split. please unfetch it."*): §7 says the network keeps living and
@@ -3283,3 +3288,30 @@ the layout, the inputs, and whether anything outside the network trains it.
   sits between those two states, and the un-sticking overshoots past it.
   What to move is Byron's call: the threshold (§3.4's first lesson on goo
   60), the un-sticking's target, or a critic with a margin in it.
+
+  *Two floods, told apart (Claude, the same evening, 200 epochs with
+  learning off at $P = 0.05$ under the rule of one probability):*
+
+  | $\Delta$ | GOO_THRESHOLD | interior spikes an epoch | outputs | at the seven-spike ceiling | epochs tied at the top |
+  |---|---|---|---|---|---|
+  | 0.455 | 0.2 | 5.6 | 5.8 | 18% | 54% |
+  | 0.3 | 0.2 | 5.9 | 6.0 | 32% | 52% |
+  | 0.455 | 0.6 | 3.2 | 3.5 | 0% | 30% |
+  | 0.25 | 0.6 | 2.7 | 3.1 | 0% | 28% |
+  | 0.455 | 1.2 | 2.2 | 2.4 | 0% | 36% |
+  | 0.15 | 1.2 | 0.16 | 0.19 | 0% | 46% |
+
+  At the threshold of 0.2 the drive owns the network — 199 inputs on every
+  epoch at 80 Hz, ten of them heard by each neuron, against a threshold a
+  third of one synapse — and $\Delta$ makes no difference. From 0.6 up the
+  ceiling empties and what remains is the hazard's resting rate, $e^{-1/\Delta}$
+  a hop, 2.3 spikes an epoch at 0.455 whatever the threshold, which only
+  $\Delta$ moves; at 0.15 the network is silent and the ties come back at
+  zero. And a coupling worth knowing: $\Delta_j$ is fixed at the starting
+  threshold (§5.2), so a threshold the Teacher moves later also moves the
+  resting rate, which is how the un-sticking silenced the outputs above;
+  a threshold set at construction has no such side effect. *Byron's
+  decisions on it, the same evening:* un-sticking and homeostasis off for
+  this task; five outputs a class; and a sweep of GOO_THRESHOLD in
+  $\{0.45, 0.55, 0.6, 0.65, 0.7, 0.8\}$, five seeds, 25,000 epochs, at
+  $P = 0.05$ with the floor at the grid's ratio of $-4$ — results below.

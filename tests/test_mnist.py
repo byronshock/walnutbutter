@@ -145,7 +145,13 @@ def test_the_three_engines_agree_under_the_class_critic():
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
-    assert (problem.across, problem.outputs, problem.goo, problem.population, problem.clock) == (395, 30, 624, 3, 3)
+    assert (problem.across, problem.outputs, problem.goo, problem.population, problem.clock) == (395, 50, 644, 5, 3)
+    assert (problem.homeostasis, problem.unstick) == (0.0, 0.0)  # the hazard keeps nothing stuck; the un-sticking overshot
+    from walnutbutter.cli import apply_problem, build_parser
+    args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
+    assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 644, 50, 5)
+    args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
+    assert args.unstick == 0.01 and args.homeostasis == 0.0  # given on the command line, it is kept
     assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "class", "complement", "count", "mnist")
     assert not problem.permute and problem.trained and problem.rule == "reinforce"
     assert dataset_stream(None, 1) is None
@@ -162,7 +168,7 @@ def test_the_real_data_streams_and_a_short_run_scores(capsys):
     from walnutbutter.cli import cli_main
     assert cli_main(["--headless", "--problem", "mnist", "--seed", "1", "--epochs", "5", "--no-save", "-q"]) == 0
     err = capsys.readouterr().err
-    assert "Goo(624 neurons" in err and "395 in, 30 out" in err and "images of mnist" in err and "learning label (hazard" in err
+    assert "Goo(644 neurons" in err and "395 in, 50 out" in err and "images of mnist" in err and "learning label (hazard" in err
     assert "clock neurons: the first 3" in err
 
 
