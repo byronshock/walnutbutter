@@ -3894,3 +3894,15 @@ the layout, the inputs, and whether anything outside the network trains it.
   supervised way and accumulates as the root of the epochs at any rate;
   hebb does not point at all; and nothing in the learning rate changes the
   ratio of signal to noise, which is where the next lever has to be.
+
+  **The 100,000-epoch sweep (Byron, September 16, 2026, on watching seed 4
+  run on: "Please sweep LR in {.001 .002 .003 .005 .01 .02 .03} across 10
+  seeds for 100000 epochs.")** The same network and settings as the two
+  sweeps above, seventy arms on 31 workers, launched 06:58 MDT
+  (`runs/mnist-ff-lr100k`). Before it, the driver's next duty done: every
+  arm's network is now saved at the end of its run, `<arm>-network.json`
+  beside its trace and record, the engine's weights and thresholds written
+  back to the mesh and checkpointed, so an arm of this sweep can be
+  continued rather than rerun — with those weights, not to the bit (the
+  stream's position, the exploration stream's state and the baseline are
+  not in a checkpoint).
