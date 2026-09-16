@@ -43,6 +43,53 @@ parameters with sweeps.
   The amount of dopamine released exponentially decays with time from
   1 unit at time t_first_fired + refractory_period + epsilon.
 
+## 0.1 The observation that stands above the sections (September 16, 2026)
+
+*Placed here at Byron's instruction — "Please move the following
+observation and its consequences high in the authority file, but not in the
+authority's principle rules." Not a rule: a finding, and what follows from
+it. The record is in §3.4 and §8.*
+
+**Byron, 03:05 MDT:** *"I would like the outputs kept apart from one another
+again. With hidden=0 we have no cycles, eliminate interference from other
+output neurons, a two-layer feedforward network. Please do a comparable
+sweep to the one you just did with no_hidden so we can narrow down the
+source of unlearning."* → **Network began to learn.**
+
+Under the scaled rule with the outputs apart (§3.4) and no hidden neurons,
+the goo of 445 is the 395 inputs projecting onto the 50 outputs and nothing
+else: no cycle, no lateral projection, one layer of 1,152 synapses, a linear
+classifier's weights. On that layer the estimator's direction can be held
+against the supervised direction of a pixel-to-class weight, $d_{ij} =
+P(\text{pixel } i \text{ on} \mid \text{class of } j) - P(\text{pixel } i
+\text{ on})$, and it was (§8, the sweeps of 04:25 MDT): under the hazard
+eligibility (§6.7) the correlation of the weight change with $d$ climbs
+steadily — +0.007 at 1,000 epochs, +0.065 at 10,000, +0.109 ± 0.045 at
+25,000 over ten seeds, about as the square root of the epochs — the first
+learning on mnist any instrument has shown. Its consequences:
+
+1. **The source of unlearning is not the wiring.** Three sweeps on three
+   wirings — 199 hidden with the outputs open, none hidden with the outputs
+   open, none hidden with the outputs apart — gave the same read: every
+   arm above its chance by quieting and evening, none classifying. What
+   remains is the estimator and its critic on one layer of synapses.
+2. **The hazard eligibility carries the digit; hebb does not.** Under hebb
+   the correlation stays at zero, +0.012 ± 0.026 at 25,000 epochs.
+3. **The learning rate is not the lever.** Across a tenfold range, 0.0005
+   to 0.005, the correlation ends within a few hundredths; the rate scales
+   the estimator's signal and noise alike, and moves only the drift toward
+   quiet.
+4. **The signal is real and small.** It accumulates linearly while the
+   noise accumulates as the root, and at this ratio a correlation of a half
+   would take twenty times the epochs. The ratio's levers, all open for
+   Byron (§8): the reward's own noise — the log score's decoy gradient,
+   which the plain probability does not have; the inputs' rest firing under
+   escape noise (§5.2), which halves the pixel contrast the outputs
+   receive; and the label-blind per-output push that decides most signs.
+5. **The read has not moved yet.** Through 25,000 epochs the fraction right
+   stays at 0.07 against 0.06 and the reward at −2.8 against a chance of
+   −3.40. A sweep to 100,000 epochs is running (§8).
+
 ## 1. Global constants — open
 
 One value each, for the whole network. `constants.py` is their only home in
