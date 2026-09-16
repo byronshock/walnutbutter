@@ -162,3 +162,44 @@ def test_it_is_faster_than_the_engine_it_replaces():
     grid = mesh()
     timings = fast.benchmark(grid, epochs=200)
     assert timings["rust"] < timings["objects"] / 5  # the profile says 30-100x; hold it to 5
+
+
+@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
+def test_a_resumed_run_measures_from_its_first_start_and_counts_its_epochs_on(tmp_path):
+    """docs/rust-sweep.py --resume-from: the saved network continued, the estimator against the first start's weights, the
+    trace's epochs offset, the stream advanced to the epoch reached (September 16, 2026)."""
+    import importlib.util
+    import numpy as np
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("rs", Path(__file__).resolve().parent.parent / "docs" / "rust-sweep.py")
+    rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
+    from walnutbutter.network import input_stream
+    arm = {"goo": 24.0, "seed": 3}
+    fresh, cli = rs.grid_of("copy", arm, "hazard", True, -4.0)
+    first = [c.weight for n in fresh.all_neurons() for c in n.outgoing]
+    everyone = lambda edges: (np.arange(len(edges)) % 2 * 2.0 - 1.0, np.ones(len(edges), dtype=bool))  # a direction with spread
+    patterns = input_stream(12, fresh.raw_bit_count(), 3)
+    mean, trace, engine, report = fast.train(fresh, 6, lr=cli.lr, target="copy", trace_every=3, patterns=patterns, eligibility="hazard",
+                                             seed=3, homeostasis=0.0, unstick=0.0, direction=everyone)
+    assert [e["epoch"] for e in report["estimator"]] == [3, 6] and fresh.input_at == 6
+    rs._save_network(engine, fresh, report, tmp_path / "arm-network.json")
+    again, _ = rs.grid_of("copy", arm, "hazard", True, -4.0)
+    grid, offset, reference = rs.resume_grid(again, tmp_path / "arm-network.json")
+    assert offset == 6 and reference == first and grid is not again
+    assert [c.weight for n in grid.all_neurons() for c in n.outgoing] == list(engine.weights())  # the saved state, whole
+    assert [n.rate for n in grid.all_neurons()] == report["rates"] and [n.expected_count for n in grid.all_neurons()] == report["expected_counts"]
+    grid.use_input_stream(patterns, None)
+    grid.input_at = offset
+    w_saved = np.array(engine.weights())
+    mean, trace, engine2, report2 = fast.train(grid, 6, lr=cli.lr, target="copy", trace_every=3, eligibility="hazard", seed=3 + 1_000_000,
+                                               homeostasis=0.0, unstick=0.0, direction=everyone, reference_weights=reference, epoch_offset=offset)
+    assert [e["epoch"] for e in report2["estimator"]] == [9, 12] and grid.input_at == 12 and grid.epoch == 12
+    w_end = np.array(engine2.weights())
+    d = np.arange(len(w_end)) % 2 * 2.0 - 1.0
+    want = float(np.corrcoef(w_end - np.array(first), d)[0, 1]) if (w_end - np.array(first)).std() > 0 else None
+    assert report2["estimator"][-1]["corr_cum"] == want  # against the first start, not the resumed one
+    with pytest.raises(ValueError, match="reference weights cover"):
+        fast.train(rs.grid_of("copy", arm, "hazard", True, -4.0)[0], 1, direction=everyone, reference_weights=[0.0], eligibility="hazard", seed=1)
+    other, _ = rs.grid_of("copy", {"goo": 30.0, "seed": 3}, "hazard", True, -4.0)
+    with pytest.raises(ValueError, match="same seed and layout"):
+        rs.resume_grid(other, tmp_path / "arm-network.json")

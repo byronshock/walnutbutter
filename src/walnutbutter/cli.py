@@ -160,7 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=WIRINGS,
         default="scaled",
         help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor, the "
-        "outputs apart since 03:05 that night; scaled-open, the night's first version, the outputs open to every zone; "
+        "outputs apart since 03:05 that night; ff2, fully connected feedforward -- every input onto every output and nothing "
+        "else, two layers and no hidden neurons (Byron, the same afternoon); scaled-open, the night's first version, the outputs open to every zone; "
         "or one of the three before them at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
         "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
         "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "
@@ -431,6 +432,22 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help=f"neurons per raw bit where the coding repeats it (AUTHORITY.md §4.3): population coding uses this many, and "
         f"population-complement uses this many and then complement-codes the lot (default: the problem's, else {POPULATION})",
+    )
+    parser.add_argument(
+        "--outputs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="the output zone's width on goo (AUTHORITY.md §3.4, §8): the problem's unless given -- mnist's 60 since "
+        "September 16, 2026; --outputs 50 --population 5 --output-coding population is its earlier layout",
+    )
+    parser.add_argument(
+        "--output-coding",
+        choices=("population", "complement"),
+        default=None,
+        help="how the output zone codes the classes (AUTHORITY.md §8): a population of --population neurons a class, or "
+        "complement -- those fire-if-one populations and then, in the same order, as many fire-if-zero populations, "
+        "twice the width, the class's evidence being one sum minus the other (default: the problem's)",
     )
     parser.add_argument(
         "--drive",
@@ -801,6 +818,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
     if args.population is None:
         args.population = problem.population if problem.population is not None else POPULATION
+    if args.output_coding is None:
+        args.output_coding = problem.output_coding  # how the output zone codes the classes (§8)
     if args.flip is None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
@@ -814,7 +833,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
-    args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8)
+    if args.outputs is None:
+        args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8), unless --outputs
     args.clock = problem.clock  # clock neurons at the front of the input zone, always driven (§4.3)
     args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
     if args.hidden_neurons is None:
@@ -1011,6 +1031,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.explore, grid.rate_on = args.explore, args.rate_on
             grid.teacher_threshold = args.teacher_threshold
             grid.population = args.population
+            grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
             grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
             if args.data is not None:
@@ -1317,6 +1338,7 @@ def _seed_worker(job: dict) -> dict:
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
     grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
+    grid.output_coding = job.get("output_coding", "population")  # how the output zone codes the classes (§8)
     grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job.get("data") is not None:
@@ -1415,7 +1437,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "teacher_threshold": args.teacher_threshold, "delta": args.delta,
-                     "population": args.population, "temperature": args.temperature,
+                     "population": args.population, "output_coding": args.output_coding, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":

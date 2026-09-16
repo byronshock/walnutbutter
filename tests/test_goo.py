@@ -538,3 +538,56 @@ def test_a_checkpoint_keeps_its_wiring_and_older_ones_restore_under_theirs(tmp_p
         before, _ = restore(tmp_path / "before.json")
         assert before.wiring == wiring_name
         assert wiring(before) == wiring(Goo(count=40, across=8, outputs=4, seed=3, weight=None, projection=0.3, wiring=wiring_name))
+
+
+def test_ff2_wires_every_input_onto_every_output_and_nothing_else():
+    """§3.4 (Byron, September 16, 2026: "P_ij = P(i is in the input layer and j is in the output layer) ... for the feedforward
+    problem I want everything to connect fully"): two layers, fully connected, one way; no hidden neurons under it."""
+    g = Goo(count=10, across=6, outputs=4, seed=2, weight=None, wiring="ff2")
+    ins, outs = set(g.input_row()), set(g.output_row())
+    assert len(g.connections) == 6 * 4 and all(c.source in ins and c.target in outs for c in g.connections.values())
+    assert {(c.source, c.target) for c in g.connections.values()} == {(i, o) for i in ins for o in outs}  # each pair exactly once
+    assert all(len(n.incoming) == 6 for n in outs) and all(len(n.incoming) == 0 for n in ins)
+    assert g.expected_fan_in() == 6.0 and g.output_projection() == 1.0 and g.input_projection() == 0.0 and g.hidden_projection() == 0.0
+    assert g.input_zone_is_apart() and g.outputs_are_apart() and g.interior() == []
+    assert repr(g) == "Goo(10 neurons, 24 projections, fully connected feedforward; 6 in, 0 hidden, 4 out)"
+    from walnutbutter.constants import GOO_THRESHOLD, THRESHOLD_FAN_IN
+    assert all(n.threshold == pytest.approx(GOO_THRESHOLD * 6 / THRESHOLD_FAN_IN) for n in outs)  # the axis scales with the whole input zone
+    assert all(n.threshold == GOO_THRESHOLD for n in ins)  # hearing nothing: the quoted threshold (§5.2)
+    with pytest.raises(ValueError, match="two layers"):
+        Goo(count=12, across=6, outputs=4, wiring="ff2")
+    with pytest.raises(ValueError, match="no one zone probability"):
+        g.zone_projection()
+    same = Goo(count=10, across=6, outputs=4, seed=2, weight=None, wiring="ff2")
+    assert [c.weight for c in same.connections.values()] == [c.weight for c in g.connections.values()]  # the seed's weights
+    # the checkpoint restores under its own wiring, and the engines agree, learning on, escape noise on
+    from walnutbutter import fast
+    from walnutbutter.learning import Teacher
+    from walnutbutter.persistence import checkpoint, restore
+    import tempfile, pathlib
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "ff2.json"
+        checkpoint(g, path)
+        back, data = restore(path)
+        assert data["wiring"] == "ff2" and back.wiring == "ff2" and len(back.connections) == 24
+        assert [c.weight for c in back.connections.values()] == [c.weight for c in g.connections.values()]
+    mesh, twin = (Goo(count=16, across=10, outputs=6, seed=5, weight=None, wiring="ff2") for _ in range(2))
+    for x in (mesh, twin):
+        x.rule, x.drive, x.read = "reinforce", "rate", "count"
+        x.set_delta(0.455)
+    from walnutbutter.arrays import ArrayNetwork
+    net = ArrayNetwork(twin)
+    a = Teacher(mesh, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.0, unstick=0.0)
+    b = Teacher(net, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.0, unstick=0.0)
+    for _ in range(20):
+        assert a.epoch(verbose=False) == b.epoch(verbose=False)
+        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+    if fast.available():
+        g3 = Goo(count=16, across=10, outputs=6, seed=5, weight=None, wiring="ff2")
+        g3.rule, g3.drive, g3.read = "reinforce", "rate", "count"
+        g3.set_delta(0.455)
+        assert fast.compare(g3, epochs=40, teacher=Teacher(g3, seed=7, rule="reinforce", eligibility="hazard", target="copy",
+                                                          homeostasis=0.0, unstick=0.0)) == []
+    assert cli_main(["--goo", "16", "--wiring", "ff2", "--seeds", "1", "--seed", "1", "--epochs", "2", "--no-save"]) == 0  # 8 in, 8 out
+    with pytest.raises(ValueError, match="two layers"):
+        cli_main(["--goo", "20", "--wiring", "ff2", "--seeds", "1", "--seed", "1", "--epochs", "2", "--no-save"])  # a hidden zone of 4: refused

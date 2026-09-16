@@ -214,15 +214,16 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
-    assert (problem.across, problem.outputs, problem.hidden_neurons, problem.population, problem.clock) == (395, 50, 199, 5, 3)
+    assert (problem.across, problem.outputs, problem.hidden_neurons, problem.population, problem.clock) == (395, 60, 199, 3, 3)
+    assert problem.output_coding == "complement"  # ten fire-if-one populations of three, then ten fire-if-zero (September 16, 2026)
     assert problem.goo is None  # the goo is inputs + hidden + outputs, 644, sized by the hidden count since September 16, 2026
     assert (problem.homeostasis, problem.unstick) == (0.0, 0.0)  # the hazard keeps nothing stuck; the un-sticking overshot
     from walnutbutter.cli import apply_problem, build_parser
     args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
-    assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 644, 50, 5)
+    assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 654, 60, 3)
     assert args.hidden_neurons == 199 and problem.hidden_neurons == 199 and problem.goo is None  # inputs + hidden + outputs
     args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
-    assert args.goo == 395 + 50 and args.hidden_neurons == 0  # Byron, September 16, 2026: the task without hidden neurons
+    assert args.goo == 395 + 60 and args.hidden_neurons == 0  # Byron, September 16, 2026: the task without hidden neurons
     args = build_parser().parse_args(["--problem", "mnist", "--goo", "500"]); apply_problem(args)
     assert args.goo == 500 and args.hidden_neurons == 199  # --goo wins the sizing; the mismatch is refused when built
     args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
@@ -243,7 +244,7 @@ def test_the_real_data_streams_and_a_short_run_scores(capsys):
     from walnutbutter.cli import cli_main
     assert cli_main(["--headless", "--problem", "mnist", "--seed", "1", "--epochs", "5", "--no-save", "-q"]) == 0
     err = capsys.readouterr().err
-    assert "Goo(644 neurons" in err and "395 in, 199 hidden, 50 out" in err and "images of mnist" in err and "learning label (hazard" in err
+    assert "Goo(654 neurons" in err and "395 in, 199 hidden, 60 out" in err and "images of mnist" in err and "learning label (hazard" in err
     assert "clock neurons: the first 3" in err
 
 
@@ -303,12 +304,13 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
     goo = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
               permute=False)
-    goo.coding, goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = "complement", 5, 3, "count", "reinforce", "rate", 2.0
+    goo.coding, goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = "complement", args.population, 3, "count", "reinforce", "rate", 2.0
+    goo.output_coding = args.output_coding  # the problem's: complement, since September 16, 2026
     goo.set_delta(0.455)
     direction = mnist.supervised_direction(goo)
     edges = [c for n in goo.all_neurons() for c in n.outgoing]
     d, mask = direction(edges)
-    assert len(d) == len(mask) == len(edges) == 1152 and mask.all()  # every synapse of the feedforward goo is input -> output
+    assert len(d) == len(mask) == len(edges) == len(goo.connections) and mask.all()  # every synapse of the feedforward goo is input -> output
     assert np.abs(d).max() <= 1.0 and all(d[e] == 0.0 for e, c in enumerate(edges) if c.source in goo.input_row()[:3])  # clocks: no direction
     assert 0.3 < (np.abs(d) > 0.02).mean() < 0.7  # a good part of the synapses have a direction worth the name
     on, on_given = mnist.pixel_statistics(3)
@@ -324,8 +326,108 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     assert all(0.0 <= e["sign_cum"] <= 1.0 for e in est) and est[-1]["corr_window"] is not None
     goo2 = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
                permute=False)
-    goo2.coding, goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = "complement", 5, 3, "count", "reinforce", "rate", 2.0
+    goo2.coding, goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = "complement", args.population, 3, "count", "reinforce", "rate", 2.0
+    goo2.output_coding = args.output_coding
     goo2.set_delta(0.455)
     _, _, _, plain = fast.train(goo2, 10, lr=0.001, target="label", trace_every=5, patterns=patterns, labels=labels,
                                 eligibility="hebb", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence")
     assert plain["estimator"] is None  # without a direction there is no trace, and hebb runs under the evidence critic too
+
+
+def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
+    """§8 (Byron, September 16, 2026: "force complement coding ... three fire-if-one and three fire-if-zero"): the zone is
+    the fire-if-one populations then the fire-if-zero ones in the same order, a class's evidence is n+ - n-, the label
+    code is on/off for the label's groups and off/on for every other class's, and a zero neuron's supervised direction
+    is its class's reversed."""
+    import math
+    from walnutbutter.learning import OUTPUT_CODINGS, class_evidence, evidence_reward, evidence_score, label_code
+    assert OUTPUT_CODINGS == ("population", "complement")
+    assert class_evidence([1, 2, 0, 5, 0, 0], 3) == [3, 5] and class_evidence([1, 2, 0, 5, 0, 0], 1) == [1, 2, 0, 5, 0, 0]
+    # two classes of two, complement-coded: ones [1 2 | 0 5], zeros [0 1 | 4 0]
+    assert class_evidence([1, 2, 0, 5, 0, 1, 4, 0], 2, "complement") == [3 - 1, 5 - 4]
+    with pytest.raises(ValueError, match="does not divide"):
+        class_evidence([1, 2, 3], 2, "complement")
+    with pytest.raises(ValueError, match="unknown output coding"):
+        class_evidence([1, 2], 1, "mirror")
+    goo = Goo(count=24, across=4, outputs=12, seed=3, weight=None)  # three classes: 2 fire-if-one, 2 fire-if-zero each
+    goo.coding, goo.population, goo.output_coding, goo.read, goo.rule = "raw", 2, "complement", "count", "reinforce"
+    goo.use_input_stream([[True, False, True, False]], [1])
+    run_epoch(goo, verbose=False, rng=random.Random(1))
+    assert label_code(goo) == [False, False, True, True, False, False] + [True, True, False, False, True, True]
+    outputs = goo.output_row()
+    counts = [3, 1, 0, 0, 2, 2] + [0, 0, 1, 0, 0, 0]  # ones 4, 0, 4; zeros 0, 1, 0 -> evidence 4, -1, 4
+    for neuron, c in zip(outputs, counts):
+        neuron.spikes_at_reset, neuron.spikes = 0, c
+    goo.temperature = 2.0
+    for label in (0, 1, 2):
+        goo.input_label = label
+        assert evidence_score(goo) == pytest.approx(evidence_reward([4, -1, 4], label, 2.0))
+    goo.input_label = 1
+    assert class_accuracy(goo) == 0.0 and graded_accuracy(goo) == 0.0  # the label's class is out-evidenced by both others
+    for neuron, c in zip(outputs, [0, 0, 0, 0, 0, 0] + [3, 3, 0, 0, 3, 3]):  # only fire-if-zero spikes: evidence -6, 0, -6
+        neuron.spikes_at_reset, neuron.spikes = 0, c
+    assert class_accuracy(goo) == 1.0 and graded_accuracy(goo) == 1.0  # the label is the one class not spoken against
+    for neuron in outputs:  # every neuron loud alike: every class at zero evidence, chance
+        neuron.spikes = 4
+    assert evidence_score(goo) == pytest.approx(math.log(1 / 3))
+    # the supervised direction: a fire-if-zero neuron of class k takes -(P(pixel | k) - P(pixel))
+    ff = Goo(count=445, across=395, outputs=50, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4, permute=False)
+    ff.coding, ff.population, ff.clock, ff.output_coding = "complement", 5, 3, "population"
+    cc = Goo(count=455, across=395, outputs=60, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4, permute=False)
+    cc.coding, cc.population, cc.clock, cc.output_coding = "complement", 3, 3, "complement"
+    from walnutbutter.mnist import supervised_direction
+    edges = [c for n in cc.all_neurons() for c in n.outgoing]
+    d, mask = supervised_direction(cc)(edges)
+    row = cc.output_row()
+    plain, plain_mask = supervised_direction(ff)([c for n in ff.all_neurons() for c in n.outgoing])
+    assert int(mask.sum()) > 0 and int(plain_mask.sum()) > 0 and set(np.sign(plain[plain_mask])) <= {-1.0, 0.0, 1.0}
+    # a fire-if-one and a fire-if-zero neuron of the same class see the same pixel with opposite signs
+    by_target = {}
+    for e, c in enumerate(edges):
+        if mask[e]:
+            by_target.setdefault(c.target, {})[c.source] = d[e]
+    pairs = 0
+    for k in range(30):
+        one, zero = row[k], row[30 + k]  # the same class (k // 3), one and zero
+        for source, value in by_target.get(one, {}).items():
+            if source in by_target.get(zero, {}):
+                assert by_target[zero][source] == -value
+                pairs += 1
+    assert pairs > 0
+
+
+def test_the_mnist_problem_is_complement_coded_on_the_outputs_and_the_engines_agree(tmp_path):
+    """The problem's defaults since September 16, 2026, the checkpoint's round trip, and the Rust loop on the configuration."""
+    from walnutbutter.cli import apply_problem, build_parser
+    from walnutbutter.persistence import checkpoint, restore
+    from walnutbutter.problems import PROBLEMS
+    p = PROBLEMS["mnist"]
+    assert (p.population, p.outputs, p.output_coding, p.lr) == (3, 60, "complement", 0.002)
+    args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
+    assert (args.population, args.outputs, args.output_coding) == (3, 60, "complement")
+    args = build_parser().parse_args(["--problem", "mnist", "--output-coding", "population", "--population", "5", "--outputs", "50"]); apply_problem(args)
+    assert (args.population, args.output_coding, args.outputs, args.goo) == (5, "population", 50, 395 + 199 + 50)  # the earlier layout, on request
+    goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
+    goo.coding, goo.population, goo.output_coding, goo.read, goo.rule = "raw", 1, "complement", "count", "reinforce"
+    data = checkpoint(goo, tmp_path / "c.json")
+    assert data["output_coding"] == "complement"
+    back, _ = restore(tmp_path / "c.json")
+    assert back.output_coding == "complement"
+    from walnutbutter.arrays import ArrayNetwork
+    assert ArrayNetwork(goo).output_coding == "complement"
+    if fast.available():
+        import importlib.util
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location("rs", Path(__file__).resolve().parent.parent / "docs" / "rust-sweep.py")
+        rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
+        from walnutbutter.problems import dataset_stream
+        try:
+            patterns, labels = dataset_stream("mnist", 1)
+        except FileNotFoundError:
+            pytest.skip("the MNIST files are not fetched")
+        grid, cli = rs.grid_of("mnist", {"hidden_neurons": 0.0, "seed": 1, "threshold": 0.6, "temperature": 2.0}, "hazard", True, -4.0)
+        assert grid.output_coding == "complement" and grid.outputs == 60 and grid.population == 3 and len(grid.all_neurons()) == 455
+        grid.use_input_stream(patterns, labels)
+        teacher = Teacher(grid, seed=1, rule="reinforce", eligibility="hazard", target="label", critic="evidence", lr=cli.lr,
+                          homeostasis=0.0, unstick=0.0)
+        assert fast.compare(grid, epochs=4, teacher=teacher) == []

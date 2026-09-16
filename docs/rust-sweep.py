@@ -26,6 +26,15 @@ a Teacher with that seed would use -- and `--sigma` is then a knob like any othe
 Each arm's inputs are drawn up front from the input stream of §4.5, keyed to the arm's
 seed alone, so every arm at seed s sees the same epochs in the same order however the
 network differs. Comparisons across arms are therefore paired epoch by epoch.
+
+`--resume-from OTHER` continues each arm from the network `runs/OTHER/<arm>-network.json`
+saved at the end of that sweep's run of it: the checkpoint's weights, thresholds, clock,
+spike times, widths and expectations, the input stream advanced to the epoch it reached,
+`--epochs` more epochs from there, the estimator still measured against the first
+start's weights, and the trace and record continued from the earlier ones. Not a resume to
+the bit: the exploration stream starts afresh (seed + 1,000,000) and the reward baseline
+from the first resumed epoch. `--population`, `--outputs` and `--output-coding`, fixed for the
+sweep, rebuild an arm under a layout the problem no longer defaults to.
 """
 
 from __future__ import annotations
@@ -52,6 +61,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "lr": "--lr",
     "quash": "--quash",
     "rate_tau": "--rate-tau",
+    "tau": "--tau",  # the potential's leak, ms (§5.1): set on the Neuron class by grid_of, arm by arm, each arm its own process
     "sigma": "--sigma",  # exploration noise, only felt under --eligibility perturb (§6.1)
     "delta": "--delta",  # escape noise (§5.2): the decision's width in starting thresholds; --eligibility hazard learns by it
     "threshold": "--threshold",  # THRESHOLD, quoted per THRESHOLD_FAN_IN incoming synapses; goo scales it (§5.2)
@@ -78,7 +88,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
-    parser.add_argument("--wiring", choices=("scaled", "zones-equal", "zones", "uniform"), default=None,
+    parser.add_argument("--wiring", choices=("scaled", "ff2", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
@@ -89,6 +99,12 @@ def parse() -> argparse.Namespace:
                              "escape-noise decision on each synapse's trace (hazard; needs --delta). More than one value "
                              "sweeps it, an arm per value")
     parser.add_argument("--epochs", type=int, default=1_000_000)
+    parser.add_argument("--resume-from", default=None, metavar="NAME",
+                        help="continue every arm from runs/NAME/<arm>-network.json for --epochs more epochs (see above)")
+    parser.add_argument("--population", type=int, default=None, help="neurons per population, fixed for the sweep (the problem's unless given)")
+    parser.add_argument("--outputs", type=int, default=None, help="the output zone's width, fixed for the sweep (the problem's unless given)")
+    parser.add_argument("--output-coding", choices=("population", "complement"), default=None,
+                        help="the output zone's coding (§8), fixed for the sweep (the problem's unless given)")
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--summary", action="store_true", help="summarise what is on disk; run nothing")
@@ -100,10 +116,11 @@ def parse() -> argparse.Namespace:
 
 
 def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = True, floor_ratio: float | None = None,
-            wiring: str | None = None):
+            wiring: str | None = None, fixed: tuple = ()):
     """The network the command line would build for this problem, with the arm's knobs applied.
 
-    An arm carrying `eligibility` (a swept one) overrides the argument.
+    An arm carrying `eligibility` (a swept one) overrides the argument; `fixed`
+    is extra command-line words the whole sweep runs with (--population, --output-coding).
     """
     eligibility = arm.get("eligibility", eligibility)
     from walnutbutter.cli import apply_problem, build_parser
@@ -116,7 +133,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     from walnutbutter.problems import PROBLEMS
     on_goo = ("goo" in arm or "hidden_neurons" in arm or PROBLEMS[problem].goo is not None
               or PROBLEMS[problem].hidden_neurons is not None)  # posed on goo: by the arm, or by the problem
-    argv = ["--problem", problem, "--eligibility", eligibility] + ([] if wiring is None else ["--wiring", wiring])
+    argv = ["--problem", problem, "--eligibility", eligibility] + ([] if wiring is None else ["--wiring", wiring]) + list(fixed)
     base_threshold = GOO_THRESHOLD if on_goo else THRESHOLD  # goo has its own (§1.2)
     if on_goo and "threshold" not in arm:
         argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
@@ -148,6 +165,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
                              omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
                              threshold=args.threshold, minimum_potential=args.minimum_potential)
     grid.coding, grid.population, grid.clock = args.coding, args.population, args.clock
+    grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
     grid.temperature = args.temperature  # the evidence critic's (§8)
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.teacher_threshold = args.teacher_threshold  # the count read's line (§4.3)
@@ -175,7 +193,37 @@ def _save_network(engine, grid, report: dict, path) -> None:
         n.threshold = theta
     for n, expected in zip(grid.all_neurons(), report.get("expected_counts") or []):
         n.expected_count = expected  # the hebb eligibility's expectation (§6.7), so a continuation starts centred
+    for n, rate in zip(grid.all_neurons(), report.get("rates") or []):
+        n.rate = rate  # the Teacher's rate memory, so a continuation's stuck counts and homeostasis start where they were
     checkpoint(grid, path)
+
+
+RESUMED_SETTINGS = ("readout", "read", "read_window", "teacher_threshold", "interval", "drive", "input_rate", "input_rate_off",
+                    "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k", "hebb_rate",
+                    "synapse_tau", "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
+
+
+def resume_grid(fresh, source):
+    """The arm's network as `runs/<other>/<arm>-network.json` left it, ready to run on: (grid, epochs already run, first-start weights).
+
+    `fresh` is the arm's network as grid_of builds it from the seed -- the same
+    wiring, so its weights are the first start's, the reference the estimator
+    keeps measuring from. The checkpoint's state is taken whole (weights,
+    thresholds, rate memories, expectations, the clock, the widths, the signals
+    in flight); the arm's settings are applied over it, and the caller advances
+    the input stream to the epoch reached.
+    """
+    from walnutbutter.persistence import restore
+    reference = [c.weight for n in fresh.all_neurons() for c in n.outgoing]
+    restored, data = restore(source)
+    edges = sum(len(n.outgoing) for n in restored.all_neurons())
+    if edges != len(reference) or len(restored.all_neurons()) != len(fresh.all_neurons()):
+        raise ValueError(f"{source} holds a network of {len(restored.all_neurons())} neurons and {edges} synapses; the arm builds "
+                         f"{len(fresh.all_neurons())} and {len(reference)} -- the same seed and layout are needed to resume")
+    for attr in RESUMED_SETTINGS:
+        setattr(restored, attr, getattr(fresh, attr))
+    restored.rule = "reinforce"
+    return restored, int(data["epoch"]), reference
 
 
 def _rate_by_zone(grid, rates: list[float]) -> dict:
@@ -205,7 +253,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring = job
+    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring, resume_from, fixed = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
     from walnutbutter.problems import PROBLEMS, dataset_stream
@@ -214,8 +262,20 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
-    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring)
+    grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring, fixed)
     eligibility = arm.get("eligibility", eligibility)
+    offset, reference, earlier_trace, earlier_estimator = 0, None, [], []
+    if resume_from:  # continue from the saved network; the earlier trace and estimator are carried over so the record is whole
+        source = ROOT / "runs" / resume_from / f"{arm_name(arm)}-network.json"
+        if not source.exists():
+            return {"arm": arm_name(arm), "missing": str(source)}
+        grid, offset, reference = resume_grid(grid, source)
+        earlier = source.with_name(f"{arm_name(arm)}.json")
+        if earlier.exists():
+            earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
+        earlier_csv = source.with_name(f"{arm_name(arm)}.csv")
+        if earlier_csv.exists():
+            earlier_trace = [(int(r["epoch"]), r["score"]) for r in csv.DictReader(open(earlier_csv))]
     direction = None
     if PROBLEMS[problem].data == "mnist" and hasattr(grid, "outputs"):  # the estimator's correlation over time (§8)
         from walnutbutter.mnist import supervised_direction
@@ -224,28 +284,43 @@ def run_arm(job: tuple) -> dict:
     started_at = {"theta": first.threshold, "floor": first.minimum_potential}  # what a neuron starts at, scaling applied
     data = dataset_stream(PROBLEMS[problem].data, int(arm["seed"]))  # a dataset's images with their labels (§8), or
     if data is None:  # random bits drawn up front, §4.5: every arm at this seed sees the same epochs in the same order
-        patterns, labels = input_stream(epochs, grid.raw_bit_count(), int(arm["seed"])), None
+        patterns, labels = input_stream(offset + epochs, grid.raw_bit_count(), int(arm["seed"])), None
     else:
         patterns, labels = data
+    explore_seed = int(arm["seed"])
+    if resume_from:  # the stream is attached here and advanced to the epoch reached; the exploration stream starts afresh
+        grid.use_input_stream(patterns, labels)
+        grid.input_at = offset
+        patterns = labels = None
+        explore_seed += 1_000_000
     started = time.perf_counter()
     mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
-        eligibility=args.eligibility, sigma=args.sigma, seed=int(arm["seed"]),
+        eligibility=args.eligibility, sigma=args.sigma, seed=explore_seed,
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
+        reference_weights=reference, epoch_offset=offset,
     )
     elapsed = time.perf_counter() - started
     _save_network(engine, grid, report, path.with_name(path.stem + "-network.json"))  # so an arm can be resumed, not rerun
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["epoch", "score"])
+        for epoch, score in earlier_trace:
+            writer.writerow([epoch, score])
         for k, score in enumerate(trace, start=1):
-            writer.writerow([k * trace_every, f"{score:.6g}"])
+            writer.writerow([offset + k * trace_every, f"{score:.6g}"])
+    if report.get("estimator") is not None:
+        report["estimator"] = earlier_estimator + report["estimator"]
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
               "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
               "critic": args.critic, "problem": problem, "lr": args.lr,  # the rate the arm ran at, swept or the problem's own
+              "output_coding": grid.output_coding, "population": grid.population, "outputs": getattr(grid, "outputs", None),
+              "resumed_from": resume_from, "epoch_offset": offset, "epochs_run": epochs,  # a continuation: from where, and how far
+              "tau": args.tau, "refractory": args.refractory, "refractory_hops": args.refractory_hops,  # the clock the arm ran on
+              "explore_seed": explore_seed,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
@@ -331,8 +406,11 @@ def main() -> int:
         workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 3) - 2))
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
         started = time.perf_counter()
+        fixed = ([] if args.population is None else ["--population", str(args.population)]) + \
+                ([] if args.outputs is None else ["--outputs", str(args.outputs)]) + \
+                ([] if args.output_coding is None else ["--output-coding", args.output_coding])
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
-                 args.floor_ratio, args.wiring) for arm in arms]
+                 args.floor_ratio, args.wiring, args.resume_from, tuple(fixed)) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)

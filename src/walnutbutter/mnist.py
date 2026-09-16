@@ -175,21 +175,30 @@ def supervised_direction(grid, folder: Path | str = FOLDER):
 
     For a synapse from input i onto an output of class k the direction is
     P(coded input i on | class k) - P(coded input i on), the sign a linear
-    classifier's gradient has on average; every other synapse is outside the
+    classifier's gradient has on average; for a fire-if-zero output of class
+    k, under complement coding (§8), it is that reversed, since the neuron
+    should fire when the label is not k; every other synapse is outside the
     mask. `fast.train(direction=...)` takes it, and records the estimator's
     correlation with it over the run.
     """
     on, on_given = pixel_statistics(grid.clock, folder)
     inputs = {neuron: i for i, neuron in enumerate(grid.input_row())}
-    outputs = {neuron: k // grid.population for k, neuron in enumerate(grid.output_row())}
+    row = grid.output_row()
+    complement = getattr(grid, "output_coding", "population") == "complement"
+    classes = len(row) // (grid.population * (2 if complement else 1))
+    outputs = {}  # output neuron -> (its class, +1 for a fire-if-one neuron, -1 for a fire-if-zero one)
+    for k, neuron in enumerate(row):
+        group = k // grid.population
+        outputs[neuron] = (group % classes, -1.0 if group >= classes else 1.0)
 
     def direction(edges):
         d = np.zeros(len(edges))
         mask = np.zeros(len(edges), dtype=bool)
         for e, c in enumerate(edges):
-            i, k = inputs.get(c.source), outputs.get(c.target)
-            if i is not None and k is not None:
-                d[e] = on_given[k, i] - on[i]
+            i, ks = inputs.get(c.source), outputs.get(c.target)
+            if i is not None and ks is not None:
+                k, sign = ks
+                d[e] = sign * (on_given[k, i] - on[i])
                 mask[e] = True
         return d, mask
 

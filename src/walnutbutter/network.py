@@ -102,6 +102,8 @@ class Network:
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
+        self.output_coding = "population"  # how the output zone codes the classes (§8): a population a class, or "complement"
+        # -- fire-if-one populations then, in the same order, fire-if-zero ones (Byron, September 16, 2026; learning.OUTPUT_CODINGS)
         self.temperature = TEMPERATURE  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
         self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
         # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits

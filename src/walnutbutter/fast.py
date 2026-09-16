@@ -112,9 +112,9 @@ def _outputs_on(engine, grid, out) -> list[bool]:
 def _reward(engine, grid, out, critic, want_of) -> float:
     """The epoch's reward from the engine's arrays: the row critic against the target, or a label critic (§8)."""
     if critic in ("class", "graded", "evidence"):
+        from .learning import class_evidence  # the one function every engine reads the zone through (§8)
         counts = engine.epoch_spike_counts()
-        pop = grid.population
-        groups = [sum(counts[i] for i in out[c * pop:(c + 1) * pop]) for c in range(len(out) // pop)]
+        groups = class_evidence([int(counts[i]) for i in out], grid.population, getattr(grid, "output_coding", "population"))
         label = grid.input_label
         if label is None:
             raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")
@@ -326,7 +326,7 @@ def benchmark(grid, epochs=200, bits=None):
 def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
           unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
-          direction=None):
+          direction=None, reference_weights=None, epoch_offset=0):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -367,7 +367,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     epochs, over the masked edges, the Pearson correlation and the sign agreement
     of the weight change since the start with `d`, and the correlation of the
     change since the previous trace point -- the estimator integrated, which is
-    what the weights are, under any eligibility.
+    what the weights are, under any eligibility. A run resumed from a saved
+    network (docs/rust-sweep.py --resume-from) passes `reference_weights`, the
+    weights of its first start, so the change is still measured from there, and
+    `epoch_offset`, the epochs already run, so the trace's epochs count on.
 
     `homeostasis`, `unstick` and their targets are the Teacher's threshold moves
     (§1.3), mirrored here at the constants the command line runs them at, so a
@@ -423,7 +426,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         if len(d) != len(edges) or len(mask) != len(edges):
             raise ValueError(f"the direction covers {len(d)} edges, the engine has {len(edges)}")
         d_masked = d[mask]
-        w0 = w_prev = np.array(engine.weights())
+        w_prev = np.array(engine.weights())
+        w0 = w_prev if reference_weights is None else np.asarray(reference_weights, dtype=float)
+        if len(w0) != len(edges):
+            raise ValueError(f"the reference weights cover {len(w0)} edges, the engine has {len(edges)}")
         estimator = []
 
         def _corr(x):
@@ -465,7 +471,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
             if estimator is not None:
                 w = np.array(engine.weights())
                 cum, window = (w - w0)[mask], (w - w_prev)[mask]
-                estimator.append({"epoch": epoch + 1, "corr_cum": _corr(cum), "corr_window": _corr(window),
+                estimator.append({"epoch": epoch_offset + epoch + 1, "corr_cum": _corr(cum), "corr_window": _corr(window),
                                   "sign_cum": float((np.sign(cum) == np.sign(d_masked)).mean())})
                 w_prev = w
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:

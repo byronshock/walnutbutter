@@ -82,6 +82,7 @@ class ArrayNetwork(Network):
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
+        self.output_coding = getattr(mesh, "output_coding", "population")  # how the output zone codes the classes (§8)
         self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
         self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau

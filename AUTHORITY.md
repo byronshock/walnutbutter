@@ -132,7 +132,7 @@ at all.
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
 | GOO_SCALING_FACTOR | 0.05 | goo's wiring (§3.4, the scaled rule): every neuron hears $N \times$ GOO_SCALING_FACTOR synapses in expectation — 32.2 on the mnist goo of 644, 3 on goo 60 — $P(i \to j)$ being that fan-in over the sources $j$ may hear, stopped at 1: $N - 1$ for a neuron outside the input zone, $N - I$ for one inside it, since no neuron projects onto itself and no input neuron onto another. *Byron, September 16, 2026: "P_ij necessary to give j an average of N * scaling_factor inputs. Please default scaling_factor to 0.05. I realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an oversaturated or dull network."* |
 | GOO_PROJECTION | 0.2 | **superseded as the wiring's knob by GOO_SCALING_FACTOR, September 16, 2026;** the probability of the three earlier wirings, which `--wiring zones-equal`, `zones` and `uniform` still build (§3.4). Under the zone rule with equal fan-in: the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (the zone rule with equal fan-in, reinstated the night of September 15, 2026 after an evening of one probability). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
-| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival, and of the eligibility trace on a synapse (§6.12), which is taken to be the same constant; $\infty$ switches it off (§5.1) |
+| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off (§5.1). A half-life of 1.39 ms: 0.435 of the potential survives a hop, 0.08 a refractory period, so a neuron integrates about one hop of input and a steady per-hop input $I$ settles at $1.77\,I$. The hazard's synapse trace (§6.7) leaks with it, being the margin's derivative; the leaky-Hebb trace has its own SYNAPSE_TAU since September 13, 2026 (§6.12), and the row that said they shared this constant stood until September 16. *Swept for the first time that afternoon, §8* |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
@@ -220,9 +220,10 @@ connections, signalling and learning:
   the input zone is the first `across` neurons and the output zone the last
   `outputs`, picked by index because there are no places to pick them by —
   and every other ordered pair projects at the probability that gives its
-  target $N \times$ GOO_SCALING_FACTOR synapses in expectation. It began as
-  the control the other three are measured against and is the working
-  network.
+  target $N \times$ GOO_SCALING_FACTOR synapses in expectation; or, on
+  request, fully connected and feedforward, every input onto every output
+  and nothing else (`ff2`, §3.4). It began as the control the other three
+  are measured against and is the working network.
 
 A neuron may sit in several input and output zones at once; structures are
 permissive, never artificially restricted.
@@ -841,6 +842,46 @@ rule; the night's first version, the outputs open to every zone, is kept as
 `"scaled-open"` for the record (no checkpoint was ever saved under it).
 The two temperature sweeps of §8 before 03:05 ran under the open rule and
 stand as recorded.
+
+**Fully connected, feedforward — decided (Byron, September 16, 2026,
+16:35 MDT, on hearing that the feedforward goo's outputs hear 22 of the
+395 inputs: "So what you are saying is we don't have a fully-connected
+feedforward network. Please make a fully-connected-feedforward-2 rule:
+There are two 'layers', the input 'layer' and the output 'layer'. P_ij =
+P (i is in the input layer and j is in the output layer). These 'layers'
+generalize to zones in a recurrent goo, but for the feedforward problem I
+want everything to connect fully.")** The wiring `ff2`:
+
+$$P(i \to j) = \begin{cases} 1 & i \text{ in the input zone},\ j \text{ in the output zone} \\ 0 & \text{otherwise} \end{cases}$$
+
+Every input projects onto every output and nothing else projects at all:
+on the mnist goo of 455 that is 395 × 60 = 23,700 synapses, every output
+hearing the whole input zone, every input hearing nothing. Weights are
+drawn as under every wiring, uniform on [−1, 1] from the seed. It wires
+two layers and no more, and refuses a goo with hidden neurons; how the
+two layers generalise to the zones of a recurrent goo is Byron's to say
+and is not built. §5.2's scaling applies as written, so an output's
+axis stretches by 395/18: threshold 13.2, floor −52.7, a width of 6.0 —
+where the scaled rule's outputs sat at 0.4 to 1.1. *Claude's arithmetic,
+for the first run to check:* 199 driven inputs at 0.33 spikes a hop
+deliver about 66 arrivals a hop with weights of mean 0 and spread 0.58,
+a summed drive of spread 4.7 against a threshold of 13.2, so a fresh
+output sits three widths below threshold and fires from its inputs
+rarely, mostly by the hazard at rest, until the weights are shaped; the
+random drive grows as the square root of the fan-in and the threshold as
+the fan-in, which is the tension the count × threshold sweeps of this
+section measured at the other end. *Measured on the first forty epochs
+at 100 ms, seed 1, learning off and on alike:* the outputs fire 2.3
+spikes a neuron in the last epoch, the hazard's rest at that length
+being 2.4, with a rate memory of 0.63 — they fire by the hazard and not
+by their inputs, as the arithmetic said — where the scaled goo's outputs
+fire 4.6; the reward sits at the loud network's chance, −3.45. The
+objects and the Rust loop agree on it, learning on. And it is slow: at
+23,700 synapses an epoch of 100 ms delivers about 240,000 signals, and
+the loop ran 1.2 epochs a second beside the afternoon's thirty workers
+against the scaled goo's 8.3, so a 25,000-epoch arm is a matter of hours,
+not half of one. `--wiring ff2` asks for it; the scaled rule stays the
+default, since the problem's own network has hidden neurons.
 
 **The scaled rule (Byron, September 16, 2026, 01:18 MDT: "We're going to
 change the connectivity rule before we proceed").** In his words:
@@ -4294,3 +4335,205 @@ the layout, the inputs, and whether anything outside the network trains it.
   count read as a rate, so that the critic sees the same odds at every
   length; and a longer epoch still, since 100 ms is the top of this
   sweep and the read was still climbing.
+
+  **Decision 6 — complement coding on the outputs (Byron, September 16,
+  2026, about 11:40 MDT: "In the output, I'd like to force complement
+  coding. How about we try ten classes x a population of six neurons:
+  three fire-if-one and three fire-if-zero? We will need to change our
+  scoring rule accordingly.")** The output zone is the input zone's
+  complement coding turned around: **60 neurons, the ten fire-if-one
+  populations of three first (class $k$ owns $3k$ to $3k+2$) and then, in
+  the same order, the ten fire-if-zero populations of three** — the
+  ordering the input uses for bits and their negations, so the two zones
+  read alike. The read is unchanged, by count; *the scoring rule, Claude's
+  reading of "accordingly," to be corrected in a word:* the evidence for
+  class $k$ is its fire-if-one sum minus its fire-if-zero sum,
+
+  $$n_k = n_k^{+} - n_k^{-},$$
+
+  a spike from a zero neuron being one unit of evidence against its class,
+  and the class sums enter the critics of decisions 3 and 4 exactly as
+  before — the evidence critic reads the $n_k$ as log-odds at $T$ and pays
+  $\ln q_y$; the class and graded critics compare them. Every silent or
+  evenly loud zone is still chance, $\ln 0.1$; a zone in which every zero
+  neuron fires and every one neuron is silent is chance too, evidence of
+  $-3$ against every class alike, where before a loud zone was a loud
+  guess. The label code for the row critic is the label's one-group on,
+  its zero-group off, and every other class the other way. The supervised
+  direction of §8's estimator is reversed on a zero neuron's synapses, a
+  neuron that should fire when the label is *not* $k$ having the class's
+  pixel statistics with the sign turned. The alternative not taken: the
+  row critic against the 60-bit code word, which scores each population
+  as a bit and does not read the zone as evidence at all. `Problem.
+  output_coding` (`--output-coding`, complement for mnist, population for
+  every other problem and for the earlier mnist on request with
+  `--output-coding population --population 5 --outputs 50`),
+  `learning.class_evidence` for every engine and the
+  Rust driver alike, checkpointed as `output_coding`. The problem's
+  population is 3 again and its goo of 455 with no hidden neurons runs its
+  hazards at $\sqrt{60/455} = 0.363$.
+
+  *The trial ("How about we try"), launched 15:37 MDT:* the settings of the
+  epoch-length sweep above — the feedforward goo, threshold 0.6, floor
+  −2.4, $\Delta$ 0.455 scaled, $T$ = 2, LR 0.002, 25,000 epochs, traced
+  every 250 — at 35 and 100 ms, seeds 1 to 10, twenty arms
+  (`runs/mnist-ff-complement`), so each cell pairs seed for seed with the
+  population-coded row of the same length above, and only the output
+  zone's coding and its ten extra neurons differ. `docs/mnist-ff-
+  complement.md` and `-estimator.md` when it lands.
+
+  **The 100 ms arms continued to 100,000 epochs (Byron, September 16,
+  2026, about 15:45 MDT, on the epoch-length sweep's ten best arms by
+  the fraction right — its ten arms at 100 ms, every seed, 0.114 to
+  0.133, each above every arm at a shorter epoch: "I would like to resume
+  all ten of these seeds until they reach 100000 epochs").** The driver
+  can now continue an arm from the network it saved (`--resume-from`,
+  the morning's "next duty" carried one step further): the checkpoint's
+  weights, thresholds, rate memories, expectations, clock, widths and
+  signals in flight taken whole, the input stream advanced to the epoch
+  reached, the estimator still measured against the first start's
+  weights so its correlation reads on from 25,000 rather than starting
+  over, and the trace and record carried on from the earlier ones — not
+  to the bit, since the exploration stream starts afresh (seed +
+  1,000,000) and the reward baseline from the first resumed epoch. A
+  saved network is resumed under its own layout, checked neuron for
+  neuron and synapse for synapse against a fresh build from the seed:
+  the first launch, at 15:47, was refused because the problem now builds
+  60 outputs and the saved networks have 50 — hence `--outputs`, beside
+  `--population` and `--output-coding`, for a layout the problem no
+  longer defaults to. Launched 15:50 MDT (`runs/mnist-ff-interval-100k`,
+  75,000 more epochs an arm, ten workers beside the complement trial's
+  twenty).
+
+  *The complement trial landed 16:10 MDT (`docs/mnist-ff-complement.md`,
+  `-estimator.md`, `-estimator.png`).* Paired seed for seed with the
+  population-coded rows of the epoch-length sweep:
+
+  | epoch, ms | output coding | corr, 5,000 | corr, 25,000 | right, last tenth | reward, last tenth | one neurons, spikes in the last epoch | zero neurons |
+  |---|---|---|---|---|---|---|---|
+  | 35 | population | +0.098 | +0.219 ± 0.034 | 0.084 | −2.70 | 1.5 | — |
+  | 35 | complement | +0.092 | +0.216 ± 0.025 | 0.081 | −2.79 | 1.6 | 1.6 |
+  | 100 | population | +0.071 | +0.207 ± 0.044 | 0.124 | −3.09 | 3.3 | — |
+  | 100 | complement | +0.094 | +0.213 ± 0.024 | 0.116 | −3.21 | 3.1 | 3.2 |
+
+  **Nothing moved.** The paired differences, complement minus population,
+  are −0.003 and +0.006 in the correlation ($t$ of −0.3 and 0.4), −0.003
+  and −0.008 in the fraction right ($t$ of −0.8 and −1.3), within seed
+  noise on both counts; the reward is lower by 0.09 and 0.12 on nine
+  seeds of ten, because the evidence $n_k^{+} - n_k^{-}$ carries the
+  Poisson noise of two populations where one carried it before. In
+  25,000 epochs the fire-if-zero populations have not learned to be
+  quiet when their class is the label, nor the fire-if-one ones to be
+  loud: both halves fire alike, 3.1 and 3.2 spikes a neuron in the last
+  epoch at 100 ms, and the zone's read is the same read with twice the
+  neurons. *Claude's reading:* the coding changes what the critic asks
+  of the zone, not what the estimator can deliver to it, and at this
+  signal-to-noise the estimator is the limit; the complement's promise —
+  that a class can be spoken *against* — needs weights that separate
+  the two halves, and nothing in 25,000 epochs does. *What Claude read
+  past and Byron did not (16:20 MDT): "You missed that there is less
+  variance in the complement-coded results, so we'll stick with the
+  complement coding for now. It should not hurt us."* The seed spread
+  of the estimator's correlation is smaller under complement coding at
+  every point of the run — at 25,000 epochs 0.025 against 0.034 at 35
+  ms and 0.024 against 0.044 at 100 ms, a variance ratio of 1.9 and
+  3.3 (the one-sided 5% point on nine and nine degrees of freedom is
+  3.2), and the same order at 5,000 and 10,000; the worst seed rises
+  from +0.165 to +0.177 at 100 ms while the best falls from +0.310 to
+  +0.252. The read's spread is not narrower (0.014 against 0.007 at 100
+  ms), only the estimator's. So the coding is kept, decided: every
+  mnist run from here is complement-coded on its outputs, and whether
+  the two halves ever separate is a question for a longer run.
+
+  **The leak, swept (Byron, September 16, 2026, about 16:00 MDT, on
+  asking how fast it is: "Let's run that sweep as well").** TAU is 2 ms,
+  a half-life of 1.39 ms against a hop of 1.67 (§1.2): a neuron
+  integrates about one hop of its input, so the 100 ms epoch's gain in
+  the read came from the count integrating at the read, not the neuron.
+  The sweep: TAU {5, 10, 20, 50} ms — 50 ms integrates most of an
+  epoch — at 100 ms epochs, the complement-coded goo, seeds 1 to 10,
+  25,000 epochs, LR 0.002; the complement trial's ten arms at 100 ms
+  are the TAU 2 cell, the same seeds, streams and settings to the bit,
+  so it is not rerun. The hazard's synapse trace leaks with TAU too, so
+  the eligibility's window widens with it. Launched 16:12 MDT on the
+  complement trial's twenty cores as it ended (`runs/mnist-ff-tau`;
+  `docs/mnist-ff-tau.md` and `-estimator.md` when it lands).
+
+  **One fully connected goo, watched (Byron, September 16, 2026, 16:55
+  MDT: "I would like to start ONE fully connected feedforward goo for
+  this problem and watch it evolve every 100 epochs").** `--wiring ff2`
+  (§3.4) on the problem as it stands — complement-coded outputs, LR
+  0.002, 100 ms epochs, seed 1, from the start — in Byron's own terminal
+  through `docs/mnist-watch.py`, a line every 25 epochs, one epoch a
+  second beside the afternoon's thirty workers. *Byron, at epoch 1,000:
+  "This problem is now well-posed for much 'faster' learning, although we
+  have completely lost the recurrence properties we are hoping to find.
+  Epochs are taking longer, but correlation is converging very nicely. At
+  1000 epochs we are already at +0.095, which took about 5000 epochs
+  previously."* The line: +0.033 at 100 epochs, +0.061 at 500, +0.095 at
+  1,000, +0.101 at 1,050, the window correlation positive in nearly every
+  25-epoch window (+0.01 to +0.04) where the scaled goo's flickered about
+  zero — the scaled goo of the sweeps above stood at +0.07 to +0.09 at
+  5,000 epochs. Five times the epochs' pace at seven times the cost an
+  epoch, on twenty times the synapses; the outputs fire at the hazard's
+  rest throughout (2.2 spikes a neuron, reward −3.3 to −3.6 against the
+  loud network's chance of −3.40), so the alignment is being built
+  entirely from rest-firing decisions, the score of §6.7 being nonzero
+  on every silent decision. The read has not moved at 1,000 epochs. The
+  run goes on in the terminal; what it reaches by 25,000 is the number to
+  set against the scaled goo's +0.21.
+
+  *The continuation landed 17:30 MDT (`docs/mnist-ff-interval-100k.md`,
+  `-estimator.md`, `-estimator.png`), ten arms of 91 to 101 minutes for
+  their 75,000 epochs.* The ten seeds at 100 ms, population-coded, LR
+  0.002, from 25,000 to 100,000 epochs; the correlation with $d$ over
+  the whole run, mean over seeds, and the read at each end:
+
+  | epochs | 25,000 | 50,000 | 75,000 | 100,000 |
+  |---|---|---|---|---|
+  | corr, cumulative | +0.207 ± 0.044 | +0.274 ± 0.029 | +0.314 ± 0.037 | **+0.345 ± 0.041** |
+  | right, last tenth | 0.124 | — | — | **0.177 ± 0.018** |
+  | reward, last tenth | −3.09 | — | — | −2.52 |
+  | outputs' spikes a neuron, last epoch | 3.3 | — | — | 2.2 |
+
+  **The read is climbing.** Every seed rose: the fraction right from
+  0.114–0.133 at 25,000 to 0.151–0.214 at 100,000, three times chance,
+  seed 6 highest at 0.214 and seed 3 highest in correlation at +0.422;
+  the window correlation is still +0.012 over the last quarter, so the
+  estimator has not stopped. Against the 100,000-epoch hazard sweep of
+  the morning at 35 ms and the same rate — +0.238 and 0.086 right — the
+  scaled hazard at 100 ms gives +0.345 and 0.177: the two changes of the
+  day, the quieter escape and the longer epoch, together. The growth from
+  25,000 to 100,000 is a factor of 1.67, a little under the square root's
+  2, with the output zone quieting from 3.3 to 2.2 spikes a neuron as it
+  goes. Byron watched seed 1 run on in his terminal from 25,000, the
+  same arm to the bit; it ended at +0.396 and 0.177 right.
+
+  *The leak sweep landed 17:30 MDT (`docs/mnist-ff-tau.md`,
+  `-estimator.md`, `-estimator.png`), forty arms of 32 to 44 minutes.*
+  Ten seeds a value at 100 ms, the complement trial's row as TAU 2:
+
+  | TAU, ms | corr, 5,000 | corr, 25,000 | right, last tenth | reward, last tenth | outputs' rate memory | outputs stuck on / off, of 60 | vs TAU 2, paired: corr | right |
+  |---|---|---|---|---|---|---|---|---|
+  | 2 | +0.094 | +0.213 ± 0.024 | 0.116 | −3.21 | 0.82 | 16 / 0 | — | — |
+  | 5 | +0.069 | +0.150 ± 0.022 | 0.122 | −2.88 | 0.49 | 15 / 0 | −0.063, $t$ −6.8, 0 of 10 | +0.005, $t$ 1.3 |
+  | 10 | +0.046 | +0.096 ± 0.036 | 0.094 | −2.61 | 0.22 | 9 / 6 | −0.116, $t$ −11.4, 0 of 10 | −0.022, $t$ −2.4 |
+  | 20 | +0.025 | +0.044 ± 0.023 | 0.074 | −2.62 | 0.12 | 5 / 26 | −0.169, $t$ −19.2, 0 of 10 | −0.043, $t$ −9.0 |
+  | 50 | +0.022 | +0.036 ± 0.041 | 0.050 | −2.49 | 0.06 | 3 / 38 | −0.177, $t$ −14.2, 0 of 10 | −0.066, $t$ −6.9 |
+
+  **The fast leak wins, and every slower one loses on every seed.** The
+  correlation falls monotonically with TAU, 5 ms already below 2 on ten
+  seeds of ten, and by 20 ms the estimator points nowhere; the read holds
+  to 5 ms and then falls to chance at 50, where 38 of 60 outputs end
+  stuck off — the zone goes silent as the leak slows (rate memory 0.82,
+  0.49, 0.22, 0.12, 0.06), which is the LR sweep's high-rate collapse
+  seen again. *Claude's reading, for a check:* the hazard's synapse trace
+  is the margin's derivative and leaks with TAU, so at 50 ms each trace
+  sums some thirty arrivals where at 2 ms it sums about one, and the
+  eligibility, and with it the effective learning rate, grows by that
+  factor — TAU 50 at LR 0.002 is close to TAU 2 at LR 0.06, which the LR
+  sweep showed empties the zone. So this sweep confounds the leak with
+  the rate, and the fair test not run is TAU with LR scaled by hop/TAU.
+  What it does settle: the 100 ms read's gain was not integration the
+  neuron could do itself, since giving the neuron the integration hurt;
+  and 2 ms, the value Byron chose on September 12, stands.

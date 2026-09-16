@@ -39,6 +39,8 @@ class Problem:
     critic: str | None = None  # how the read is scored (None: --critic)
     coding: str = "complement"  # how raw bits reach the input row (§4.3): complement, raw, population, population-complement
     population: int | None = None  # neurons per raw bit where the coding repeats it (None: constants.POPULATION)
+    output_coding: str = "population"  # how the output zone codes the classes (§8, learning.OUTPUT_CODINGS): a population a
+    # class, or "complement" -- fire-if-one populations then fire-if-zero ones (mnist; Byron, September 16, 2026)
     reach: int = 2  # hex steps the grid's local wiring covers
     input_cells: tuple | None = None  # an input zone, (place, row) cells counted from 0, in place of the bottom row
     permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
@@ -152,18 +154,20 @@ PROBLEMS: dict[str, Problem] = {
         "the MNIST digits (Byron, September 15, 2026: 'a new task, with its own data folder: mnist'): each 28 x 28 image "
         "averaged over 2 x 2 blocks to 14 x 14 and each block on iff its mean is at least half; the input zone is three "
         "clock neurons always driven, the 196 on-off pixels and their 196 complements (395 in all), no permutation; ten "
-        "classes on 50 output neurons, five a class, read by count, and the evidence critic (Byron, September 16: 'the "
-        "spikes are EVIDENCE'): the class sums as log-odds at --temperature, paid the softmax cross-entropy ln q_label, "
-        "chance ln 0.1. --critic graded is the night before's fraction of the other classes out-spiked and --critic class "
-        "the earlier 1-or-0. Five outputs a class since the evening of September 15, and "
+        "classes on 60 output neurons, complement-coded -- three fire-if-one neurons a class and then three fire-if-zero "
+        "(Byron, September 16, 'force complement coding'; five a class, uncoded, from the evening of September 15 until "
+        "then) -- read by count, and the evidence critic (Byron, September 16: 'the spikes are EVIDENCE'): each class's "
+        "evidence is its fire-if-one sum minus its fire-if-zero sum, as log-odds at --temperature, paid the softmax "
+        "cross-entropy ln q_label, chance ln 0.1. --critic graded is the night before's fraction of the other classes "
+        "out-spiked and --critic class the earlier 1-or-0, on the same evidence. And "
         "no homeostasis or un-sticking: the hazard keeps nothing stuck and the un-sticking carried the network into "
         "silence. Posed on goo with 199 hidden neurons unless --hidden-neurons says otherwise (644 neurons; Byron, September "
         "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule "
         "at LR 0.002 (Byron, September 16, 'default LR to 0.002 for this task'); the train split in a seeded shuffle, "
         "cycling (mnist.stream)",
         3 + 2 * 196, ROWS, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, permute=False,
-        read="count", coding="complement", population=5, outputs=50, clock=3, hidden_neurons=199, data="mnist",
-        homeostasis=0.0, unstick=0.0, lr=0.002,
+        read="count", coding="complement", population=3, outputs=60, output_coding="complement", clock=3, hidden_neurons=199,
+        data="mnist", homeostasis=0.0, unstick=0.0, lr=0.002,
     ),
     "population_denoise": Problem(
         "population_denoise",

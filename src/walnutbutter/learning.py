@@ -136,12 +136,48 @@ def expected_outputs(grid: GridOfNeurons, target: str = "reversed") -> list[bool
     return TARGETS[target](pattern)
 
 
+OUTPUT_CODINGS = ("population", "complement")  # how the output zone codes the classes (§8): a population of `population`
+# neurons a class, or that and then, in the same order, a population that should fire when the class is NOT the label --
+# fire-if-one groups then fire-if-zero groups, the input zone's complement coding turned around (Byron, September 16, 2026)
+
+
+def class_evidence(counts: Sequence[int], population: int, output_coding: str = "population") -> list[int]:
+    """The evidence for each class from the output zone's counts (§8): the sum over its population, and under complement
+    coding that sum minus the sum over its fire-if-zero population -- a spike from a zero neuron is a spike against.
+
+    Under "population" the zone is C * population wide, class c owning group
+    c; under "complement" it is 2 * C * population wide, the C fire-if-one
+    groups first and then the C fire-if-zero groups in the same order, so
+    n_k = n_k^+ - n_k^-. Every engine reads the zone through this function.
+    """
+    if output_coding not in OUTPUT_CODINGS:
+        raise ValueError(f"unknown output coding {output_coding!r}; choose from {', '.join(OUTPUT_CODINGS)}")
+    per = population * (2 if output_coding == "complement" else 1)
+    if population < 1 or len(counts) % per:
+        raise ValueError(f"an output zone of {len(counts)} does not divide into classes of {population} under {output_coding} coding")
+    classes = len(counts) // per
+    ones = [sum(counts[c * population:(c + 1) * population]) for c in range(classes)]
+    if output_coding == "population":
+        return ones
+    zeros = [sum(counts[(classes + c) * population:(classes + c + 1) * population]) for c in range(classes)]
+    return [one - zero for one, zero in zip(ones, zeros)]
+
+
 def label_code(grid: GridOfNeurons) -> list[bool]:
-    """The label as the output zone should show it: class c owns outputs c * population to (c + 1) * population - 1, all on."""
+    """The label as the output zone should show it: the label's fire-if-one group on and every other off; under complement
+    coding the fire-if-zero groups the other way round (§8)."""
     if grid.input_label is None:
         raise ValueError("the label target needs a stream that carries labels (a dataset, §8)")
-    classes = grid.output_width() // grid.population
-    return [c == grid.input_label for c in range(classes) for _ in range(grid.population)]
+    coding = getattr(grid, "output_coding", "population")
+    per = grid.population * (2 if coding == "complement" else 1)
+    classes = grid.output_width() // per
+    ones = [c == grid.input_label for c in range(classes) for _ in range(grid.population)]
+    return ones + [not on for on in ones] if coding == "complement" else ones
+
+
+def class_sums(grid: GridOfNeurons) -> list[int]:
+    """The output zone's evidence per class this epoch, from the counts, under the grid's output coding."""
+    return class_evidence(grid.output_counts(), grid.population, getattr(grid, "output_coding", "population"))
 
 
 def class_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
@@ -153,9 +189,7 @@ def class_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
     """
     if grid.input_label is None:
         raise ValueError("the class critic needs a stream that carries labels (a dataset, §8)")
-    counts = grid.output_counts()
-    pop = grid.population
-    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    groups = class_sums(grid)
     mine = groups[grid.input_label]
     return 1.0 if all(mine > g for c, g in enumerate(groups) if c != grid.input_label) else 0.0
 
@@ -171,9 +205,7 @@ def graded_accuracy(grid: GridOfNeurons, target: str = "label") -> float:
     """
     if grid.input_label is None:
         raise ValueError("the graded critic needs a stream that carries labels (a dataset, §8)")
-    counts = grid.output_counts()
-    pop = grid.population
-    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
+    groups = class_sums(grid)
     mine = groups[grid.input_label]
     others = [g for c, g in enumerate(groups) if c != grid.input_label]
     return sum(1 for g in others if mine > g) / len(others)
@@ -206,10 +238,7 @@ def evidence_score(grid: GridOfNeurons, target: str = "label") -> float:
     """
     if grid.input_label is None:
         raise ValueError("the evidence critic needs a stream that carries labels (a dataset, §8)")
-    counts = grid.output_counts()
-    pop = grid.population
-    groups = [sum(counts[c * pop:(c + 1) * pop]) for c in range(len(counts) // pop)]
-    return evidence_reward(groups, grid.input_label, grid.temperature)
+    return evidence_reward(class_sums(grid), grid.input_label, grid.temperature)
 
 
 def output_fired(grid: GridOfNeurons) -> list[bool]:
