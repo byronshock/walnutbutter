@@ -1,6 +1,6 @@
 # MNIST by eye: Claude on the first thousand exemplars (September 16, 2026)
 
-Byron, 01:40 MDT: "How do YOU do on this task on the first thousand exemplars?"
+Byron, the same night: "How do YOU do on this task on the first thousand exemplars?"
 
 **The task as the network sees it:** the seed-1 stream of the training split,
 each image averaged over 2 x 2 blocks to 14 x 14 and a block on iff its mean is

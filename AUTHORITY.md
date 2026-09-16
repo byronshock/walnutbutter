@@ -3496,7 +3496,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   outputs, which under the zone rule it never did. Nothing in the tables
   above ran under it; what runs next will.
 
-  *A reference for the representation (Byron, 01:40 MDT: "How do YOU do on
+  *A reference for the representation (Byron, the same night: "How do YOU do on
   this task on the first thousand exemplars?").* Claude read the first
   thousand of the seed-1 stream as the network sees them — 14 × 14 bits,
   a hundred to an unlabelled sheet — and wrote every guess before a label
