@@ -16,6 +16,18 @@ at; the labels were then scored exactly. The guesses are at the end of this file
 | nearest centroid on the same bits (the other 59,000 as reference) | 774 |
 | 1-nearest-neighbour, Hamming, on the same bits | 936 |
 | 5-nearest-neighbour, Hamming, on the same bits | 929 |
+| softmax regression on the same bits (400 full-batch steps on the other 59,000) | 874 |
+| least-squares linear classifier on the same bits | 817 |
+| least-squares linear classifier on the 784 grey levels | 845 |
+| perceptron, one pass over the other 59,000 bits | 789 |
+
+The linear rows were added the same night for Byron's question, "I think
+there is enough structure in the data that we SHOULD be able to learn the
+task badly, on the order of how linear classifiers perform on this dataset.
+For reference, how do they do?" LeCun et al. (1998) report 12% error for a
+linear classifier on the 28 x 28 grey levels, 88% right; on these 196 bits a
+single linear layer lands between 79% (a perceptron's one pass) and 87%
+(softmax regression), which is the level "learning the task badly" means.
 
 Per class, right of seen: 0 101/102, 1 103/105, 2 87/95, 3 78/90, 4 109/113,
 5 92/98, 6 86/94, 7 107/119, 8 73/86, 9 81/98. Per sheet: 94, 84, 86, 96, 97,

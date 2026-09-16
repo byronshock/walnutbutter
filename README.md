@@ -606,7 +606,7 @@ thresholded at half; the input zone is three clock neurons always driven,
 the 196 on-off pixels and their 196 complements; ten classes on 30 outputs
 read by count, and the class critic: the label's three outputs out-spike
 every other class's three, or nothing. `walnutbutter --problem mnist` builds
-a goo of 624 for it, an interior of 199 between the zones; `--goo N` sizes it.
+a goo of 644 for it, 199 hidden neurons between the zones; `--hidden-neurons H` sets the hidden count (0 is allowed under the scaled rule: the outputs hear the inputs directly) and `--goo N` the total.
 
 With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
 itself is the draw: a neuron that is not refractory fires at a wave with

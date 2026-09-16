@@ -50,6 +50,8 @@ class Problem:
     outputs: int | None = None  # the width of the output zone when it differs from the input's (goo, §3.4); None: across
     clock: int = 0  # clock neurons (§4.3): input neurons at the front of the input zone whose bit is always 1
     goo: int | None = None  # the goo this problem is posed on: --goo defaults to this many neurons (None: the grid unless --goo)
+    hidden_neurons: int | None = None  # goo's hidden count, inputs + hidden + outputs being the goo (Byron, September 16, 2026;
+    # mnist, §8); --hidden-neurons overrides it, and 0 is a network the scaled rule can build
     data: str | None = None  # a dataset the inputs come from, with their labels, in place of random bits (§4.5): "mnist"
     homeostasis: float | None = None  # the Teacher's threshold drift for this problem (§1.3); None: the constant, unless given
     unstick: float | None = None  # and its un-sticking; 0 switches either off for the problem (mnist, §8: Byron, September 15, 2026)
@@ -153,10 +155,11 @@ PROBLEMS: dict[str, Problem] = {
         "chance ln 0.1. --critic graded is the night before's fraction of the other classes out-spiked and --critic class "
         "the earlier 1-or-0. Five outputs a class since the evening of September 15, and "
         "no homeostasis or un-sticking: the hazard keeps nothing stuck and the un-sticking carried the network into "
-        "silence. Posed on goo with an interior of 199 unless --goo says otherwise (644 neurons), by the reinforce rule; "
+        "silence. Posed on goo with 199 hidden neurons unless --hidden-neurons says otherwise (644 neurons; Byron, September "
+        "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule; "
         "the train split in a seeded shuffle, cycling (mnist.stream)",
         3 + 2 * 196, ROWS, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, permute=False,
-        read="count", coding="complement", population=5, outputs=50, clock=3, goo=3 + 2 * 196 + 199 + 50, data="mnist",
+        read="count", coding="complement", population=5, outputs=50, clock=3, hidden_neurons=199, data="mnist",
         homeostasis=0.0, unstick=0.0,
     ),
     "population_denoise": Problem(

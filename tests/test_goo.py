@@ -253,7 +253,7 @@ def test_the_default_goo_is_sixty_neurons_at_scaling_factor_a_twentieth_by_the_s
     assert any(c.source in goo.output_row() for n in goo.output_row() for c in n.incoming)  # and the other outputs
     assert any(c.source in goo.output_row() for n in goo.input_row() for c in n.incoming)  # and an input hears the outputs
     assert len(goo.interior()) == 44 and len(goo.zone_indices()) == 16
-    assert repr(goo).startswith("Goo(60 neurons, ") and repr(goo).endswith(" projections at scaling factor 0.05; 8 in, 8 out, input zone apart)")
+    assert repr(goo).startswith("Goo(60 neurons, ") and repr(goo).endswith(" projections at scaling factor 0.05; 8 in, 44 hidden, 8 out, input zone apart)")
     with pytest.raises(ValueError, match="no one zone probability"):
         goo.zone_projection()
     assert Goo(count=ACROSS * 10, seed=1).count == 80  # the grid's eighty is still one --goo away
@@ -261,7 +261,7 @@ def test_the_default_goo_is_sixty_neurons_at_scaling_factor_a_twentieth_by_the_s
     assert len(full.connections) == 60 * 59 - 16 * 15 == 3300 and full.mean_out_degree() == pytest.approx(3300 / 60)
     assert all(len(n.incoming) == 59 for n in full.interior())  # an interior neuron hears everyone
     assert all(len(n.incoming) == 44 for n in full.input_row() + full.output_row())  # a zone neuron hears the interior
-    assert repr(full) == "Goo(60 neurons, 3300 projections at P 1; 8 in, 8 out, zones apart)"
+    assert repr(full) == "Goo(60 neurons, 3300 projections at P 1; 8 in, 44 hidden, 8 out, zones apart)"
 
 
 def test_every_pair_with_an_interior_end_projects_once_each_way_and_the_zones_never_do():
@@ -298,7 +298,7 @@ def test_there_are_never_any_shortcuts_because_there_is_no_neighbourhood_to_get_
 
 
 def test_a_weight_is_fixed_or_drawn_in_connection_id_order_inside_the_range():
-    assert {c.weight for c in Goo(count=5, across=2, weight=0.3).connections.values()} == {0.3}
+    assert {c.weight for c in Goo(count=5, across=2, weight=0.3, projection=1.0, wiring="zones-equal").connections.values()} == {0.3}  # 8 projections, always
     low, high = WEIGHT_RANGE
     drawn = Goo(count=24, seed=3, weight=None)
     assert all(low <= c.weight <= high for c in drawn.connections.values())
@@ -425,7 +425,7 @@ def test_the_command_line_builds_goo_learns_and_checkpoints(tmp_path, capsys):
     save = tmp_path / "goo.json"
     assert cli_main(["--goo", "--headless", "--epochs", "20", "--seed", "1", "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
-    assert "projections at scaling factor 0.05; 8 in, 8 out, input zone apart)" in err
+    assert "projections at scaling factor 0.05; 8 in, 44 hidden, 8 out, input zone apart)" in err
     assert "input permutation: place i along the input zone" in err  # not "the bottom row": goo has none
     assert "omega" not in err  # omega does not reach goo, so it is not reported as if it had
     data = json.loads(save.read_text())
@@ -440,9 +440,9 @@ def test_the_command_line_sizes_goo_sets_its_wiring_and_refuses_what_a_wiring_ca
     assert cli_main(["--goo", "24", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     assert "projections at scaling factor 0.05" in capsys.readouterr().err  # the default
     assert cli_main(["--goo", "24", "--scaling-factor", "0.2", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "at scaling factor 0.2; 8 in, 8 out, input zone apart): " in capsys.readouterr().err
+    assert "at scaling factor 0.2; 8 in, 8 hidden, 8 out, input zone apart): " in capsys.readouterr().err
     assert cli_main(["--goo", "24", "--wiring", "zones", "--projection", "0.5", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "at P 0.5; 8 in, 8 out, zones apart): " in capsys.readouterr().err
+    assert "at P 0.5; 8 in, 8 hidden, 8 out, zones apart): " in capsys.readouterr().err
     assert cli_main(["--goo", "16", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0  # the scaled rule needs no interior
     assert "16 neurons" in capsys.readouterr().err
     for bad in ("16", "8", "4"):
@@ -455,6 +455,13 @@ def test_the_command_line_sizes_goo_sets_its_wiring_and_refuses_what_a_wiring_ca
     assert "--projection must be in (0, 1]" in capsys.readouterr().err
     assert cli_main(["--goo", "--scaling-factor", "0", "--headless", "--epochs", "2", "--no-save"]) == 2
     assert "--scaling-factor must be positive" in capsys.readouterr().err
+    # --hidden-neurons sizes the goo as inputs + hidden + outputs (§8), and 0 builds under the scaled rule
+    assert cli_main(["--hidden-neurons", "4", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0
+    assert "Goo(20 neurons" in capsys.readouterr().err
+    assert cli_main(["--hidden-neurons", "0", "--headless", "--epochs", "2", "--seed", "1", "--no-save"]) == 0
+    assert "8 in, 0 hidden, 8 out, input zone apart)" in capsys.readouterr().err
+    assert cli_main(["--goo", "24", "--hidden-neurons", "4", "--headless", "--epochs", "2", "--no-save"]) == 2
+    assert "is a goo of 20, not --goo 24" in capsys.readouterr().err
 
 
 def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
@@ -469,12 +476,12 @@ def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
 def test_a_seed_batch_runs_goo_and_its_header_says_what_ran(capsys):
     assert cli_main(["--goo", "20", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     err = capsys.readouterr().err
-    assert ("20 neurons of goo at scaling factor 0.05, 8 in and 8 out, fan-in scaled, reinforce rule with the hazard eligibility, "
-            "escape delta 0.455") in err  # the default eligibility follows the neuron (§1.3)
+    assert ("20 neurons of goo at scaling factor 0.05, 8 in, 4 hidden and 8 out, fan-in scaled, reinforce rule with the hazard "
+            "eligibility, escape delta 0.455") in err  # the default eligibility follows the neuron (§1.3)
     assert cli_main(["--goo", "20", "--wiring", "zones-equal", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb",
                      "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
-    assert ("goo at projection 0.5 under the zones-equal wiring, 8 in and 8 out, flat threshold and floor, reinforce rule with "
-            "the hebb eligibility") in capsys.readouterr().err
+    assert ("goo at projection 0.5 under the zones-equal wiring, 8 in, 4 hidden and 8 out, flat threshold and floor, reinforce "
+            "rule with the hebb eligibility") in capsys.readouterr().err
 
 
 def test_the_rule_hears_n_s_everywhere_and_the_three_earlier_wirings_are_kept():

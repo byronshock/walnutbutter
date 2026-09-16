@@ -107,6 +107,18 @@ def build_parser() -> argparse.ArgumentParser:
         f"to draw, so it cannot be shown",
     )
     parser.add_argument(
+        "--hidden-neurons",
+        "--hidden_neurons",
+        dest="hidden_neurons",
+        type=int,
+        default=None,
+        metavar="H",
+        help="goo's hidden count (AUTHORITY.md §8; Byron, September 16, 2026: 'How will we know if they are buying us anything "
+        "if they are always part of the economy?'): the goo is the input zone, H hidden neurons and the output zone, so "
+        "--hidden-neurons sizes it instead of --goo; 0 is allowed under the scaled rule, the outputs then hearing the inputs "
+        "directly (default: the problem's, 199 for mnist; otherwise --goo sizes the goo and the hidden count follows)",
+    )
+    parser.add_argument(
         "--scale-with-fan-in",
         "--scale_with_fan_in",
         dest="scale_with_fan_in",
@@ -799,6 +811,10 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8)
     args.clock = problem.clock  # clock neurons at the front of the input zone, always driven (§4.3)
     args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
+    if args.hidden_neurons is None:
+        args.hidden_neurons = problem.hidden_neurons  # the problem's hidden count, unless --hidden-neurons was given (§8)
+    if args.goo is None and args.hidden_neurons is not None and args.nodes is None and not args.layers:
+        args.goo = args.across + args.hidden_neurons + (args.outputs or args.across)  # inputs + hidden + outputs
     if args.goo is None and problem.goo is not None and args.nodes is None and not args.layers:
         args.goo = problem.goo  # the problem is posed on goo of this many neurons unless a grid was asked for
     if args.rows == ROWS and problem.rows != ROWS:
@@ -901,6 +917,11 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             elif args.goo is not None:
+                if args.hidden_neurons is not None and (args.hidden_neurons < 0 or args.goo != args.across + args.hidden_neurons + (args.outputs or args.across)):
+                    print(f"error: --hidden-neurons {args.hidden_neurons} with {args.across} in and {args.outputs or args.across} "
+                          f"out is a goo of {args.across + args.hidden_neurons + (args.outputs or args.across)}, not --goo {args.goo}",
+                          file=sys.stderr)
+                    return 2
                 if args.wiring in ZONE_WIRINGS and args.goo <= args.across + (args.outputs or args.across):
                     print(
                         f"error: the {args.wiring} wiring needs an interior for its zones to talk through: --goo must "
@@ -1391,7 +1412,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
     if args.goo is not None:
         density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
                    else f"at projection {args.projection:g} under the {args.wiring} wiring")
-        shape = f"{args.goo} neurons of goo {density}, {args.across} in and {args.outputs or args.across} out"
+        hidden = args.goo - args.across - (args.outputs or args.across)
+        shape = f"{args.goo} neurons of goo {density}, {args.across} in, {hidden} hidden and {args.outputs or args.across} out"
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
     scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"

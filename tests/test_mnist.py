@@ -81,7 +81,7 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
     goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
     goo.coding, goo.population, goo.read, goo.rule = "raw", 3, "count", "reinforce"
     assert goo.output_width() == 6 and len(goo.output_row()) == 6 and len(goo.input_row()) == 4
-    assert len(goo.interior()) == 10 and goo.input_zone_is_apart() and repr(goo).endswith("4 in, 6 out, input zone apart)")
+    assert len(goo.interior()) == 10 and goo.input_zone_is_apart() and repr(goo).endswith("4 in, 10 hidden, 6 out, input zone apart)")
     patterns = [[True, False, True, False], [False, True, False, True]]
     goo.use_input_stream(patterns, [1, 0])
     run_epoch(goo, verbose=False, rng=random.Random(1))
@@ -214,11 +214,17 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
-    assert (problem.across, problem.outputs, problem.goo, problem.population, problem.clock) == (395, 50, 644, 5, 3)
+    assert (problem.across, problem.outputs, problem.hidden_neurons, problem.population, problem.clock) == (395, 50, 199, 5, 3)
+    assert problem.goo is None  # the goo is inputs + hidden + outputs, 644, sized by the hidden count since September 16, 2026
     assert (problem.homeostasis, problem.unstick) == (0.0, 0.0)  # the hazard keeps nothing stuck; the un-sticking overshot
     from walnutbutter.cli import apply_problem, build_parser
     args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
     assert (args.homeostasis, args.unstick, args.goo, args.outputs, args.population) == (0.0, 0.0, 644, 50, 5)
+    assert args.hidden_neurons == 199 and problem.hidden_neurons == 199 and problem.goo is None  # inputs + hidden + outputs
+    args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
+    assert args.goo == 395 + 50 and args.hidden_neurons == 0  # Byron, September 16, 2026: the task without hidden neurons
+    args = build_parser().parse_args(["--problem", "mnist", "--goo", "500"]); apply_problem(args)
+    assert args.goo == 500 and args.hidden_neurons == 199  # --goo wins the sizing; the mismatch is refused when built
     args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
     assert args.unstick == 0.01 and args.homeostasis == 0.0  # given on the command line, it is kept
     assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "evidence", "complement", "count", "mnist")
@@ -237,7 +243,7 @@ def test_the_real_data_streams_and_a_short_run_scores(capsys):
     from walnutbutter.cli import cli_main
     assert cli_main(["--headless", "--problem", "mnist", "--seed", "1", "--epochs", "5", "--no-save", "-q"]) == 0
     err = capsys.readouterr().err
-    assert "Goo(644 neurons" in err and "395 in, 50 out" in err and "images of mnist" in err and "learning label (hazard" in err
+    assert "Goo(644 neurons" in err and "395 in, 199 hidden, 50 out" in err and "images of mnist" in err and "learning label (hazard" in err
     assert "clock neurons: the first 3" in err
 
 

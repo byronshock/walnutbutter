@@ -307,9 +307,9 @@ class Goo(Network):
         return self.neurons[index]
 
     def __repr__(self) -> str:
+        zones = f"{self.across} in, {self.interior_count()} hidden, {self.outputs} out"
         if self.wiring == "scaled":
             return (f"Goo({self.count} neurons, {len(self.connections)} projections at scaling factor "
-                    f"{self.scaling_factor:g}; {self.across} in, {self.outputs} out, input zone apart)")
+                    f"{self.scaling_factor:g}; {zones}, input zone apart)")
         apart = ", zones apart" if self.wiring != "uniform" else ""
-        return (f"Goo({self.count} neurons, {len(self.connections)} projections at P {self.projection:g}; "
-                f"{self.across} in, {self.outputs} out{apart})")
+        return f"Goo({self.count} neurons, {len(self.connections)} projections at P {self.projection:g}; {zones}{apart})"

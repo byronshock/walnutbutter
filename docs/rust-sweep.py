@@ -56,6 +56,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
     "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
+    "hidden_neurons": "--hidden-neurons",  # goo's hidden count, the goo being inputs + hidden + outputs (§8, mnist)
     "temperature": "--temperature",  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
     "projection": "--projection",  # the probability of goo's three earlier wirings, under --wiring (§3.4)
     "scaling_factor": "--scaling-factor",  # goo's scaled rule: every neuron hears N times this in expectation (§3.4)
@@ -103,15 +104,18 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
 
     from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD
 
+    from walnutbutter.problems import PROBLEMS
+    on_goo = ("goo" in arm or "hidden_neurons" in arm or PROBLEMS[problem].goo is not None
+              or PROBLEMS[problem].hidden_neurons is not None)  # posed on goo: by the arm, or by the problem
     argv = ["--problem", problem, "--eligibility", eligibility] + ([] if wiring is None else ["--wiring", wiring])
-    base_threshold = GOO_THRESHOLD if "goo" in arm else THRESHOLD  # goo has its own (§1.2)
-    if "goo" in arm and "threshold" not in arm:
+    base_threshold = GOO_THRESHOLD if on_goo else THRESHOLD  # goo has its own (§1.2)
+    if on_goo and "threshold" not in arm:
         argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
     if floor_ratio is not None:
         if "minimum_potential" in arm:
             raise ValueError("--floor-ratio derives the floor from the threshold; do not also sweep --minimum-potential")
         argv += ["--minimum-potential", f"{floor_ratio * float(arm.get('threshold', base_threshold)):g}"]
-    elif "goo" in arm and "minimum_potential" not in arm:
+    elif on_goo and "minimum_potential" not in arm:
         argv += ["--minimum-potential", f"{GOO_MINIMUM_POTENTIAL:g}"]
     for knob, value in arm.items():
         if knob in ("seed", "rows") or knob in DERIVED:
@@ -125,8 +129,8 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     apply_problem(args)
     Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
-    if "goo" in arm:
-        grid = Goo(count=int(arm["goo"]), across=args.across, weight=None, seed=int(arm["seed"]),
+    if on_goo:  # apply_problem sized the goo: --goo, or the problem's hidden count and zones
+        grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]),
                    permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
                    scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
                    scaling_factor=args.scaling_factor)
@@ -213,7 +217,7 @@ def run_arm(job: tuple) -> dict:
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
               "output_counts_last": [int(c) for c in _output_counts(grid)],  # the last epoch's output spikes, in order
-              "container": repr(grid) if "goo" in arm else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
+              "container": repr(grid) if hasattr(grid, "count") else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result
 

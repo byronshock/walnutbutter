@@ -3313,9 +3313,16 @@ the layout, the inputs, and whether anything outside the network trains it.
      the problem's critic; `--critic class` is the 1-or-0.
   The target is `label`, the label's population code over the output zone,
   for any critic that wants a pattern. Posed on goo (§3.4) with zones of
-  two widths, 395 in and 50 out, and **an interior of 199 unless `--goo`
-  says otherwise** (Byron: "Goo that is not an input or output: please
-  default to 199 neurons"; 644 in all), by the reinforce rule under escape
+  two widths, 395 in and 50 out, and **199 hidden neurons unless
+  `--hidden-neurons` says otherwise** (Byron: "Goo that is not an input or
+  output: please default to 199 neurons"; 644 in all — and, September 16,
+  2026: "I would like to specify the number of 'hidden' neurons as
+  hidden_neurons. One thing I neglected to do is benchmark this task without
+  any hidden neurons. How will we know if they are buying us anything if
+  they are always part of the economy?" — so the count is the problem's
+  `hidden_neurons`, the goo is inputs + hidden + outputs, and zero is a
+  network the scaled rule can build, the outputs hearing the inputs
+  directly), by the reinforce rule under escape
   noise, **with homeostasis and un-sticking off** (Byron, the same evening:
   "Please turn off for this task" — a problem may now set either, and the
   command line keeps them unless told otherwise); the train split in the seeded shuffle of §4.5,
@@ -3508,7 +3515,18 @@ the layout, the inputs, and whether anything outside the network trains it.
   thin digits the half-of-full threshold cuts to slivers (9 → 4, 8 → 1,
   7 → 9), one glyph blank after binarisation, and about ten of transcription.
   So the bits carry the digit to about 93%; nothing the network has
-  produced on them is limited by the representation.
+  produced on them is limited by the representation. *And what a single
+  linear layer makes of the same bits (Byron, later the same night: "there
+  is enough structure in the data that we SHOULD be able to learn the task
+  badly, on the order of how linear classifiers perform on this dataset.
+  For reference, how do they do?"):* trained on the other 59,000 and tested
+  on the same first thousand, softmax regression 87.4%, a least-squares
+  linear classifier 81.7%, a perceptron's single pass 78.9%; least squares
+  on the 784 grey levels 84.5%, and LeCun et al. (1998) give a linear
+  classifier on the grey levels 12% error. So the outputs' direct
+  projections from the input zone, which the scaled rule of §3.4 gives
+  them, carry enough for 80 to 87% if the estimator can find the weights;
+  that is the level "badly" means.
 
   **Decision 4 — the evidence critic (Byron, September 16, 2026, the same
   night).** *"Now to tackle the critic. What would happen if we took the
