@@ -208,6 +208,7 @@ def test_a_resumed_run_measures_from_its_first_start_and_counts_its_epochs_on(tm
         rs.resume_grid(wrong_seed, tmp_path / "arm-network.json")
 
 
+@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
 def test_a_resumed_network_keeps_the_isi_factor_it_was_saved_under(tmp_path):
     """§0.2 (September 17, 2026): the factor is on for a fresh arm, and a resume keeps its checkpoint's setting -- off for
     one saved before the factor existed -- unless told otherwise, so an arm runs on under the rule it started with."""
@@ -235,6 +236,16 @@ def test_a_resumed_network_keeps_the_isi_factor_it_was_saved_under(tmp_path):
         assert Neuron.isi_factor is False  # the checkpoint's
         rs.resume_grid(rs.grid_of("copy", arm, "hazard", True, -4.0)[0], path, True)
         assert Neuron.isi_factor is True  # unless told otherwise
+        on_grid, _ = rs.grid_of("copy", arm, "hazard", True, -4.0)  # and a network saved with the factor on
+        mean, trace, engine, report = fast.train(on_grid, 2, lr=cli.lr, target="copy", eligibility="hazard", seed=3,
+                                                 homeostasis=0.0, unstick=0.0)
+        on_path = tmp_path / "on-network.json"
+        rs._save_network(engine, on_grid, report, on_path)
+        assert json.loads(on_path.read_text())["isi_factor"] is True
+        rs.resume_grid(rs.grid_of("copy", arm, "hazard", True, -4.0, fixed=("--no-isi-factor",))[0], on_path)
+        assert Neuron.isi_factor is True  # the checkpoint's, over the resuming grid's own
+        rs.resume_grid(rs.grid_of("copy", arm, "hazard", True, -4.0)[0], on_path, False)
+        assert Neuron.isi_factor is False  # unless told otherwise
         data = json.loads(path.read_text())
         del data["isi_factor"]
         path.write_text(json.dumps(data))
