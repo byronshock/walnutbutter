@@ -64,6 +64,75 @@ they bear on the code. Each entry says what it contributes here.
    fetched, by decision; `walnutbutter.mnist` is the loader.
    In `references/`: `LeCunBottouBengioHaffner98.pdf`, the first author's copy.
 
+## How a neuron computes, and what a spike means (September 17, 2026)
+
+Cited in a conversation with Byron on that question; none is yet cited in
+AUTHORITY.md.
+
+7. Poirazi, P., Brannon, T., & Mel, B. W. (2003). Pyramidal neuron as
+   two-layer neural network. *Neuron*, 37(6), 989-999.
+   https://doi.org/10.1016/S0896-6273(03)00149-1
+   Dendritic branches with their own sigmoidal nonlinearities make a
+   pyramidal cell behave like a two-layer network; walnutbutter's point
+   neuron, a weighted sum at one threshold, is the soma alone.
+   Not in `references/`: free in Elsevier's open archive, which refuses a
+   scripted download.
+
+8. Beniaguev, D., Segev, I., & London, M. (2021). Single cortical neurons as
+   deep artificial neural networks. *Neuron*, 109(17), 2727-2739.e3.
+   https://doi.org/10.1016/j.neuron.2021.07.002
+   Reproducing a layer-5 pyramidal cell's spikes at millisecond precision
+   takes a temporally convolutional network five to eight layers deep: a
+   measure of how much computation one neuron holds.
+   In `references/`: `BeniaguevSegevLondon21-biorxiv.pdf`, the bioRxiv preprint.
+
+9. Brenner, N., Strong, S. P., Koberle, R., Bialek, W., & de Ruyter van
+   Steveninck, R. R. (2000). Synergy in a neural code. *Neural Computation*,
+   12(7), 1531-1552. https://doi.org/10.1162/089976600300015259
+   The information a single spike carries about a stimulus,
+   (1/T) ∫ (r(t)/r̄) log₂(r(t)/r̄) dt, and how patterns of spikes carry more
+   than their spikes apart.
+   In `references/`: `BrennerEtAl00.pdf`, a co-author's copy.
+
+10. Denève, S. (2008). Bayesian spiking neurons I: Inference. *Neural
+    Computation*, 20(1), 91-117. https://doi.org/10.1162/neco.2008.20.1.91
+    The potential as a running log-odds for what the neuron stands for,
+    less what its own spikes have already reported; a spike when the
+    unreported evidence crosses a threshold. A spike as a surprise, and the
+    evidence accumulator of AUTHORITY.md §5.1 read as inference.
+    In `references/`: `Deneve08.pdf`, the author's lab reprint.
+
+11. Boerlin, M., Machens, C. K., & Denève, S. (2013). Predictive coding of
+    dynamical variables in balanced spiking networks. *PLoS Computational
+    Biology*, 9(11), e1003258. https://doi.org/10.1371/journal.pcbi.1003258
+    A network whose neurons spike only when a spike reduces the population's
+    error in representing a signal, which yields balanced excitation and
+    inhibition and irregular firing from a deterministic rule.
+    In `references/`: `BoerlinMachensDeneve13.pdf`, open access.
+
+12. Gold, J. I., & Shadlen, M. N. (2007). The neural basis of decision
+    making. *Annual Review of Neuroscience*, 30, 535-574.
+    https://doi.org/10.1146/annurev.neuro.29.051605.113038
+    Decisions as the accumulation of log-likelihood ratio to a bound, the
+    sequential probability ratio test, and the neurons that appear to do it.
+    In `references/`: `GoldShadlen07.pdf`, from the second author's lab.
+
+13. Laughlin, S. B., de Ruyter van Steveninck, R. R., & Anderson, J. C.
+    (1998). The metabolic cost of neural information. *Nature Neuroscience*,
+    1(1), 36-41. https://doi.org/10.1038/236
+    Bits cost ATP, and spikes most of all: the energy per bit that favours
+    few, informative spikes.
+    In `references/`: `LaughlinDeRuyterVanSteveninckAnderson98.pdf`.
+
+14. Wald, A. (1945). Sequential tests of statistical hypotheses. *The Annals
+    of Mathematical Statistics*, 16(2), 117-186.
+    https://doi.org/10.1214/aoms/1177731118
+    The sequential probability ratio test: add up the evidence, stop at a
+    boundary, decide. An integrator with a threshold and a reset is this
+    test run again after every spike.
+    Not in `references/`: free at Project Euclid, which refuses a scripted
+    download.
+
 ## Not yet mentioned in our conversations, but the roots of the above
 
 - Markram, H., Lübke, J., Frotscher, M., & Sakmann, B. (1997). Regulation
