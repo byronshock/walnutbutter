@@ -99,10 +99,14 @@ one. *Byron, September 17, 2026, 14:56 MDT [`docs/rewrite-answers.md` §2].*
 *Byron, September 14, 2026: "rules in authority.md must be implemented cross-platform" [RECORD §7]. Byron, September 17, 2026, 15:02 MDT, keeping the array engine: "keep, with tolerances, as a foundational rule; all platforms are built from one clear authority."*
 
 **0.10 Learning is paid by one global scalar.** One number scores what the network did, a baseline is subtracted from it, and every synapse's update is proportional to what is left. No rule in force hands a neuron an error of its own.
-*The frame is Byron and Cedric's, from the beginning [RECORD §0]. **A direction:** that the scalar be produced locally at a spike and consumed globally — dopamine — leaves this file as a mechanism and stays as an intention, Cedric's to take up. Byron, September 17, 2026, 15:02 MDT: "(1) drop but keep the idea of dopamine reinforcement around. It's a very important direction for Cedric's work, but the implementation was mine and I lacked understanding." [RECORD §6.2–§6.6 is the attempt, and stays there.]*
+*The frame is Byron and Cedric's, from the beginning [RECORD §0]. The word *reward* is kept in this file for a dopamine-mediated reward, which is the direction and not the mechanism; what a critic produces is the epoch's **reinforcement** (§8.1). **A direction:** that the scalar be produced locally at a spike and consumed globally — dopamine — leaves this file as a mechanism and stays as an intention, Cedric's to take up. Byron, September 17, 2026, 15:02 MDT: "(1) drop but keep the idea of dopamine reinforcement around. It's a very important direction for Cedric's work, but the implementation was mine and I lacked understanding." [RECORD §6.2–§6.6 is the attempt, and stays there.]*
 
-**0.11 Exploration belongs to the synapse — a direction.** Today exploration is the neuron's: one firing decision per neuron per wave, and a synapse is credited by what it happened to have in the potential when its neuron took the chance (the firing and learning clauses). That the exploration and the credit it earns belong to the same object — the synapse — is where the project is going, and nothing in this file is written from it until Byron specifies it.
-*Byron, September 17, 2026, 06:05 MDT: "Computationally exploration noise can be generated at the synapses, and semantically this is clean: a SYNAPSE explores its own impulse response, rather than a NEURON exploring its impulse response!" [RECORD §0.3, "Not specified or built yet"]. The record places this at the top at Byron's instruction and expressly not among §0's rules; it stands here as a direction and not as a rule — Claude's reading, to be corrected in a word.*
+**0.11 The synapse is the learner — a direction.** Today the neuron is the learner: one firing decision per neuron per wave, and a synapse is credited by what it happened to have in the potential when its neuron took a chance the synapse did not take. Every synapse into one neuron shares that neuron's credit and expectation and is told apart only by its own trace (§8.4), so what per-synapse resolution the rule has is carried by the trace alone. Where the project is going is the other way round: the synapse explores, the synapse is credited for what it explored, and the neuron is the medium they speak through. Nothing in this file is written from it until Byron specifies it, and specifying it is a rethink of the system rather than a change to a clause.
+
+Named so that the scale of it is not lost: it would re-ask §0.10 (what one global scalar pays, when each synapse has a score of its own), §7.4 (whose event the shaping function measures from — a neuron's last spike today, a synapse's own event then), the whole of §8, the learning rate (the injected noise gains a dimension per synapse rather than per neuron), and what a synapse holds, which is today four pieces and would then include its own draw and its own expectation of its own outcome. What it would *not* re-ask is what a neuron is: the threshold, the escape noise and the refractory period become properties of the channel rather than of the learner, which is what §0.4 already calls them.
+
+The form it is meant to take is one sparse matrix of every synaptic connection, updated in parallel — which the array engine already half is (§12.3). What makes that awkward today is that the decision is the neuron's while the state is the synapse's, so a wave gathers into per-neuron potentials and then broadcasts the neuron's credit back out; under the inversion every quantity is per synapse and the update is elementwise, with no gather and no broadcast. Two things would have to be restated with it: the draw, which becomes one uniform per synapse per wave rather than one per neuron (§3.8), so the one-stream-one-order invariant of §12.6 governs far more draws and holds the engines to far more; and the clock, which is a queue of irregular times (§3.3) where a parallel form wants regular ones.
+*Byron, September 17, 2026, 06:05 MDT: "Computationally exploration noise can be generated at the synapses, and semantically this is clean: a SYNAPSE explores its own impulse response, rather than a NEURON exploring its impulse response!" And the same evening, stating it whole: "imagine, if you will, a whole bunch of synapses at work trying to figure out what their impulse response is through neural goo. The synapses are the learners, and the neurons are their communication system" — a future refactor, not for now, "because it will require a whole rethink of how the system works." Its computational form is his too: "Eventually we build a huge sparse matrix with all the synaptic connections and benefit from massively parallel computations." [RECORD §0.3, "Not specified or built yet"]. The record places this at the top at Byron's instruction and expressly not among §0's rules; it stands here as a direction and not as a rule — Claude's reading, to be corrected in a word.*
 
 **0.12 The changes intended, and not made.** These are named here and nowhere else in this file; no clause is written from one, and when one is taken up it is specified whole, from §0 down.
 - Exploration generated at the synapse (§0.11), and with it the deprecation of θ and a hazard set by a neuron's fan-in. *Byron, September 17, 2026: "Theta should also be deprecated" — and, the same afternoon, 14:53 MDT, that the rewrite states the system as he has been running it, θ and its fan-in scaling included. [the quoted words are at `docs/rewrite-outline.md` §6.2, attributed to Byron there; RECORD §0.3 for "θ ignored"; `docs/rewrite-answers.md` §1 for the 14:53 counter]*
@@ -180,7 +184,7 @@ w_{ij} = x_{ij}$. It is cleared when the target spikes, when the floor
 bites, and when a run's epoch reset discharges the potential (§3.9) — the
 three events after which what the weights delivered is no longer the
 potential. Under the leak, which stays as a per-run option (TAU finite),
-the same quantity is the leaked charge $\sum_a e^{-(t - t_a)/\text{TAU}}$
+the same quantity is the leaked sum $\sum_a e^{-(t - t_a)/\text{TAU}}$
 brought up to date lazily, which is why the synapse also keeps the moment
 its trace was last brought up to date.
 *Byron, September 17, 2026, stating the accumulator: "since we are keeping
@@ -200,12 +204,12 @@ non-default) to find the synapses that carried a cycle.
 evidence accumulator an arrival stays open until its target spikes, so as
 each arrival is integrated the synapse adds $E_j$ to its note:
 $B_{ij} \mathrel{+}= E_j$. $E_j$ is not a count of expected spikes: it is
-the sum of the charged expectations of the target's decisions since its last
-spike, each weighed by the ISI factor (§7.4), and it can be negative. The
+the sum of the expectations posted at the target's decisions since its last
+spike, each weighed by the shaping function (§7.4), and it can be negative. The
 note is what lets the spike settle every open arrival in one operation,
 $e_{ij} \mathrel{+}= f c_j x_{ij} - (x_{ij} E_j - B_{ij})$ (§8.11), and it
 is cleared with the trace at that spike. Under the leak there is no note:
-the score is charged per decision on the leaked trace (§8.12).
+the score is posted per decision on the leaked trace (§8.12).
 *Byron, September 17, 2026, on whether a debit may run past a read: "Let
 them run! Epochs are for the convenience of teaching the network, and to
 some extent an emergent property of the time constants, but they don't
@@ -214,18 +218,20 @@ on the synapse and a decision one operation on the neuron — no loop over a
 fan-in may run at a decision.*
 
 **1.9 The score $e_{ij}$: what the synapse has earned since the last read.**
-Each synapse carries the score charged to it by the learning rule since the
+Each synapse carries the score the learning rule has posted to it since the
 last read. At the read the debit accrued so far on the open arrivals is
 settled into the score, the update is paid on it, and the score is cleared —
 whether or not the advantage moved a weight. The arrivals stay open, their
 debit counting from that moment, which the engines do by re-basing the note
 to $B_{ij} = x_{ij} E_j$ as the score is cleared. This clause fixes the
-moment: the score is cleared at the read, and since nothing charges between
+moment: the score is cleared at the read, and since nothing is posted between
 the read and the next epoch's first wave, an engine that clears it at that
 epoch's reset instead is conforming.
 *Byron, September 17, 2026 [RECORD §6.7]. The re-basing is Claude's
 statement of the record's "the open arrivals counting from now", to be
-corrected in a word.*
+corrected in a word. Where the record says a synapse is **charged**, this
+file says an entry is **posted** to its score: the accounting words are the
+ones meant throughout, and *charge* is kept for electrons.*
 
 ## 2. The neuron
 
@@ -260,7 +266,7 @@ with $\tau$ = TAU = 2 ms. The accumulator of §2.2 is the default and is $\tau =
 
 $$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t^{\text{fired}}, \qquad t^{\text{fired}} \leftarrow t,$$
 
-and the neuron's spike count rises by one. Nothing any synapse delivered is still in the potential, so every incoming synapse's trace $x_{ij}$ goes to zero with it. Under the accumulator the spike is the moment the learning rule settles every open arrival; under the leak the charge was made at each decision and the spike only clears the traces (§8.11, §8.12). The neuron is then refractory (§2.5).
+and the neuron's spike count rises by one. Nothing any synapse delivered is still in the potential, so every incoming synapse's trace $x_{ij}$ goes to zero with it. Under the accumulator the spike is the moment the learning rule settles every open arrival; under the leak the entries were posted at each decision and the spike only clears the traces (§8.11, §8.12). The neuron is then refractory (§2.5).
 *Byron and Cedric, from the beginning [RECORD §0, §5.2]. The memory of the spike before last is the record's, stated there without a date; the quash reads it (§10.1).*
 
 **2.5 The refractory period.** A neuron that fired at $t^{\text{fired}}$ is refractory while $t < t^{\text{fired}} + \text{REFRACTORY}$, REFRACTORY = 5 ms. While refractory it ignores every signal, does not integrate it, cannot be forced by the drive, and makes no firing decision. At REFRACTORY_HOPS = 2 the period is exactly two hops (§3.2), so a spike sent around a two-way pair returns as the period ends. *Engines:* the comparison allows the clock's slack (§3.4) — the test is `now + slack(now) < t_fired + REFRACTORY` — so a spike returning the instant the period ends finds the neuron recovered rather than a hair short of it, and the three engines recover the same neuron at the same wave. Without that slack, floating-point arithmetic would decide whether a two-hop return refires the neuron.
@@ -513,7 +519,7 @@ order, so a seed gives every engine the same arrivals; an engine that
 generates its own would agree on nothing else.
 
 **5.5 These are arrivals, not spikes.** An arrival is a mandated spike and
-not a charge: it adds nothing to the potential, and a neuron that takes one
+not a signal: it adds nothing to the potential, and a neuron that takes one
 spikes as it spikes from any other cause. An arrival landing while its
 neuron is refractory is dropped, so a driven neuron fires at the first
 arrival after its refractory period ends and its spike train is a renewal
@@ -696,7 +702,7 @@ $\theta_j$ is constant through a run except as homeostasis and un-sticking move 
 $$P_j(t) = 1 - e^{-m_j(t)}, \qquad
 m_j(t) = \frac{\Delta t}{\text{hop}}\,\kappa(N)\;e^{\,s/\Delta_j},$$
 
-where hop is the signal's travel time of §3.2, $\kappa(N)$ the count's factor of §6.6, and $\Delta t$ the time elapsed since the neuron's previous decision, or since its refractory period ended if it was refractory then. The neuron carries a hazard of $\kappa(N)\,e^{s/\Delta_j}$ spikes per hop: at the reference count one expected spike per hop at threshold, $e$ times more per $\Delta_j$ of margin above it and $e$ times fewer per $\Delta_j$ below. $m$ is the number of spikes expected over the interval and $P$ the chance of at least one; the hazard is charged for elapsed time rather than tossed per wave [RECORD §5.2]. Of the engines: $\Delta t$ is clamped at zero, $m$ is capped at $10^3$ — beyond which $P$ is 1 to the last bit — and $P$ is computed as $-\text{expm1}(-m)$, in that form, so the three engines agree.
+where hop is the signal's travel time of §3.2, $\kappa(N)$ the count's factor of §6.6, and $\Delta t$ the time elapsed since the neuron's previous decision, or since its refractory period ended if it was refractory then. The neuron carries a hazard of $\kappa(N)\,e^{s/\Delta_j}$ spikes per hop: at the reference count one expected spike per hop at threshold, $e$ times more per $\Delta_j$ of margin above it and $e$ times fewer per $\Delta_j$ below. $m$ is the number of spikes expected over the interval and $P$ the chance of at least one; the hazard runs on elapsed time rather than being tossed per wave [RECORD §5.2]. Of the engines: $\Delta t$ is clamped at zero, $m$ is capped at $10^3$ — beyond which $P$ is 1 to the last bit — and $P$ is computed as $-\text{expm1}(-m)$, in that form, so the three engines agree.
 *Byron, September 15, 2026, as §6.4. The cap and the expm1 form are Claude's, required for the engines to agree bit for bit; to be corrected in a word. [RECORD §5.2]*
 
 **6.6 The hazard falls as the square root of the count.** Every hazard in a network of $N$ neurons — $N$ being every neuron the network holds — is multiplied by $\kappa(N) = \sqrt{N_0/N}$, with $N_0 = \text{ESCAPE\_REFERENCE\_COUNT} = 60$. It is the whole hazard that is scaled and not the width, so the decision keeps its sharpness, $e$ times per $\Delta_j$, and the score of §8 keeps its form; the factor is the same at every margin, and a neuron that hears nothing takes it like any other. The reference count is the unit the width is quoted in, as THRESHOLD_FAN_IN is the unit the threshold is quoted in, and is not a knob. Of the engines: the factor is recomputed from the count when a network is built or resumed rather than stored in a checkpoint, since it is a rule and not a state.
@@ -705,20 +711,20 @@ where hop is the signal's travel time of §3.2, $\kappa(N)$ the count's factor o
 **6.7 A neuron fires iff its draw falls below its chance.** The wave's draws are taken where §3.8 says, one uniform per neuron in neuron order, and neuron $j$ fires iff its uniform is **strictly below** $P_j(t)$. Of the engines: one draw per neuron whether or not that neuron goes on to decide, so the three engines fire the same neurons at the same waves from the same seed.
 *The rule as built and held by test since September 15, 2026; the draw's position and order are Claude's reading of what reproducibility across the engines requires, to be corrected in a word. [RECORD §5.2, §6.1]*
 
-**6.8 Every neuron decides at every wave, touched or not.** A wave examines every neuron in the network: one decision each, whether or not a signal reached it that wave, so a neuron with enough potential waiting, or one whose margin has simply carried it, fires at the first wave after it is able to and not at the next signal to arrive. A forced neuron is the exception (§6.10), and a refractory neuron makes no decision at all (§6.12). This fixes the learning rule's clock as well as the firing rule's: every decision is a charge of the single-spike rule (§8.4), and a neuron's expectation of itself moves per decision and not per epoch (§8.6).
+**6.8 Every neuron decides at every wave, touched or not.** A wave examines every neuron in the network: one decision each, whether or not a signal reached it that wave, so a neuron with enough potential waiting, or one whose margin has simply carried it, fires at the first wave after it is able to and not at the next signal to arrive. A forced neuron is the exception (§6.10), and a refractory neuron makes no decision at all (§6.12). This fixes the learning rule's clock as well as the firing rule's: every decision posts an entry under the single-spike rule (§8.4), and a neuron's expectation of itself moves per decision and not per epoch (§8.6).
 *Claude's reading, built September 12, 2026 under Byron's boredom decision, and carried into the hazard on September 15, 2026; to be corrected in a word. [RECORD §5.2, §5.4, §1.3]*
 
 **6.9 A neuron with no width takes the deterministic comparison.** Where the width $\Delta_j$ is not positive — ESCAPE_DELTA $=0$, or a starting threshold that is not positive, a collapsed axis carrying no width to quote — the neuron fires iff $p_j(t) \ge \theta_j(t)$ and it is not refractory. $\Delta = 0$ is the deterministic rule word for word. Of the engines: this case is taken by the comparison and not by dividing by a zero width.
 *Byron, September 15, 2026, with §6.4 ("$\Delta = 0$ is the deterministic rule word for word"); the collapsed-axis case as resolved September 16, 2026, under which, given §6.1, it arises only for a threshold given as 0 outright. [RECORD §5.2]*
 
-**6.10 A forced neuron fires by its stimulus and decides nothing.** An input neuron driven at its stimulus's time fires regardless of its potential and its threshold, the refractory period permitting, and makes no firing decision that wave, so no credit is charged for that spike; the arrivals it closes settle their debit as at the floor (§6.3). Forced neurons fire before the wave's deciding neurons; a stimulus listed twice fires once, the first spike making the neuron refractory.
+**6.10 A forced neuron fires by its stimulus and decides nothing.** An input neuron driven at its stimulus's time fires regardless of its potential and its threshold, the refractory period permitting, and makes no firing decision that wave, so no credit is posted for that spike; the arrivals it closes settle their debit as at the floor (§6.3). Forced neurons fire before the wave's deciding neurons; a stimulus listed twice fires once, the first spike making the neuron refractory.
 *The record's firing rule, standing: "A forced input neuron fires at its input's time regardless of $p$ and $\theta$"; and, with escape noise, September 15, 2026: "A forced neuron fires by its stimulus and makes no decision that wave." [RECORD §5.2, §4.4]*
 
 **6.11 The spike resets the neuron and is remembered.** A neuron that fires takes
 
 $$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t_{\text{fired}}, \qquad t_{\text{fired}} \leftarrow t,$$
 
-so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps its last two spike times, its outgoing signals being scheduled one hop later (§3.5). $t_{\text{fired}}$ is what the ISI factor measures from at a decision (§7.4); the gap back to $t_{\text{prev}}$ is read by the quash alone (§10.1, a non-default).
+so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps its last two spike times, its outgoing signals being scheduled one hop later (§3.5). $t_{\text{fired}}$ is what the shaping function measures from at a decision (§7.4); the gap back to $t_{\text{prev}}$ is read by the quash alone (§10.1, a non-default).
 *The record's firing rule, standing since the project began. [RECORD §5.2]*
 
 **6.12 A refractory neuron makes no decision.** The refractory period is §2.5's. While it runs the neuron ignores every signal, cannot be forced, and makes no firing decision; its hazard resumes at the period's end, which is where §6.5's $\Delta t$ then runs from. A neuron may fire any number of times, the period permitting: at two hops (§3.2) a spike sent around a two-way loop returns as the period ends and may refire the neuron.
@@ -735,22 +741,38 @@ so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps 
 **7.3 One stream, one order, in every engine.** The uniforms of §3.8 come from the run's exploration stream: one seeded stream of its own, which supplies the firing decisions and nothing else. A run has three, and no two share draws: this one; the network's own stream, which draws the wiring, the weights and the drive's arrival times (§4.8, §5.4); and the input stream, which draws the epoch's patterns (§5.9). A network whose width is positive must be run with one. Of the engines: each takes the same number of draws from that stream, in the same order, at the same point in the wave, and the Rust loop takes the Python stream's MT19937 state and hands it back, so a seed gives the same spikes whichever engine runs — the objects and Rust to the bit, the arrays exactly on the spikes and to a part in $10^9$ on continuous quantities (the platforms clause, §0).
 *The stream is Byron's separation of streams, September 14, 2026 — a run's randomness comes from a stream that nothing else consumes — carried to the hazard's draws on September 15, 2026. [RECORD §5.2, §6.1, §4.5]*
 
-**7.4 The ISI factor.** With $I = \text{TARGET\_ISI}$ and $t$ the time since the neuron's own last spike, every charge of the learning rule made at a decision is weighed by
+**7.4 The shaping function.** With $R = \text{REFRACTORY}$, $I = \text{TARGET\_ISI}$ and $t$ the time since the neuron's own last spike, every entry the learning rule posts at a decision is weighed by
 
-$$f = \frac{3x - 1}{1 + x^3}, \qquad x = \frac{t}{I}.$$
+$$f = \frac{3u - 1}{1 + u^3}, \qquad u = \frac{t - R}{I - R}.$$
 
-It is $-1$ at $t = 0$, zero at $t = I/3$, $1$ at $t = I$ and nowhere higher, and falls as $3(I/t)^2$ after. A neuron that has never fired is at $t = \infty$, where $f = 0$: nothing is charged before its first spike. Of the engines: each computes $x$ and then $(3x-1)/(1 + x\cdot x\cdot x)$ in that order, so the objects and Rust agree to the bit and the arrays to a part in $10^9$.
-*Byron, September 17, 2026, 04:31 MDT: "With absolute refractory period ABS, we would like to be able to recognize spikes coming back after multiple hops. The desired ISI is 5.1 ms (hardcode for now). The teacher's existing reinforcement is MULTIPLIED by f(t-ISI) where f(0) = 1, f(infinity)=0, f(-ISI)= -1." And the same morning: "Please make implement the ISI mechanism I suggested, despite your reservations, in authority. Only the constants are not known." The cubic rational is the form Fable derived before leaving; it is the lowest power whose tail has a finite integral. **Open:** TARGET_ISI $= 5.1$ ms is hardcoded for now and is *not known* — Byron's words — and neither is whether $t$ should be measured from the neuron's own last spike. Under the rate teacher (§9.13) the constant acquires a third job, the target rate for a coded 1, beside this factor's peak and the deterministic drive's period (§0.12); whether that is one constant or three sharing a default is open, and until it is settled a sweep on any one of the three moves the other two. [RECORD §0.2, §1.3]*
+It is anchored at three points: $f(R) = \text{EARLY\_ARRIVAL\_PUNISHMENT\_FACTOR} = -1$ at the refractory wall, $f(I) = 1$ at the target interval and nowhere higher, and $f \to 0$ as $t \to \infty$. It crosses zero at $t = R + (I - R)/3$ and falls as $3\big((I-R)/(t-R)\big)^2$ after its peak. A neuron that has never fired is at $t = \infty$, where $f = 0$: nothing is posted before its first spike.
 
-**7.5 The factor weighs every charge, and is on by default.** ISI_FACTOR is on. At each decision of neuron $j$ at time $t'$ both halves of the single-spike rule's charge are multiplied by the same $f$ — the decision's credit $c_j$ and its expectation $q_j$ alike, under either eligibility (§8) —
+TARGET_ISI must exceed REFRACTORY. Everything the curve does happens between the wall and the peak, so a target close to the wall leaves the factor no room: the function is then $-1$ for a sliver and zero at every other decision. The form's own pole sits at $t = 2R - I$, which is at or before the spike for any $I > R$ and so is never reached at a decision.
+
+The punishment factor is not free. Writing the numerator as $au + b$ over $1 + u^n$, the anchors give $b = \text{EARLY\_ARRIVAL\_PUNISHMENT\_FACTOR}$ and $a = 2 - b$, and the peak sits exactly at $I$ only when $a = n$, so $b = 2 - n$. A finite tail needs $n \ge 3$. So $-1$ is the shallowest punishment that keeps the peak on the target interval; a deeper one costs a steeper tail ($-2$ with $1/t^3$, $-3$ with $1/t^4$).
+
+Of the engines: each computes $u$ and then $(3u-1)/(1 + u\cdot u\cdot u)$ in that order, so the objects and Rust agree to the bit and the arrays to a part in $10^9$.
+
+*Where this clause belongs.* It sits in §7 because that is where the firing
+decision it weighs is stated, but it reads a neuron's own last spike and
+weighs what a synapse posts, so it belongs beside one of those. Byron,
+September 17, 2026: "The shaping function will eventually make its way to
+chapter 1 or 2. For now." It stays here until it is moved; moving it is an
+editorial change and no clause is written from its present number.
+*Byron, September 17, 2026, 04:31 MDT, asking for the mechanism: "With absolute refractory period ABS, we would like to be able to recognize spikes coming back after multiple hops." And the same evening, giving the anchors that decide where the curve sits: "the anchors are f(5) = EARLY_ARRIVAL_PUNISHMENT_FACTOR = -1, f(TARGET_ISI) = 1; lim t->inf f(t) = 0", with TARGET_ISI set to 10 ms. The cubic rational is the form Fable derived before leaving; it is the lowest power whose tail has a finite integral. The first anchoring built — $u = t/I$ at $I = 5.1$ ms — put the $-1$ and the zero crossing at $t = 0$ and $t = 1.70$ ms, both inside the refractory period, so no decision ever reached them and the factor was a positive discount only. The wall anchor is what makes the negative region live. **Open:** TARGET_ISI's value. Under the rate teacher (§9.13) the constant acquires a third job, the target rate for a coded 1, beside this factor's peak and the deterministic drive's period (§0.12); whether that is one constant or three sharing a default is open, and until it is settled a sweep on any one of the three moves the other two. [RECORD §0.2, §1.3]*
+
+**7.5 The shaping function weighs every entry, and is on by default.** ISI_FACTOR is the constant that switches it on, and it is on. At each decision of neuron $j$ at time $t'$ both halves of the single-spike rule's entry are multiplied by the same $f$ — the decision's credit $c_j$ and its expectation $q_j$ alike, under either eligibility (§8) —
 
 $$e_{ij} \mathrel{+}= f\big(t' - t^{\text{fired}}_j\big)\,\big(c_j(t') - q_j(t')\big)\,x_{ij}(t'),$$
 
-so a spike is credited by how near its interspike interval came to $I$ and a silence is debited by the same weight at its moment. `--no-isi-factor` runs a network without it.
-$f$ is §7.4's, taking the time since the neuron's own last spike; Byron wrote the same curve as $f(t - \text{ISI})$, with $f(0) = 1$ there, and the two are one function stated from different origins.
-*Byron, September 17, 2026, choosing between on and off: "On by default." That $t$ is the time since the neuron's own last spike, and that "the teacher's existing reinforcement" means every per-decision charge of the single-spike rule, is Claude's reading, to be corrected in a word. [RECORD §0.2, §6.7]*
+so a spike is credited by how near its interspike interval came to $I$ and a silence is debited by the same weight at its moment. `--no-isi-factor` runs a network without it. $f$ is §7.4's, taking the time since the neuron's own last spike.
 
-**7.6 A resumed network keeps the setting it was saved under.** A checkpoint records whether its network ran with the ISI factor, and a resumed run continues under the setting the checkpoint carries unless the resuming run says otherwise, so an arm continues under the rule it started with; each run's record says which it ran.
+**Both halves, and why it cannot be one.** Where $f$ is negative — between the wall and $t = R + (I-R)/3$ — the entry reverses sign, and it reverses for a silent decision exactly as it does for a spike: **the shaping function symmetrically reinforces silence when it punishes an early arrival.** That is intended, and it is also forced. $(c_j - q_j)$ is not two quantities but one, the score function $\partial \log P(y)/\partial w_{ij}$, whose branches are selected by the outcome; their means are equal by construction — $m e^{-m}$ under the hazard, $\hat p_j$ under hebb — which is what makes the score zero-mean and the estimator an estimator. Weighting the credit alone gives $E[f c_j - q_j] = (f - 1)E[c_j]$, a label-blind drift on every synapse in proportion to its trace. Weighting both keeps the mean at zero for every $f$, negative included, since $f$ is fixed before the outcome is known. So $f$ weighs both halves or neither, and no rule may weigh them apart.
+
+*What it is for.* Byron, September 17, 2026: the symmetry "is meant to keep the system from moving into a regime where it saturates to keep getting ever more reinforcement." A neuron that fires as fast as the refractory period allows sits at the wall, where $f$ is $-1$: the faster it goes the more of its own evidence is turned against it. The old external teacher's targets were saturation and silence, the two extremes with no set point between them, and the risk in that was recorded at Byron's request on September 14, 2026 [RECORD §6.9]. This is the set point.
+*Byron, September 17, 2026, choosing between on and off: "On by default", and the same day confirming that $t$ is measured from the neuron's own last spike, as built. That "the teacher's existing reinforcement" means every per-decision entry of the single-spike rule rather than the read's reinforcement alone is still Claude's reading, to be corrected in a word. The zero-mean argument above is Claude's, and is checked in `RECORD.md` rather than here. [RECORD §0.2, §6.7]*
+
+**7.6 A resumed network keeps the setting it was saved under.** A checkpoint records whether its network ran with the shaping function, and a resumed run continues under the setting the checkpoint carries unless the resuming run says otherwise, so an arm continues under the rule it started with; each run's record says which it ran.
 *Claude's reading, September 17, 2026, for the sweeps that were running when the factor landed; to be corrected in a word. [RECORD §0.2]*
 
 ---
@@ -769,10 +791,10 @@ replacing it (§10.1).
 **8.1 The rule.** *(Williams's rule [1], carried from the pre-alpha and
 asked for on this substance by Byron, September 13, 2026: "I want to try the
 same thing with the REINFORCE algorithm" [record §6.7]; LR and BASELINE_RATE
-are the standing constants of [record §1.3].)* The network is paid **one scalar reward** $R$ an epoch,
+are the standing constants of [record §1.3].)* The network is paid **one scalar** an epoch, its **reinforcement** $R$,
 from the critic the run names. A running baseline $b$ gives the
 **advantage** $A = R - b$. At the read, every synapse $i \to j$ that has
-charged something since the last read and whose target $j$ was **not forced**
+posted something since the last read and whose target $j$ was **not forced**
 this epoch moves by
 
 $$w_{ij} \leftarrow \mathrm{clip}\big(w_{ij} + \text{LR}\cdot A\cdot e_{ij}\big),
@@ -787,7 +809,7 @@ alone.
 
 **8.2 The baseline.** *(The pre-alpha's, carried; the constant is [record
 §1.3]. This clause owns the baseline; §9.3 cites it.)* $b$ is the
-running average of the reward. It starts at the first epoch's reward, so the
+running average of the reinforcement. It starts at the first epoch's reinforcement, so the
 first epoch's advantage is zero and nothing moves; after the update has used
 it, $b \leftarrow b + \text{BASELINE\_RATE}\,(R - b)$, BASELINE_RATE $=
 0.05$. There is one baseline for the whole network and none per neuron.
@@ -804,7 +826,7 @@ refuses a network without escape noise and says so rather than approximating:
 a decision that was not a draw has no probability to differentiate. Which
 eligibility runs is independent of what makes the firing decision — a run may
 name hebb on a network with escape noise, and then the decision is still a
-draw but is charged against the neuron's own expectation.
+draw but is posted against the neuron's own expectation.
 *The hazard default is Claude's reading of the default Byron set September
 15, 2026, to be corrected in a word; the record's rule was "hazard under
 escape noise, else the ELIGIBILITY constant" [record §1.3, §6.7].*
@@ -821,7 +843,7 @@ its score by
 
 $$e_{ij} \mathrel{+}= f\,\big(c_j(t') - q_j(t')\big)\,x_{ij}(t'),$$
 
-$x_{ij}$ the synapse's trace (8.5), $f$ the ISI factor (8.9), $c_j$ the
+$x_{ij}$ the synapse's trace (8.5), $f$ the shaping function (8.9), $c_j$ the
 decision's credit and $q_j$ its expectation:
 
 | eligibility | fired: $c_j$, $q_j$ | silent: $c_j$, $q_j$ | the expectation |
@@ -831,8 +853,8 @@ decision's credit and $q_j$ its expectation:
 
 In words: a spike credits every arrival still standing in the potential, each
 equally, and every decision debits them by what was expected of the neuron at
-that moment. A neuron that fires more than once in an epoch is charged for
-every decision it made.
+that moment. A neuron that fires more than once in an epoch has an entry
+posted for every decision it made.
 *Claude's derivation on Byron's decision of September 17, 2026, and his three
 decisions on what it left open; to be corrected in a word [record §6.7].*
 
@@ -853,16 +875,17 @@ rule; to be corrected in a word [record §6.7].*
 **8.6 The neuron's expectation of its own spike.** *(Byron, September 17,
 2026: "Expectation is changed per decision in this architecture.")* $\hat
 p_j$ is undefined until $j$'s first decision, which sets it to that
-decision's outcome and charges nothing. After every decision, charged first,
+decision's outcome and posts nothing. After every decision, the entry posted
+first,
 
 $$\hat p_j \leftarrow \hat p_j + \max\!\big(\text{DECISION\_MEMORY},\,1/n\big)\,(y - \hat p_j),$$
 
 $n$ the decisions $j$ has made to date, DECISION_MEMORY $= 10^{-4}$: the
 plain mean of the first ten thousand decisions, an exponential average of
 about the last ten thousand after. The estimate's own move takes the outcome
-unweighed — what the learning rule weighs is what it charges, not what the
+unweighed — what the learning rule weighs is what it posts, not what the
 neuron remembers — and a neuron whose decisions the rule in force does not
-charge keeps $\hat p_j$ and $n$ untouched. *Open: DECISION_MEMORY is a
+post for keeps $\hat p_j$ and $n$ untouched. *Open: DECISION_MEMORY is a
 starting value, to be swept [record §1.3]. The warm start by $1/n$ is
 Claude's reading of "changed per decision", to be corrected in a word.*
 
@@ -880,14 +903,14 @@ hazard's credit discounts a spike that was expected. Whether it should be
 discounted too is **not decided**: Byron, September 17, 2026, asked which,
 answered *"Defer for now."*
 
-**8.9 The ISI factor weighs every charge.** *(Byron, September 17, 2026,
-choosing between on and off: "On by default"; TARGET_ISI is 5.1 ms, "hardcode
-for now", and is open in his own words. The reading of what the factor weighs
-is Claude's, to be corrected in a word [record §0.2, §1.3].)* $f$ in 8.4 is the ISI factor of the
-clause at the head of this file, evaluated at the time since $j$'s own last
-spike, and it multiplies **both** the credit and the expectation of the
-decision it is made at: hebb and hazard alike, at the decision and not at the
-read. A neuron that has never fired stands at $f = 0$, so nothing is charged
+**8.9 The shaping function weighs every entry.** *(Byron, September 17, 2026,
+choosing between on and off: "On by default"; TARGET_ISI is 10 ms and its
+value is open. The reading of what the function weighs is Claude's, to be
+corrected in a word [record §0.2, §1.3].)* $f$ in 8.4 is the shaping function
+of §7.4, evaluated at the time since $j$'s own last spike, and it multiplies
+**both** the credit and the expectation of the decision it is made at: hebb
+and hazard alike, at the decision and not at the read. It weighs both or
+neither — §7.5 says why, and what weighing one alone would cost. A neuron that has never fired stands at $f = 0$, so nothing is posted
 on it before its first spike. It is on by default; a run may turn it off, and
 a resumed network keeps the setting it was saved under (8.14).
 
@@ -895,7 +918,7 @@ a resumed network keeps the setting it was saved under (8.14).
 them run! Epochs are for the convenience of teaching the network, and to some
 extent an emergent property of the time constants, but they don't really
 exist in nature.")* An arrival stays in the potential until $j$ spikes, so
-what it owes runs across reads. Each read pays the score charged since the
+what it owes runs across reads. Each read pays the score posted since the
 last read and clears it, whether or not the advantage moved a weight (§1.9);
 the open arrivals stay open, their debit counting from then. The epoch bounds
 the payment, not the accumulator.
@@ -917,7 +940,7 @@ This bookkeeping is the rule: it is a regrouping of the per-decision sum of
 held to each other (8.15) [record §6.7].
 
 **8.12 The leak path.** The leak is a per-run option, TAU (the neuron's
-clause [record §5.1, §1.2]). Under it the rule of 8.4 is charged **per
+clause [record §5.1, §1.2]). Under it the rule of 8.4 is posted **per
 decision**: at every decision the engine walks $j$'s incoming synapses and
 adds $f\,(c_j - q_j)$ times each leaked trace. The bookkeeping of 8.11 is not used on this
 path, and there is no note (§1.8): the per-decision walk is the rule for it
@@ -936,7 +959,7 @@ word [record §6.7].*
 §12.9's. Of this rule: the weights; per neuron $\hat p_j$, the decisions to
 date and $E_j$; per synapse the trace and the time it was brought up to, and
 the note $B_{ij}$; the teacher's baseline $b$, LR, critic and eligibility;
-and whether the ISI factor was on, with TARGET_ISI beside it, a resumed
+and whether the shaping function was on, with TARGET_ISI beside it, a resumed
 network keeping the setting it was saved under unless the resuming run says
 otherwise [record §6.7, §0.2]. The score since the last read is not carried: a
 checkpoint is written between epochs, where the score has just been paid and
@@ -945,7 +968,7 @@ is about to be cleared. *Claude's reading, to be corrected in a word.*
 **8.15 What the rule requires of an engine.** *(Byron, September 14, 2026:
 "rules in authority.md must be implemented cross-platform"; and September 17,
 2026: "keep, with tolerances, as a foundational rule; all platforms are built
-from one clear authority" [record §7].)* Every engine charges at the
+from one clear authority" [record §7].)* Every engine posts at the
 decision, in the decision's own order, and carries the state 8.11 names —
 the trace, the note and the score on each synapse, $\hat p_j$, the decision
 count and $E_j$ on each neuron — so that the read is one pass over the
@@ -986,7 +1009,7 @@ the quash is local. They compose; neither is a setting of the other.
 §6.7, §6.15].* When an epoch's last wave has run, the teacher does these,
 in this order:
 
-1. read the output zone and compute the epoch's reward $R$ from the critic
+1. read the output zone and compute the epoch's reinforcement $R$ from the critic
    (§9.4–§9.7);
 2. pay the rule at the read with the advantage $A = R - b$ (§9.3);
 3. move each neuron's firing-rate memory (§9.8);
@@ -1002,7 +1025,7 @@ the same order, so that a run is the same run whichever engine ran it.
 
 ### 9.3 The baseline and the advantage
 
-The reward is paid as an advantage against a running baseline, which is the
+The reinforcement reaches a synapse as an advantage against a running baseline, which is the
 paying rule's own and is stated once, at §8.2: $A = R - b$ with $b$ as it
 stands, and $b$ moves only after the update has used it. The advantage is one
 scalar an epoch, the same number for every synapse the paying rule touches.
@@ -1022,7 +1045,7 @@ The read gives one number $n_k$ per class, the class's evidence this epoch
 (under complement coding, its fire-if-one sum minus its fire-if-zero sum;
 the read's section defines it). The evidence critic takes those as log-odds
 at a temperature $T$ = TEMPERATURE: the estimate over the $C$ classes is the
-Boltzmann distribution and the reward is its log score at the label $y$,
+Boltzmann distribution and the reinforcement is its log score at the label $y$,
 
 $$q_k = \frac{e^{n_k/T}}{\sum_j e^{n_j/T}}, \qquad
 R = \ln q_y = \frac{n_y}{T} - \ln \sum_j e^{n_j/T}.$$
@@ -1036,15 +1059,15 @@ TEMPERATURE is 2 **FOR NOW** — *Byron, the same day: "We will have to sweep
 for temperature eventually"*. What is open is the value, which a sweep is to
 set. [RECORD §1.3, §8]
 
-*What it requires of the engines.* Every engine pays this reward through one
+*What it requires of the engines.* Every engine computes this reinforcement through one
 function, which subtracts the largest class sum before exponentiating so
 that no temperature overflows. Its inputs are sums of integer spike counts,
-so the reward is the same to the bit in all three engines and the tolerance
+so the reinforcement is the same to the bit in all three engines and the tolerance
 of the one-authority rule is not needed here.
 
 ### 9.5 The row critic
 
-The reward is the fraction of the output neurons whose fired state this
+The reinforcement is the fraction of the output neurons whose fired state this
 epoch matches the target pattern the problem names; a row that matches
 everywhere is 1. Under complement coding that pattern is the label's
 fire-if-one population on and its fire-if-zero population off, every other
@@ -1055,19 +1078,19 @@ class critic"). [RECORD §6.7, §8]
 ### 9.6 The graded critic
 
 *Byron, September 15, 2026: "a graded critic it is."* On the same class
-evidence the evidence critic reads, the reward is the fraction of the other
+evidence the evidence critic reads, the reinforcement is the fraction of the other
 $C - 1$ classes the label's class strictly out-spikes: 1 when it out-spikes
 every one of them, 0 when it out-spikes none, and a near miss paid for what
 it beat. A tie is not beaten, so a silent output zone scores 0. [RECORD §8]
 
 ### 9.7 The class critic, and the fraction right
 
-On the same class evidence the evidence critic reads, the reward is **1**
+On the same class evidence the evidence critic reads, the reinforcement is **1**
 when the label's class strictly out-spikes every other class and **0**
 otherwise. A tie is not a win, and a silent output zone is not a win.
 
 The fraction of epochs a run wins on that rule is the **fraction right**, and
-it is reported beside whatever reward the run is paid, whether or not this
+it is reported beside whatever reinforcement the run is paid, whether or not this
 critic is the one paying. The measure and the critic are one rule: the number
 reported is this critic's own.
 
@@ -1079,7 +1102,7 @@ the three-critic list he gave at 15:09 MDT.* [RECORD §8, §1.3;
 the critic's class evidence, so it costs an epoch one comparison and can
 never disagree with the critic about what the output zone said. As built, the
 Rust driver accumulates the fraction over a run's last tenth and only under
-the evidence critic; that every run reports it beside every reward is
+the evidence critic; that every run reports it beside every reinforcement is
 Claude's reading, and is work the object and array engines do not yet do, to
 be corrected in a word.
 
@@ -1155,21 +1178,21 @@ fired (§9.11).
 [RECORD §6.14] Every run reports:
 
 - spikes to date, and which neurons fired this epoch;
-- the epoch's reward, the mean reward to date, and an exponential moving
+- the epoch's reinforcement, the mean reinforcement to date, and an exponential moving
   average over about WINDOW = 200 epochs — $\alpha = 2/(\text{WINDOW} + 1)$,
-  started at the first epoch's reward;
-- the fraction right beside the reward (§9.7) — as built, over a run's last
+  started at the first epoch's reinforcement;
+- the fraction right beside the reinforcement (§9.7) — as built, over a run's last
   tenth and only under the evidence critic; that it is reported at every
-  reward is Claude's reading (§9.7);
+  reinforcement is Claude's reading (§9.7);
 - how many neurons are stuck on and stuck off (§9.8), and how many
   un-stickings have fired (§9.10);
-- at the end of a run, the mean reward over its last tenth.
+- at the end of a run, the mean reinforcement over its last tenth.
 
 A per-epoch trace may be written to a file: one line an epoch of the epoch
-number, the clock time in milliseconds, and the reward. A sweep's arm
-records its reward trace every so many epochs and, at the end, each neuron's
+number, the clock time in milliseconds, and the reinforcement. A sweep's arm
+records its reinforcement trace every so many epochs and, at the end, each neuron's
 rate memory, threshold, per-decision expectation $\hat p_j$ and decisions to
-date, so that a continuation charges from where it was.
+date, so that a continuation posts from where it was.
 
 The network runs forever (§0.8, §12.12): these numbers are read as health,
 not convergence, and drift is normal.
@@ -1221,8 +1244,10 @@ $$\text{reinforcement} \;\propto\; f \cdot \big(r^{\text{obs}}_j - r^{\text{targ
 The target is the **drive rate** for a coded bit of 1 — one spike every
 TARGET_ISI — and the **exploration rate** for a 0: the hazard's rest rate
 (§7.2), which is new, is not zero, and is a set point rather than an extreme.
-Being a rate difference it needs no bit, so TEACHER_THRESHOLD (§5.10) has no
-job under it.
+Neither target is an extreme now: at TARGET_ISI 10 ms against a refractory
+period of 5 ms the 1-target is half of the fastest a neuron can go, where the
+old teacher's was saturation itself (§7.5). Being a rate difference it needs
+no bit, so TEACHER_THRESHOLD (§5.10) has no job under it.
 
 **Open. Each part blocks a build:**
 
@@ -1235,7 +1260,7 @@ job under it.
   same question asked twice.
 - **Its critic**, or whether a rate difference implies one at all.
 - **Whether it pays once at the horizon or continuously.** A teacher that
-  charges per decision has no single reading instant, and if it charges
+  posts per decision has no single reading instant, and if it posts
   continuously the epoch stops being a unit of learning (§3.9, §3.11) and
   the constants quoted per epoch — BASELINE_RATE, RATE_MEMORY — lose their
   unit.
@@ -1253,7 +1278,7 @@ job under it.
   target that follows the network's size is wanted is open.
 - **TARGET_ISI acquires a third job** (§7.4).
 - **A neuron that has never fired stands at $f = 0$** (§7.4), so a gated
-  teacher charges it nothing. While the threshold and the escape margin
+  teacher posts nothing to it. While the threshold and the escape margin
   guaranteed a first spike this was harmless; a network that starts silent
   cannot be taught out of silence by a teacher the factor gates.
 
@@ -1308,7 +1333,7 @@ explore this space."*
 which the refire happened, over that wave's fired neurons, before the next
 wave is scheduled. It reads only the neuron's previous spike time and each
 incoming synapse's last-signal stamp, which every engine already keeps; no
-reward, no baseline and no teacher enters it, and it runs whether or not a
+reinforcement, no baseline and no teacher enters it, and it runs whether or not a
 rule pays at the read.
 
 ### 10.2 The quash is the only local rule carried
@@ -1348,7 +1373,7 @@ off until a run asks for it. *The scope, Byron, September 17, 2026.* [RECORD
 *Byron, September 14, 2026, setting the read: "COUNT the number of times each neuron fired in the epoch. ESTIMATE the firing rate based on the count." [record §4.3]*
 *Engines: each engine snapshots its own spike counts at the epoch's reset, and the three are compared on them.*
 
-**11.9 The critic is evidence, at TEMPERATURE.** The class sums are read as evidence at a temperature T: the estimate over classes is the Boltzmann distribution of the sums, and the reward is its log score, with y the label —
+**11.9 The critic is evidence, at TEMPERATURE.** The class sums are read as evidence at a temperature T: the estimate over classes is the Boltzmann distribution of the sums, and the reinforcement is its log score, with y the label —
 
 > q_k = e^(n_k/T) / Σ_j e^(n_j/T),  r = ln q_y = n_y/T − ln Σ_j e^(n_j/T).
 
@@ -1372,7 +1397,7 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 **11.14 What mnist does not fix.** The epoch's length, the container's starting threshold and floor, the wiring, the eligibility and the engine are not the problem's: they come from the constants of Appendix A or from the run that is asked for.
 *Claude's reading of what the problem sets, to be corrected in a word: the record's mnist runs gave the epoch length, the threshold and the floor on the command line rather than in the problem [record §8].*
 
-**11.15 The fraction right is reported beside the reward.** mnist is paid on the evidence critic (11.9) and reports beside it the class critic's own number (§9.7): the fraction of epochs in which the label's class **strictly out-spikes every other class** on the evidence of 11.6 — a tie is not a win, and silence is not a win. As built that fraction is accumulated over a run's last tenth and only under the evidence critic; the WINDOW moving average a run reports is of the **reward**, not of the fraction (§9.11).
+**11.15 The fraction right is reported beside the reinforcement.** mnist is paid on the evidence critic (11.9) and reports beside it the class critic's own number (§9.7): the fraction of epochs in which the label's class **strictly out-spikes every other class** on the evidence of 11.6 — a tie is not a win, and silence is not a win. As built that fraction is accumulated over a run's last tenth and only under the evidence critic; the WINDOW moving average a run reports is of the **reinforcement**, not of the fraction (§9.11).
 *Byron, September 17, 2026, 15:12 MDT: "keep the class critic", under which the measure and the critic are one rule and not two [`docs/rewrite-answers.md` §4].*
 
 **11.16 The estimator's correlation is reported.** For a synapse from input i onto an output of class k, the supervised direction is d_ij = P(coded input i on | class k) − P(coded input i on), taken over the training split; for a fire-if-zero output the sign is reversed, since that neuron should fire when the label is not k. A run reports the correlation of each input-to-output synapse's weight change since the run's start with d. It is an instrument for reading a run and not a rule: nothing in the network consults it, and no weight moves because of it.
@@ -1408,13 +1433,13 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 **12.8 Agreement is proven on the configuration, not carried over.** The engines are compared on the container, the wiring, the drive and the read a run will actually use, before that run is read as evidence about anything.
 *Claude's reading of two cases the record holds, to be corrected in a word [record §5.2, §6.15, §7].*
 
-**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, each synapse's open-arrival note, and whether the ISI factor was on. It round-trips in either engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly.
-*Byron and Cedric, standing; extended September 17, 2026 with the single-spike rule's state and the ISI factor [record §7, §0.2].*
+**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, each synapse's open-arrival note, and whether the shaping function was on. It round-trips in either engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly.
+*Byron and Cedric, standing; extended September 17, 2026 with the single-spike rule's state and the shaping function [record §7, §0.2].*
 
 **12.10 A rule is recomputed, a state is stored.** What a checkpoint can derive from the network's settings is derived — the escape scale is recomputed from the count, since it is a rule and not a state — and what the run moved is stored as the run left it, thresholds and floors included.
 *[record §5.2, §7.]*
 
-**12.11 A resume is a continuation, not the same run.** A network resumed from a checkpoint is rebuilt under its own layout and checked neuron for neuron and synapse for synapse against a fresh build from the seed, and it is refused if they differ. It is not the saved run to the bit: the exploration stream starts afresh (the driver's seed + 1,000,000), the reward baseline starts from the first resumed epoch, and the input stream is advanced to the epoch reached rather than restored.
+**12.11 A resume is a continuation, not the same run.** A network resumed from a checkpoint is rebuilt under its own layout and checked neuron for neuron and synapse for synapse against a fresh build from the seed, and it is refused if they differ. It is not the saved run to the bit: the exploration stream starts afresh (the driver's seed + 1,000,000), the reinforcement baseline starts from the first resumed epoch, and the input stream is advanced to the epoch reached rather than restored.
 *Claude's reading of the record's two senses of resume, to be corrected in a word: what a resume must reproduce is not decided [record §7, §8].*
 
 **12.12 The network keeps living.** There is no training run and no evaluation run, only one run that keeps going. No rule may assume an end, no result is read as convergence, and a run is read as health.
@@ -1469,13 +1494,14 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 | constant | value | what it fixes | owned by |
 |---|---|---|---|
 | LR | 0.03 | the learning rate where the problem names none (mnist names 0.002, 11.11) | §8 [record §1.3] |
-| ELIGIBILITY | hazard | what the reward acts on: hazard, the score of the escape decision, or hebb, the neuron's own expectation. The record's stored value was perturb, which leaves the specification, so the constant becomes hazard — what the neuron already chose under escape noise; what stands where the threshold decides is open (§8.3) | §8.3 [record §1.3; Claude's reading, to be corrected in a word] |
-| CRITIC | row | how the reward is judged where the problem names none: row, class, graded or evidence (mnist names evidence, 11.9) | §9.4–§9.7 [record §1.3] |
+| ELIGIBILITY | hazard | what the reinforcement acts on: hazard, the score of the escape decision, or hebb, the neuron's own expectation. The record's stored value was perturb, which leaves the specification, so the constant becomes hazard — what the neuron already chose under escape noise; what stands where the threshold decides is open (§8.3) | §8.3 [record §1.3; Claude's reading, to be corrected in a word] |
+| CRITIC | row | how the reinforcement is judged where the problem names none: row, class, graded or evidence (mnist names evidence, 11.9) | §9.4–§9.7 [record §1.3] |
 | TEMPERATURE | 2 | the evidence critic's T; open — "We will have to sweep for temperature eventually" | §9.4 [record §1.3, §8] |
-| BASELINE_RATE | 0.05 | the per-epoch update of the running reward baseline the advantage is taken against | §8 [record §1.3] |
+| BASELINE_RATE | 0.05 | the per-epoch update of the running reinforcement baseline the advantage is taken against | §8 [record §1.3] |
 | DECISION_MEMORY | 10⁻⁴ | the per-decision update of a neuron's expectation of its own spike; a starting value, to be swept | §8.6 [record §1.3, §6.7] |
-| TARGET_ISI | 5.1 ms | the interspike interval the ISI factor pays most for; hardcoded for now, and open in Byron's words | §7.4 [record §1.3; Byron: "The desired ISI is 5.1 ms (hardcode for now)"] |
-| ISI_FACTOR | on | weigh every charge of the single-spike rule by the ISI factor | §7.5 [record §1.3; Byron: "On by default"] |
+| TARGET_ISI | 10 ms | the interspike interval the shaping function pays most for; must exceed REFRACTORY, and its value is open | §7.4 [record §1.3; Byron, September 17, 2026] |
+| EARLY_ARRIVAL_PUNISHMENT_FACTOR | −1 | what the shaping function is worth at the refractory wall; the shallowest punishment that keeps the peak at TARGET_ISI (§7.4) | §7.4 [Byron, September 17, 2026] |
+| ISI_FACTOR | on | switch the shaping function of §7.4 on, weighing every entry of the single-spike rule | §7.5 [record §1.3; Byron: "On by default"] |
 | RATE_MEMORY | 0.01 | the per-epoch update of a neuron's own observed rate, which homeostasis, un-sticking and the stuck bands read | §2.6 [record §1.3] |
 | QUASH_RATE | 0.02 | **non-default.** The fraction of its weight a refire weakens each contributing synapse by, when a run asks for the quash | §10.1 [record §1.3, §6.11] |
 | QUASH_K | 0.2 /ms | how fast that quash falls off with the delay since the previous spike | §10.1 [record §1.3] |
@@ -1497,7 +1523,7 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 | mnist: lr | 0.002 | the problem's learning rate | 11.11 |
 | mnist: homeostasis, unstick | 0, 0 | both off for this problem | 11.12 |
 | STUCK_BELOW, STUCK_ABOVE | 0.01, 0.99 | the band outside which a neuron is stuck: what gates un-sticking, and what the reports count | §9.10 [record §1.3] |
-| WINDOW | 200 | reporting: the epochs the reported moving average of the **reward** spans | §9.11 [record §1.3, §6.14] |
+| WINDOW | 200 | reporting: the epochs the reported moving average of the **reinforcement** spans | §9.11 [record §1.3, §6.14] |
 
 **Constants no clause yet claims,** named here so they are decided rather than lost: PROBLEM (the default problem, still "reversal" in the code, a problem the specification does not carry — it becomes mnist or it goes); ACROSS (8 — the zone width a goo takes when no problem names one; mnist names its own); WEIGHT_EPSILON (0.001 — under `--positive-weights` the weight range becomes [ε, 1], a network with no inhibition); RULE (the record's four rules are one now that only the reinforce rule survives); TARGET (the record's default is the reversed pattern, whose problem is dropped; mnist's target is the label, 11.10); LATE (what a signal arriving after its target fired earns — it does not apply under either surviving eligibility).
 
