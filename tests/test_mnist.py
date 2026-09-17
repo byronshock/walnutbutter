@@ -377,7 +377,10 @@ def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
     cc.coding, cc.population, cc.clock, cc.output_coding = "complement", 3, 3, "complement"
     from walnutbutter.mnist import supervised_direction
     edges = [c for n in cc.all_neurons() for c in n.outgoing]
-    d, mask = supervised_direction(cc)(edges)
+    try:
+        d, mask = supervised_direction(cc)(edges)  # the pixel statistics need the dataset
+    except FileNotFoundError:
+        pytest.skip("the MNIST files are not fetched")
     row = cc.output_row()
     plain, plain_mask = supervised_direction(ff)([c for n in ff.all_neurons() for c in n.outgoing])
     assert int(mask.sum()) > 0 and int(plain_mask.sum()) > 0 and set(np.sign(plain[plain_mask])) <= {-1.0, 0.0, 1.0}
