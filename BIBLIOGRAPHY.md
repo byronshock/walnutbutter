@@ -75,8 +75,8 @@ AUTHORITY.md.
    Dendritic branches with their own sigmoidal nonlinearities make a
    pyramidal cell behave like a two-layer network; walnutbutter's point
    neuron, a weighted sum at one threshold, is the soma alone.
-   Not in `references/`: free in Elsevier's open archive, which refuses a
-   scripted download.
+   In `references/`: `PoiraziBrannonMel03.pdf`, the publisher's open-archive
+   copy, saved from a browser.
 
 8. Beniaguev, D., Segev, I., & London, M. (2021). Single cortical neurons as
    deep artificial neural networks. *Neuron*, 109(17), 2727-2739.e3.
