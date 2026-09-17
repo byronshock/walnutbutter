@@ -59,6 +59,7 @@ one. *Byron, September 17, 2026, 14:56 MDT [`docs/rewrite-answers.md` §2].*
   - [9.10 Un-sticking — off unless a run asks](#910-un-sticking--off-unless-a-run-asks)
   - [9.11 What is reported](#911-what-is-reported)
   - [9.12 The estimator's correlation with a supervised direction](#912-the-estimators-correlation-with-a-supervised-direction)
+  - [9.13 The rate teacher — specified, not built](#913-the-rate-teacher--specified-not-built)
 - [10. Local rules](#10-local-rules)
   - [10.1 The quash — off unless a run asks](#101-the-quash--off-unless-a-run-asks)
   - [10.2 The quash is the only local rule carried](#102-the-quash-is-the-only-local-rule-carried)
@@ -739,7 +740,7 @@ so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps 
 $$f = \frac{3x - 1}{1 + x^3}, \qquad x = \frac{t}{I}.$$
 
 It is $-1$ at $t = 0$, zero at $t = I/3$, $1$ at $t = I$ and nowhere higher, and falls as $3(I/t)^2$ after. A neuron that has never fired is at $t = \infty$, where $f = 0$: nothing is charged before its first spike. Of the engines: each computes $x$ and then $(3x-1)/(1 + x\cdot x\cdot x)$ in that order, so the objects and Rust agree to the bit and the arrays to a part in $10^9$.
-*Byron, September 17, 2026, 04:31 MDT: "With absolute refractory period ABS, we would like to be able to recognize spikes coming back after multiple hops. The desired ISI is 5.1 ms (hardcode for now). The teacher's existing reinforcement is MULTIPLIED by f(t-ISI) where f(0) = 1, f(infinity)=0, f(-ISI)= -1." And the same morning: "Please make implement the ISI mechanism I suggested, despite your reservations, in authority. Only the constants are not known." The cubic rational is the form Fable derived before leaving; it is the lowest power whose tail has a finite integral. **Open:** TARGET_ISI $= 5.1$ ms is hardcoded for now and is *not known* — Byron's words — and neither is whether $t$ should be measured from the neuron's own last spike. [RECORD §0.2, §1.3]*
+*Byron, September 17, 2026, 04:31 MDT: "With absolute refractory period ABS, we would like to be able to recognize spikes coming back after multiple hops. The desired ISI is 5.1 ms (hardcode for now). The teacher's existing reinforcement is MULTIPLIED by f(t-ISI) where f(0) = 1, f(infinity)=0, f(-ISI)= -1." And the same morning: "Please make implement the ISI mechanism I suggested, despite your reservations, in authority. Only the constants are not known." The cubic rational is the form Fable derived before leaving; it is the lowest power whose tail has a finite integral. **Open:** TARGET_ISI $= 5.1$ ms is hardcoded for now and is *not known* — Byron's words — and neither is whether $t$ should be measured from the neuron's own last spike. Under the rate teacher (§9.13) the constant acquires a third job, the target rate for a coded 1, beside this factor's peak and the deterministic drive's period (§0.12); whether that is one constant or three sharing a default is open, and until it is settled a sweep on any one of the three moves the other two. [RECORD §0.2, §1.3]*
 
 **7.5 The factor weighs every charge, and is on by default.** ISI_FACTOR is on. At each decision of neuron $j$ at time $t'$ both halves of the single-spike rule's charge are multiplied by the same $f$ — the decision's credit $c_j$ and its expectation $q_j$ alike, under either eligibility (§8) —
 
@@ -1203,6 +1204,66 @@ It is a measurement and it changes nothing: no rule reads $d$, and a run
 given no direction records none of this. A run resumed from a checkpoint
 measures the change from the weights of its **first** start, and its trace
 epochs count on from where it stopped. [RECORD §8]
+
+### 9.13 The rate teacher — specified, not built
+
+**Not in force.** This clause states what has been specified of the teacher
+meant to replace the external teacher the specification dropped, and marks
+what is not decided. Until the open parts below are settled, §9.1–§9.12 are
+the rule and nothing is built from this.
+
+The teacher's reinforcement is proportional to the difference between a
+neuron's observed firing rate and its target rate, soft-gated by the ISI
+factor (§7.4):
+
+$$\text{reinforcement} \;\propto\; f \cdot \big(r^{\text{obs}}_j - r^{\text{target}}_j\big).$$
+
+The target is the **drive rate** for a coded bit of 1 — one spike every
+TARGET_ISI — and the **exploration rate** for a 0: the hazard's rest rate
+(§7.2), which is new, is not zero, and is a set point rather than an extreme.
+Being a rate difference it needs no bit, so TEACHER_THRESHOLD (§5.10) has no
+job under it.
+
+**Open. Each part blocks a build:**
+
+- **Its name.**
+- **Its observation window**, the window the observed rate is taken over.
+  Three candidates stand in the constants: one interspike interval, a rate
+  read off a single spike; the rate memory's hundred epochs (§2.6); or the
+  epoch itself. The neuron keeps a rate memory over a window of its own
+  (§2.6), and whether the teacher's window is that one or another is the
+  same question asked twice.
+- **Its critic**, or whether a rate difference implies one at all.
+- **Whether it pays once at the horizon or continuously.** A teacher that
+  charges per decision has no single reading instant, and if it charges
+  continuously the epoch stops being a unit of learning (§3.9, §3.11) and
+  the constants quoted per epoch — BASELINE_RATE, RATE_MEMORY — lose their
+  unit.
+
+**What it collides with, and what must be settled with it:**
+
+- **§0.10.** That value says learning is paid by one global scalar and that no
+  rule in force hands a neuron an error of its own. A rate difference is a
+  per-neuron error. Either the differences are reduced to one scalar before
+  anything is paid, or §0.10 is rewritten with this clause.
+- **The 0-target is the firing clause's.** Setting it at the exploration rate
+  makes the teacher depend on ESCAPE_DELTA (§6.4), a link §6 and §9 do not
+  have today — and the rest rate carries the count's factor $\kappa(N)$
+  (§6.6), so the target for a 0 moves when the network is resized. Whether a
+  target that follows the network's size is wanted is open.
+- **TARGET_ISI acquires a third job** (§7.4).
+- **A neuron that has never fired stands at $f = 0$** (§7.4), so a gated
+  teacher charges it nothing. While the threshold and the escape margin
+  guaranteed a first spike this was harmless; a network that starts silent
+  cannot be taught out of silence by a teacher the factor gates.
+
+*Byron, September 17, 2026: the reinforcement rule and its soft gate are his,
+specified and not built [RECORD §0.2]; the targets are settled in direction
+and not in value. The old teacher this replaces, with its targets at the two
+extremes of what a neuron can do and the risk Byron asked to be recorded on
+September 14, 2026, is [RECORD §6.9] and is not carried. The four open parts
+are decision 7 of `docs/rewrite-decisions.md`, unanswered.*
+
 
 ## 10. Local rules
 
