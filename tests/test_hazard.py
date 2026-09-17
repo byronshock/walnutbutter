@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import random
 
@@ -11,6 +12,7 @@ from walnutbutter import fast
 from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import run_epoch
+from walnutbutter.constants import DECISION_MEMORY
 from walnutbutter.neuron import Neuron
 
 
@@ -164,8 +166,9 @@ def test_the_three_engines_agree_under_the_hazard_eligibility():
         assert teacher.rng.getstate() != random.Random(7).getstate()  # the stream really moved, on both sides alike
 
 
-def test_the_three_engines_agree_under_the_hebb_eligibility_with_escape_noise():
-    """§6.7's centred Hebbian rule (September 16, 2026) on the network the sweeps run, goo under escape noise: every
+def test_the_three_engines_agree_under_the_count_hebb_eligibility_with_escape_noise():
+    """§6.7's epoch form of the centred Hebbian rule (September 16, 2026; count_hebb since the single-spike rule of
+    September 17) on the network the sweeps run, goo under escape noise: every
     spike, every tally, every expected count and every weight in every engine. The rule is integer counts and one
     moving average, so the array engine agrees to the bit here, where the hazard's continuous score could not."""
     np = pytest.importorskip("numpy")
@@ -174,8 +177,8 @@ def test_the_three_engines_agree_under_the_hebb_eligibility_with_escape_noise():
     mesh.set_delta(0.7)
     twin.set_delta(0.7)
     net = ArrayNetwork(twin)
-    on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
-    on_net = Teacher(net, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+    on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
+    on_net = Teacher(net, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
     assert on_mesh.sigma == 0.0 and mesh.tally and net.tally
     ids = range(1, len(mesh.connections) + 1)
     before = [mesh.connections[i].weight for i in ids]
@@ -190,7 +193,7 @@ def test_the_three_engines_agree_under_the_hebb_eligibility_with_escape_noise():
     if fast.available():
         g = goo()
         g.set_delta(0.7)
-        teacher = Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+        teacher = Teacher(g, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
         parted = fast.compare(g, epochs=60, teacher=teacher)
         assert parted == [], parted
 
@@ -232,3 +235,212 @@ def test_a_checkpoint_keeps_the_widths(tmp_path):
     assert [n.delta for n in back.all_neurons()] == [n.delta for n in g.all_neurons()]
     assert [n.exposed_since for n in back.all_neurons()] == [n.exposed_since for n in g.all_neurons()]
     assert [(c.trace, c.trace_at) for c in back.connections.values()] == [(c.trace, c.trace_at) for c in g.connections.values()]
+
+
+def test_the_evidence_accumulator_is_the_neuron_at_tau_infinity_in_every_engine(tmp_path):
+    """§5.1 (Byron, September 17, 2026): the evidence accumulator is TAU = inf, nothing leaks, and no engine evaluates
+    the decay. The hazard's trace is then the count of the arrivals the target integrated along the synapse since its
+    last spike, the potential is the weighted count of that evidence wherever the floor has not bitten, and with
+    learning on the three engines agree as they do at TAU 2: every spike, scores and weights to a part in a billion in
+    the arrays and to the bit in Rust. A checkpoint carries the infinity."""
+    np = pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    from walnutbutter.persistence import checkpoint
+    was = Neuron.tau
+    Neuron.tau = math.inf
+    try:
+        # the trace is a count and the potential a weighted count: no inhibition, so the floor never bites
+        g = Goo(count=20, across=4, seed=3, weight=None, weight_range=(0.1, 1.0), projection=1.0, wiring="zones-equal")
+        g.rule, g.drive = "reinforce", "rate"
+        g.set_delta(0.7)
+        seen = []
+        original = Neuron.decide
+
+        def watched(self, now):
+            if self.delta > 0.0 and not self.refractory_at(now):
+                seen.append((self.potential_at(now), [(c.weight, c.trace) for c in self.incoming]))
+            return original(self, now)
+
+        Neuron.decide = watched
+        try:
+            rng = random.Random(5)
+            for _ in range(5):
+                run_epoch(g, verbose=False, rng=rng)
+        finally:
+            Neuron.decide = original
+        assert len(seen) > 100 and any(p > 0.0 for p, _ in seen)
+        for p, synapses in seen:
+            assert p == pytest.approx(sum(w * x for w, x in synapses), abs=1e-9)
+            assert all(x == int(x) for _, x in synapses)
+        # two arrivals down one synapse into a target that cannot fire: the trace counts both, the potential is twice
+        # the weight and does not decay, and the decision's score sum took the trace without a decay factor
+        from walnutbutter.propagation import Schedule
+        c = next(iter(g.connections.values()))
+        j = c.target
+        j.threshold = 50.0 * c.weight  # the width was set from the starting threshold, so the hazard is tiny but positive
+        j.potential, c.trace, c.score = 0.0, 0.0, 0.0
+        for other in j.incoming:
+            other.trace = 0.0
+        before, later = j.spikes, g.time + 1000.0  # well past the epoch the goo has run, and every refractory period
+        s = Schedule()
+        s.signal(c, later)
+        s.signal(c, later + 20.0)
+        s.run(later + 100.0)
+        assert j.spikes == before and c.trace == 2.0 and j.potential == 2.0 * c.weight
+        assert j.potential_at(later + 5000.0) == j.potential  # nothing leaks
+        assert c.score == 0.0 and c.noted != 0.0  # the two silent decisions were noted, not charged: the settle is lazy
+        g.settle_scores()  # as the read does first
+        assert c.score != 0.0 and math.isfinite(c.score) and c.trace == 2.0  # the debit is in, the arrivals stay open
+        # the three engines, learning on
+        mesh, twin = goo(), goo()
+        mesh.set_delta(0.7)
+        twin.set_delta(0.7)
+        net = ArrayNetwork(twin)
+        on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="hazard", target="copy", homeostasis=0.01, unstick=0.1)
+        on_net = Teacher(net, seed=7, rule="reinforce", eligibility="hazard", target="copy", homeostasis=0.01, unstick=0.1)
+        ids = range(1, len(mesh.connections) + 1)
+        for _ in range(40):
+            on_mesh.epoch(verbose=False)
+            on_net.epoch(verbose=False)
+            assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+            assert np.allclose([mesh.connections[i].score for i in ids], net.score, rtol=1e-9, atol=0.0)
+            assert np.allclose([mesh.connections[i].weight for i in ids], net.weight, rtol=1e-9, atol=0.0)
+        assert any(c.score != 0.0 for c in mesh.connections.values())
+        assert all(c.trace == int(c.trace) for c in mesh.connections.values())
+        data = checkpoint(mesh, tmp_path / "accumulator.json")
+        assert data["tau"] == math.inf
+        with open(tmp_path / "accumulator.json") as f:
+            assert json.load(f)["tau"] == math.inf
+        if fast.available():
+            g = goo()
+            g.set_delta(0.7)
+            teacher = Teacher(g, seed=7, rule="reinforce", eligibility="hazard", target="copy", homeostasis=0.01, unstick=0.1)
+            parted = fast.compare(g, epochs=60, teacher=teacher)
+            assert parted == [], parted
+    finally:
+        Neuron.tau = was
+
+
+@pytest.mark.parametrize("eligibility", ["hazard", "hebb"])
+def test_the_single_spike_rule_settles_per_arrival_what_the_decisions_charge(eligibility):
+    """§6.7 (Byron, September 17, 2026): under the evidence accumulator every synapse's score equals the per-decision
+    charge (c - q) x summed over its target's decisions -- kept here independently, decision by decision, from the
+    engine's traces and the rule's own (c, q) -- and the engine settles it lazily per arrival, at the spike, the floor
+    and the read, with no loop over a fan-in at a decision. The arrivals stay open across reads ("Let them run!"), each
+    read paying what was charged since the last; under hebb the neuron's expectation is followed alongside."""
+    was = Neuron.tau
+    Neuron.tau = math.inf
+    try:
+        g = goo()
+        g.set_delta(0.7)
+        if eligibility == "hebb":
+            g.centre(True)
+        direct = {c: 0.0 for c in g.connections.values()}
+        mirror = {n: None for n in g.all_neurons()}
+        count = {n: 0 for n in g.all_neurons()}
+        charged, open_at_a_read = [0], [False]
+        original = Neuron.decide
+
+        def decide(self, now):
+            if self.refractory_at(now):
+                return original(self, now)
+            traces = [(c, c.trace) for c in self.incoming if c.trace != 0.0]  # x_ij(t') as the decision sees it
+            m = self.expected_spikes(now) if self.delta > 0.0 else 0.0
+            fired = original(self, now)
+            if eligibility == "hebb":
+                y = 1.0 if fired else 0.0
+                count[self] += 1
+                p = mirror[self]
+                if p is None:
+                    mirror[self] = y
+                    assert self.expectation == y
+                    return fired  # the first decision charges nothing
+                c_, q = y, p
+                mirror[self] = p + max(DECISION_MEMORY, 1.0 / count[self]) * (y - p)
+                assert self.expectation == mirror[self]
+            elif m > 0.0:
+                c_, q = (m * math.exp(-m) / -math.expm1(-m), 0.0) if fired else (0.0, m)
+            else:
+                return fired
+            for c, x in traces:
+                direct[c] += (c_ - q) * x
+                charged[0] += 1
+            return fired
+
+        Neuron.decide = decide
+        try:
+            rng = random.Random(5)
+            for _ in range(30):
+                for c in direct:
+                    direct[c] = 0.0  # the read pays and clears the score; what was charged before is not charged again
+                run_epoch(g, verbose=False, rng=rng)
+                g.settle_scores()  # as the pay does first: the open arrivals' debit into the score
+                for c in g.connections.values():
+                    assert c.score == pytest.approx(direct[c], rel=1e-9, abs=1e-12)
+                open_at_a_read[0] |= any(c.trace != 0.0 for c in g.connections.values())
+        finally:
+            Neuron.decide = original
+        assert charged[0] > 1000 and open_at_a_read[0]  # arrivals stay open across a read: "Let them run!"
+        if eligibility == "hebb":
+            assert all(n.expectation is not None for n in g.all_neurons())
+    finally:
+        Neuron.tau = was
+
+
+@pytest.mark.parametrize("tau", [2.0, math.inf])
+def test_the_three_engines_agree_under_the_hebb_eligibility(tau):
+    """§6.7's single-spike rule (September 17, 2026) on goo under escape noise, per decision under the leak and per
+    arrival under the evidence accumulator: every spike, decision count and expectation in every engine, scores and
+    weights to a part in a billion in the arrays and to the bit in Rust, learning on."""
+    np = pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    was = Neuron.tau
+    Neuron.tau = tau
+    try:
+        mesh, twin = goo(), goo()
+        mesh.set_delta(0.7)
+        twin.set_delta(0.7)
+        net = ArrayNetwork(twin)
+        on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+        on_net = Teacher(net, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+        assert on_mesh.sigma == 0.0 and mesh.centred and net.centred and not mesh.tally
+        ids = range(1, len(mesh.connections) + 1)
+        for _ in range(40):
+            on_mesh.epoch(verbose=False)
+            on_net.epoch(verbose=False)
+            assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+            assert [n.decisions for n in mesh.all_neurons()] == net.decisions.tolist()
+            mine = [-1.0 if n.expectation is None else n.expectation for n in mesh.all_neurons()]
+            assert np.allclose(mine, np.where(np.isnan(net.expectation), -1.0, net.expectation), rtol=1e-12, atol=0.0)
+            assert np.allclose([mesh.connections[i].score for i in ids], net.score, rtol=1e-9, atol=1e-12)
+            assert np.allclose([mesh.connections[i].weight for i in ids], net.weight, rtol=1e-9, atol=0.0)
+        assert any(c.score != 0.0 for c in mesh.connections.values())
+        assert all(n.expectation is not None for n in mesh.all_neurons())
+        if fast.available():
+            g = goo()
+            g.set_delta(0.7)
+            teacher = Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
+            parted = fast.compare(g, epochs=60, teacher=teacher)
+            assert parted == [], parted
+    finally:
+        Neuron.tau = was
+
+
+def test_the_hebb_eligibility_needs_no_escape_noise():
+    """§6.7: the centred rule charges the threshold's decisions too -- the trace is kept for it -- and the objects and Rust agree."""
+    was = Neuron.tau
+    Neuron.tau = math.inf
+    try:
+        g = goo()
+        assert not g.hazard
+        teacher = Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.0, unstick=0.0)
+        assert g.traced and all(n.traced and n.centred for n in g.all_neurons())
+        if fast.available():
+            parted = fast.compare(g, epochs=30, teacher=teacher)
+            assert parted == [], parted
+        else:
+            for _ in range(30):
+                teacher.epoch(verbose=False)
+        assert any(c.score != 0.0 for c in g.connections.values()) and any(n.expectation is not None for n in g.all_neurons())
+    finally:
+        Neuron.tau = was

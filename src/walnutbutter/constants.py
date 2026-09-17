@@ -186,9 +186,10 @@ TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron,
 # sweep, {1, 2, 4}; "We will have to sweep for temperature eventually"
 ELIGIBILITY = "perturb"  # what the global reward acts on when the threshold decides (learning.ELIGIBILITIES): the
 # pre-alpha's. The others: wrong_hebb, the +-1 by whether the target fired (the rule called hebb until September 16, 2026,
-# renamed because it is uncentred and points nowhere); hebb, the centred Hebbian term -- what each synapse delivered this
-# epoch times its target's spike count minus the target's own expectation of it (COUNT_MEMORY), Williams's y - y_bar
-# (§6.7); and hazard. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA
+# renamed because it is uncentred and points nowhere); hebb, the centred Hebbian term charged at every decision of the
+# target -- its spike or silence minus its own per-decision expectation of it (DECISION_MEMORY), times what the synapse has
+# in its potential -- the single-spike rule of September 17, 2026 (§6.7); count_hebb, the epoch form hebb was until that
+# day -- what each synapse delivered this epoch times the epoch's count minus its expectation (COUNT_MEMORY); and hazard. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA
 # > 0, §5.2) unless told otherwise -- the eligibility every measurement at 0.455 was made with; additive noise on top of
 # the hazard was never measured (Claude's reading of the default Byron set, September 15, 2026)
 LATE = "count"  # what a signal arriving after its target fired earns (learning.LATE_RULES)
@@ -203,7 +204,14 @@ UNSTICK_TARGET = 0.5  # firing rate the un-sticking aims for
 # THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
 # (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.
 RATE_MEMORY = 0.01  # per-epoch update of a neuron's running firing rate (about the last 100 epochs)
-COUNT_MEMORY = 0.01  # per-epoch update of a neuron's expected spike count, n_bar_j, which the hebb eligibility centres on
-# (AUTHORITY.md §6.7, September 16, 2026): the rate memory's window, about the last 100 epochs. It starts at the first
-# count observed in an unforced epoch, so a neuron's first epoch moves nothing rather than everything.
+COUNT_MEMORY = 0.01  # per-epoch update of a neuron's expected spike count, n_bar_j, which the count_hebb eligibility centres
+# on -- the epoch form hebb was until September 17, 2026 (AUTHORITY.md §6.7): the rate memory's window, about the last 100
+# epochs. It starts at the first count observed in an unforced epoch, so a neuron's first epoch moves nothing rather than
+# everything.
+DECISION_MEMORY = 1e-4  # per-decision update of a neuron's expectation of its own spike, p_hat_j, which the hebb eligibility
+# charges at every decision (AUTHORITY.md §6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed
+# per decision in this architecture"): about the last 10,000 decisions -- at a wave a hop, some 170 epochs of 100 ms, the
+# count memory's window and a little more -- so it is the neuron's label-blind expectation of itself. Until that many
+# decisions have been seen the estimate is their plain mean (a rate of 1/n at the n-th), and the first decision sets it and
+# charges nothing. A starting value, to be swept.
 STUCK_BELOW, STUCK_ABOVE = 0.01, 0.99  # a neuron firing less or more often than this is "stuck"

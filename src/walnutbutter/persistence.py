@@ -81,7 +81,12 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
         "floors": [n.minimum_potential for n in grid.all_neurons()],
         "rates": [n.rate for n in grid.all_neurons()],
-        "expected_counts": [n.expected_count for n in grid.all_neurons()],  # n_bar_j, the hebb eligibility's expectation (§6.7)
+        "expected_counts": [n.expected_count for n in grid.all_neurons()],  # n_bar_j, the count_hebb eligibility's expectation (§6.7)
+        # the single-spike rule (§6.7, September 17, 2026): p_hat_j, the decisions to date, and E_j, the spikes expected since the
+        # neuron's last spike, so a resumed run charges from where it was
+        "expectations": [n.expectation for n in grid.all_neurons()],
+        "decisions": [n.decisions for n in grid.all_neurons()],
+        "expected_since_spike": [n.expected for n in grid.all_neurons()],
         # the state the clock leaves behind, so a resumed run continues rather than restarts
         "potentials": [n.potential for n in grid.all_neurons()],
         "fired_at": [n.fired_at for n in grid.all_neurons()],
@@ -96,6 +101,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "deltas": [n.delta for n in grid.all_neurons()],
         "exposed_since": [n.exposed_since for n in grid.all_neurons()],
         "traces": [[grid.connections[i].trace, grid.connections[i].trace_at] for i in range(1, len(grid.connections) + 1)],
+        "notes": [grid.connections[i].noted for i in range(1, len(grid.connections) + 1)],  # B_ij, each open arrival's note (§6.7)
         "pending": [[time, connection.id] for time, connection in grid.schedule.pending()],
         "dopamine": None if grid.dopamine is None else grid.dopamine.state(),
         "rule": grid.rule,  # which rule the schedule's hook serves: dopamine, or teacher (eligibility for the read)
@@ -362,6 +368,7 @@ def _restore_clock(grid, data: dict) -> None:
     grid.escape_delta = data.get("escape_delta", 0.0)  # escape noise (§5.2); older checkpoints ran the threshold
     for neuron, delta in zip(neurons, data.get("deltas", [])):
         neuron.delta = delta
+        neuron.traced = delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
     from .network import escape_scale
     grid.escape_scale = escape_scale(len(neurons))  # §5.2: the count's scaling of every hazard is a rule, recomputed not stored
     for neuron in neurons:
@@ -370,6 +377,14 @@ def _restore_clock(grid, data: dict) -> None:
         neuron.exposed_since = since
     for connection_id, (trace, at) in enumerate(data.get("traces", []), start=1):
         grid.connections[connection_id].trace, grid.connections[connection_id].trace_at = trace, at
+    for connection_id, noted in enumerate(data.get("notes", []), start=1):
+        grid.connections[connection_id].noted = noted
+    for neuron, expectation in zip(neurons, data.get("expectations", [])):
+        neuron.expectation = expectation
+    for neuron, decisions in zip(neurons, data.get("decisions", [])):
+        neuron.decisions = decisions
+    for neuron, expected in zip(neurons, data.get("expected_since_spike", [])):
+        neuron.expected = expected
     grid.schedule.clear()
     for time, connection_id in data.get("pending", []):
         grid.schedule.signal(grid.connections[connection_id], time)

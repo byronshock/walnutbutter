@@ -36,7 +36,9 @@ class Connection:
         self.trace = 0.0  # under escape noise (AUTHORITY.md §6.7): the charge this synapse still has in its target's
         # potential, brought up to trace_at -- the derivative of the target's margin with respect to this weight
         self.trace_at = 0.0  # when that trace was last brought up to date (lazy, like the leak)
-        self.score = 0.0  # the hazard eligibility this epoch: the sum over the target's decisions of e_j(t) * trace(t)
+        self.score = 0.0  # the eligibility this epoch (§6.7): the sum over the target's decisions of (c - q) * trace
+        self.noted = 0.0  # under the evidence accumulator (§5.1, §6.7): B_ij, the sum over this synapse's open arrivals of
+        # the target's expected spikes since its last spike as each arrived, so the debit settles lazily, per arrival
 
     def joins(self, source: Neuron, target: Neuron) -> bool:
         """True if this connection runs from `source` to `target` (direction matters)."""

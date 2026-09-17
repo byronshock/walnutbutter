@@ -161,9 +161,11 @@ def test_teacher_validates_tracks_and_reports():
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
     assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
-    for hebbian in ("wrong_hebb", "hebb"):
-        assert Teacher(grid, eligibility=hebbian).sigma == 0.0  # no injected noise for either Hebbian variant
-    assert grid.tally  # the last Teacher, hebb's, switched the tally of what each synapse delivers on (§6.7)
+    for hebbian in ("wrong_hebb", "hebb", "count_hebb"):
+        assert Teacher(grid, eligibility=hebbian).sigma == 0.0  # no injected noise for any Hebbian variant
+    assert grid.tally and not grid.centred  # the last Teacher, count_hebb's, switched the tally of what each synapse delivers on (§6.7)
+    Teacher(grid, eligibility="hebb")
+    assert grid.centred and not grid.tally and all(n.centred and n.traced for n in grid.all_neurons())  # the single-spike rule
 
 
 def test_teacher_with_seed_is_reproducible():
@@ -453,25 +455,26 @@ def test_unstick_reaches_every_stuck_neuron_and_leaves_a_forced_one_alone():
     assert all(n.threshold == before[n] for n in grid.all_neurons() if n not in (interior, out))
 
 
-def test_the_hebb_eligibility_is_what_the_synapse_delivered_times_the_centred_count():
-    """§6.7 (September 16, 2026): e_ij = x_ij (n_j - n_bar_j) -- the signals the target integrated along the synapse this
+def test_the_count_hebb_eligibility_is_what_the_synapse_delivered_times_the_centred_count():
+    """§6.7's epoch form (September 16, 2026; count_hebb since the single-spike rule of September 17): e_ij = x_ij (n_j -
+    n_bar_j) -- the signals the target integrated along the synapse this
     epoch, times its spike count minus its own running expectation. A forced target is skipped, a target with no
     expectation yet moves nothing, and the rule carries its own tally, so late = count and no leaky trace."""
     from walnutbutter.grid import GridOfNeurons
     grid = GridOfNeurons(across=8, rows=4, weight=None, seed=4, omega=0)
     grid.rule, grid.drive = "reinforce", "rate"
-    teacher = Teacher(grid, eligibility="hebb", seed=3, rule="reinforce")
+    teacher = Teacher(grid, eligibility="count_hebb", seed=3, rule="reinforce")
     assert grid.tally and teacher.sigma == 0.0
     run_epoch(grid, verbose=False)
     tallies = {c.id: c.eligibility for c in grid.connections.values()}
     assert any(tallies.values())  # signals were delivered, and counted
     assert all(n.expected_count is None for n in grid.all_neurons())  # nothing has been seen yet
     before = {c.id: c.weight for c in grid.connections.values()}
-    assert reinforce(grid, advantage=0.7, lr=0.1, eligibility="hebb") == 0  # a first epoch centres on itself
+    assert reinforce(grid, advantage=0.7, lr=0.1, eligibility="count_hebb") == 0  # a first epoch centres on itself
     assert {c.id: c.weight for c in grid.connections.values()} == before
     for k, n in enumerate(grid.all_neurons()):
         n.expected_count = 0.5 * (k % 5)  # set by hand, so the arithmetic can be checked to the bit
-    changed = reinforce(grid, advantage=0.7, lr=0.1, eligibility="hebb")
+    changed = reinforce(grid, advantage=0.7, lr=0.1, eligibility="count_hebb")
     moved = 0
     for c in grid.connections.values():
         t = c.target

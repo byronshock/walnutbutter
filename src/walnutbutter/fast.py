@@ -17,7 +17,8 @@ the same bits. `compare()` is the harness for that.
 from __future__ import annotations
 
 from .constants import (
-    COUNT_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK,
+    COUNT_MEMORY,
+    DECISION_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK,
     UNSTICK_TARGET, WEIGHT_RANGE,
 )
 from .neuron import Neuron
@@ -87,6 +88,12 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
     engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
+    # the single-spike rule (§6.7): the centred rule when the grid runs it, and each neuron's expectation and decisions
+    # to date, so a resumed run charges from where it was; the traces, notes and expected counts start at zero with
+    # the traces, as the engine holds no signal in a potential yet
+    engine.set_centred(bool(getattr(grid, "centred", False)), DECISION_MEMORY)
+    engine.set_centred_state([float("nan") if n.expectation is None else n.expectation for n in neurons],
+                             [n.decisions for n in neurons], [0.0] * len(neurons))
     return engine, neurons, index
 
 
@@ -247,10 +254,10 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
                 baseline = reward
             if teacher.eligibility == "perturb":
                 engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
-            elif teacher.eligibility == "hazard":
-                engine.reinforce_hazard(reward - baseline, teacher.lr)
-            elif teacher.eligibility == "hebb":
-                engine.reinforce_hebb(reward - baseline, teacher.lr, book.centred())
+            elif teacher.eligibility in ("hazard", "hebb"):
+                engine.reinforce_scores(reward - baseline, teacher.lr)
+            elif teacher.eligibility == "count_hebb":
+                engine.reinforce_count_hebb(reward - baseline, teacher.lr, book.centred())
             else:
                 engine.reinforce_wrong_hebb(reward - baseline, teacher.lr)
             book.step()
@@ -271,12 +278,27 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             theirs = list(engine.noises())
             if mine != theirs:
                 parted.append((epoch, f"noise differs on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
-        if teacher is not None and teacher.eligibility == "hazard":
+        if teacher is not None and teacher.eligibility in ("hazard", "hebb"):
             mine = [c.score for c in edges]
             theirs = list(engine.scores())
             if mine != theirs:
-                parted.append((epoch, f"hazard scores differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
+                parted.append((epoch, f"scores differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
+            mine = [c.noted for c in edges]
+            theirs = list(engine.notes())
+            if mine != theirs:
+                parted.append((epoch, f"notes differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
+            mine = [n.expected for n in neurons]
+            theirs = list(engine.expected_since_spike())
+            if mine != theirs:
+                parted.append((epoch, f"expected counts since the last spike differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
         if teacher is not None and teacher.eligibility == "hebb":
+            mine = [n.expectation for n in neurons]
+            theirs = [None if e != e else e for e in engine.expectations()]
+            if mine != theirs:
+                parted.append((epoch, f"expectations differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
+            if [n.decisions for n in neurons] != list(engine.decision_counts()):
+                parted.append((epoch, "decision counts differ"))
+        if teacher is not None and teacher.eligibility == "count_hebb":
             mine = [c.eligibility for c in edges]
             theirs = list(engine.eligibilities())
             if mine != theirs:
@@ -339,9 +361,10 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     order. Without it the bits come from the grid's own stream, which a differently built
     network consumes differently.
 
-    `eligibility` is hebb (the centred Hebbian rule of §6.7: the engine tallies what each
-    synapse delivered and the book keeps each neuron's expected count; sigma is then 0, as
-    the Teacher sets it), wrong_hebb (the ±1 rule it replaced on September 16, 2026, sigma
+    `eligibility` is hebb (the single-spike rule of §6.7, September 17, 2026: every neuron
+    charges its decisions against its own per-decision expectation; sigma is then 0, as
+    the Teacher sets it), count_hebb (the epoch form hebb was until then: the engine tallies
+    what each synapse delivered and the book keeps each neuron's expected count), wrong_hebb (the ±1 rule it replaced on September 16, 2026, sigma
     0 too), perturb, which needs a positive `sigma` and draws its noise per wave (§6.1)
     from `random.Random(seed)`, the stream a Teacher with that seed would use, so a Rust
     run and a Python run of the same seed take the same draws, or hazard, which needs the
@@ -386,8 +409,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
 
     from .learning import TARGETS
 
-    if eligibility not in ("wrong_hebb", "hebb", "perturb", "hazard"):
-        raise ValueError(f"eligibility must be hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
+    if eligibility not in ("wrong_hebb", "hebb", "count_hebb", "perturb", "hazard"):
+        raise ValueError(f"eligibility must be hebb, count_hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
     if eligibility == "perturb" and sigma <= 0.0:
         raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
     if eligibility == "hazard" and not grid.hazard:
@@ -399,11 +422,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")
     if patterns is not None:
         grid.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
+    grid.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions, as a Teacher would set
 
     engine, neurons, index = build(
         grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
         hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau, weight_range=grid.weight_range,
-        sigma=sigma, explore_rng=explore_rng, earn=eligibility == "hebb",  # the tally of §6.7's hebb eligibility
+        sigma=sigma, explore_rng=explore_rng, earn=eligibility == "count_hebb",  # the tally of §6.7's epoch form
     )
     row = grid.output_row()
     out = [index[neuron] for neuron in row]
@@ -443,7 +467,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         grid.epoch += 1
         events = grid.input_schedule()
         grid.horizon = grid.time + grid.interval
-        engine.reset(False, eligibility == "hebb")  # a new epoch tallies afresh
+        engine.reset(False, eligibility == "count_hebb")  # a new epoch tallies afresh
         if events:
             engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
         engine.run(grid.horizon)
@@ -451,12 +475,12 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         reward = _reward(engine, grid, out, critic, want_of)
         if baseline is None:
             baseline = reward
-        if eligibility == "hazard":
-            engine.reinforce_hazard(reward - baseline, lr)
+        if eligibility in ("hazard", "hebb"):
+            engine.reinforce_scores(reward - baseline, lr)
         elif sigma > 0.0:
             engine.reinforce_perturb(reward - baseline, lr, sigma)
-        elif eligibility == "hebb":
-            engine.reinforce_hebb(reward - baseline, lr, book.centred())
+        elif eligibility == "count_hebb":
+            engine.reinforce_count_hebb(reward - baseline, lr, book.centred())
         else:
             engine.reinforce_wrong_hebb(reward - baseline, lr)
         book.step()
@@ -478,6 +502,8 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
             probe(epoch + 1, engine, grid, out, book)
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "expected_counts": book.expected, "thresholds": book.thresholds,
+              # the single-spike rule's expectations and decisions to date (§6.7), so a continuation charges from where it was
+              "expectations": [None if e != e else e for e in engine.expectations()], "decisions": list(engine.decision_counts()),
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
               "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
               "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given

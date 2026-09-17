@@ -146,6 +146,7 @@ class Schedule:
         """
         waves = [] if waves is None else waves
         hop = Neuron.hop()
+        accumulating = Neuron.tau == math.inf  # the evidence accumulator (§5.1): nothing leaks, no decay is evaluated
         heap = self._heap
         while heap and before(heap[0][0], until):
             first = heap[0][0]
@@ -169,8 +170,12 @@ class Schedule:
                     target = payload.target
                     if target.receive(payload.weight, time):
                         payload.last_signal = time
-                        if target.delta > 0.0:  # escape noise: what this synapse now has in the potential (§6.7)
-                            payload.trace = payload.trace * math.exp(-(time - payload.trace_at) / Neuron.tau) + 1.0
+                        if target.traced:  # what this synapse now has in the potential (§6.7)
+                            if accumulating:
+                                payload.trace += 1.0  # the count of arrivals since the target's last spike (§5.1)
+                                payload.noted += target.expected  # the debit counts from here: the spikes expected so far
+                            else:
+                                payload.trace = payload.trace * math.exp(-(time - payload.trace_at) / Neuron.tau) + 1.0
                             payload.trace_at = time
                         if trace:
                             payload.eligibility += 1.0  # presynaptic activity, as this target saw it

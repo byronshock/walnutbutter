@@ -10,6 +10,8 @@ build on this; the learning code works on either.
 
 from __future__ import annotations
 
+import math
+
 import random
 from typing import Iterable
 
@@ -96,7 +98,9 @@ class Network:
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
         self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
-        # the x_ij of the hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
+        # the x_ij of the count_hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
+        self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
+        # the single-spike rule). A Teacher with that eligibility switches it on, in whichever engine (centre)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
         self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
@@ -134,6 +138,34 @@ class Network:
         """True when the firing decision is a draw (AUTHORITY.md §5.2): set_delta gave this network a positive width."""
         return self.escape_delta > 0.0
 
+    @property
+    def traced(self) -> bool:
+        """Whether each synapse keeps its trace of what it has in its target's potential (§6.7): escape noise, or the centred rule."""
+        return self.hazard or self.centred
+
+    def centre(self, on: bool) -> None:
+        """The hebb eligibility (§6.7, the single-spike rule): every neuron charges its decisions against its own expectation."""
+        self.centred = bool(on)
+        for neuron in self._everyone():
+            neuron.centred = self.centred
+            neuron.traced = self.centred or neuron.delta > 0.0
+
+    def settle_scores(self) -> None:
+        """Under the evidence accumulator (§5.1), bring every open arrival's debit into its synapse's score (§6.7).
+
+        The pay at the read calls it first, so the score holds what the epoch's
+        decisions charged; the arrivals stay open, their debit counting from
+        now. Under the leak the scores are charged per decision and there is
+        nothing to settle.
+        """
+        if Neuron.tau != math.inf or not self.traced:
+            return
+        for connection in self.connections.values():
+            if connection.trace != 0.0:
+                expected = connection.target.expected
+                connection.score -= connection.trace * expected - connection.noted
+                connection.noted = connection.trace * expected
+
     def set_delta(self, delta: float) -> None:
         """Escape noise (AUTHORITY.md §5.2): every neuron's decision is `delta` times its starting threshold wide; 0 turns it off.
 
@@ -153,6 +185,7 @@ class Network:
             # has a collapsed axis with no width to quote on it, and keeps the deterministic rule
             neuron.delta = delta * neuron.threshold if neuron.threshold > 0.0 else 0.0
             neuron.escape_scale = self.escape_scale
+            neuron.traced = neuron.delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
 
     def scale_with_fan_in(
         self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN
@@ -540,9 +573,12 @@ class Network:
         if self.rule in ("teacher", "adaline") or self.tally:
             for connection in self.connections.values():
                 connection.eligibility = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
-        if self.hazard:
+        if self.traced:
+            accumulating = Neuron.tau == math.inf
             for connection in self.connections.values():
-                connection.score = 0.0  # the hazard eligibility is the epoch's (§6.7); the trace is the potential's and stays
+                connection.score = 0.0  # the score is the epoch's (§6.7); the trace is the potential's and stays
+                if accumulating:
+                    connection.noted = connection.trace * connection.target.expected  # an open arrival's debit counts from here
         self.waves = []
 
     def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
@@ -568,9 +604,8 @@ class Network:
             summed = neuron.potential + draw
             if summed < neuron.minimum_potential:
                 summed = neuron.minimum_potential
-                if neuron.delta > 0.0:
-                    for connection in neuron.incoming:
-                        connection.trace = 0.0  # the floor bit: the potential is the floor whatever the weights (§6.7)
+                if neuron.traced:
+                    neuron.clear_arrivals()  # the floor bit: the potential is the floor whatever the weights (§6.7)
             neuron.potential = summed
 
     def _explore(self, time: float) -> None:

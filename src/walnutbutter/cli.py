@@ -585,8 +585,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--eligibility",
         choices=ELIGIBILITIES,
         default=None,
-        help=f"what the global reward acts on: the neuron's exploration noise (perturb); the centred Hebbian term, what each "
-        f"synapse delivered times its target's spike count minus the target's own expectation of it (hebb); the uncentred "
+        help=f"what the global reward acts on: the neuron's exploration noise (perturb); the centred Hebbian term charged at "
+        f"every decision, the target's spike or silence minus its own expectation of it times what the synapse has in its "
+        f"potential (hebb, the single-spike rule of September 17, 2026); its epoch form, what each synapse delivered this "
+        f"epoch times the target's count minus its expectation (count_hebb, hebb until that day); the uncentred "
         f"+-1 by whether the target fired (wrong_hebb, the rule hebb replaced on September 16, 2026); or the score of the "
         f"escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: hazard "
         f"when the network has escape noise, else {ELIGIBILITY})",
@@ -1106,7 +1108,7 @@ def _run(args: argparse.Namespace) -> int:
                 effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
                 if effective_sigma or args.delta:
                     exploring = ""
-                elif args.eligibility == "hebb":
+                elif args.eligibility in ("hebb", "count_hebb"):
                     exploring = " (no injected noise: the centred Hebbian rule, explored by whatever varies the counts)"
                 else:
                     exploring = " (no exploration: reward-modulated Hebb, not a policy gradient)"

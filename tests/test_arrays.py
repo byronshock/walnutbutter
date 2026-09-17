@@ -100,11 +100,12 @@ def test_teaching_moves_both_engines_identically(late, eligibility):
     assert a.record()["stuck_on"] == b.record()["stuck_on"]
 
 
-def test_the_hebb_eligibility_moves_both_engines_identically():
-    """§6.7's centred Hebbian rule (September 16, 2026): the tally of what each synapse delivered, every neuron's expected
-    count and the weights agree between the engines, to the bit -- the rule is integers and one moving average."""
+def test_the_count_hebb_eligibility_moves_both_engines_identically():
+    """§6.7's epoch form of the centred Hebbian rule (September 16, 2026; count_hebb since September 17): the tally of what
+    each synapse delivered, every neuron's expected count and the weights agree between the engines, to the bit -- the
+    rule is integers and one moving average."""
     mesh, net = pair(seed=5)
-    kw = dict(seed=7, eligibility="hebb", homeostasis=0.01, unstick=0.1)
+    kw = dict(seed=7, eligibility="count_hebb", homeostasis=0.01, unstick=0.1)
     a, b = Teacher(mesh, **kw), Teacher(net, **kw)
     assert mesh.tally and net.tally and a.sigma == b.sigma == 0.0
     before = list(weights(mesh))

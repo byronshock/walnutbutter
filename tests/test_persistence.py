@@ -49,6 +49,33 @@ def test_a_checkpoint_keeps_the_expected_counts(tmp_path):
     assert [n.expected_count for n in back.all_neurons()] == counts
 
 
+def test_a_checkpoint_keeps_the_single_spike_rules_state(tmp_path):
+    """§6.7 (September 17, 2026): p_hat_j, the decisions to date, E_j and each synapse's note round-trip beside the traces."""
+    import math
+    from walnutbutter.neuron import Neuron
+    was = Neuron.tau
+    Neuron.tau = math.inf
+    try:
+        grid = main(across=8, rows=4, seed=3)
+        grid.set_delta(0.7)
+        teacher = Teacher(grid, seed=3, rule="reinforce", eligibility="hebb")
+        for _ in range(5):
+            teacher.epoch(verbose=False)
+        neurons = list(grid.all_neurons())
+        assert any(n.expectation is not None for n in neurons) and any(n.decisions for n in neurons)
+        assert any(c.noted != 0.0 for c in grid.connections.values())
+        data = checkpoint(grid, tmp_path / "s.json", teacher)
+        assert data["learning"]["eligibility"] == "hebb" and len(data["notes"]) == len(grid.connections)
+        back, _ = restore(tmp_path / "s.json")
+        assert [n.expectation for n in back.all_neurons()] == [n.expectation for n in neurons]
+        assert [n.decisions for n in back.all_neurons()] == [n.decisions for n in neurons]
+        assert [n.expected for n in back.all_neurons()] == [n.expected for n in neurons]
+        assert [c.noted for c in back.connections.values()] == [c.noted for c in grid.connections.values()]
+        assert all(n.traced for n in back.all_neurons())  # escape noise keeps the trace, restored with the widths
+    finally:
+        Neuron.tau = was
+
+
 def test_checkpoint_is_written_atomically_and_is_json(tmp_path):
     grid = GridOfNeurons(across=4, rows=3, seed=1)
     path = tmp_path / "w.json"

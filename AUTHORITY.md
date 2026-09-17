@@ -32,6 +32,10 @@ parameters with sweeps.
   leak. *Revised (Byron, September 12, 2026):* bring back the leaky
   integrate-and-fire neuron; the infinite impulse response without the
   leak is not wanted. The leak is lazy, with time constant TAU (§5.1).
+  *And this bullet as first written is selectable again (Byron, September
+  17, 2026, specifying the **evidence accumulator**: "I don't know that
+  there are any changes other than Tau=infinity"): the neuron at TAU
+  $= \infty$, chosen per run, §5.1; the leaky neuron stays the default.*
 * A neuron firing is followed by an absolute refractory period during which
   the neuron ignores its inputs and does not integrate them. This is a
   feedback control mechanism and computational feature of the system.
@@ -75,8 +79,8 @@ learning on mnist any instrument has shown. Its consequences:
    remains is the estimator and its critic on one layer of synapses.
 2. **The hazard eligibility carries the digit; wrong_hebb does not.** Under wrong_hebb
    the correlation stays at zero, +0.012 ± 0.026 at 25,000 epochs. (The ±1
-   rule, renamed that day; the centred Hebbian rule that took the name hebb,
-   §6.7, is measured in §8.)
+   rule, renamed that day; the centred Hebbian rule that took the name hebb
+   that day, count_hebb since September 17, §6.7, is measured in §8.)
 3. **The learning rate is not the lever.** Across a tenfold range, 0.0005
    to 0.005, the correlation ends within a few hundredths; the rate scales
    the estimator's signal and noise alike, and moves only the drift toward
@@ -132,7 +136,7 @@ at all.
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
 | GOO_SCALING_FACTOR | 0.05 | goo's wiring (§3.4, the scaled rule): every neuron hears $N \times$ GOO_SCALING_FACTOR synapses in expectation — 32.2 on the mnist goo of 644, 3 on goo 60 — $P(i \to j)$ being that fan-in over the sources $j$ may hear, stopped at 1: $N - 1$ for a neuron outside the input zone, $N - I$ for one inside it, since no neuron projects onto itself and no input neuron onto another. *Byron, September 16, 2026: "P_ij necessary to give j an average of N * scaling_factor inputs. Please default scaling_factor to 0.05. I realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an oversaturated or dull network."* |
 | GOO_PROJECTION | 0.2 | **superseded as the wiring's knob by GOO_SCALING_FACTOR, September 16, 2026;** the probability of the three earlier wirings, which `--wiring zones-equal`, `zones` and `uniform` still build (§3.4). Under the zone rule with equal fan-in: the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (the zone rule with equal fan-in, reinstated the night of September 15, 2026 after an evening of one probability). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
-| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off (§5.1). A half-life of 1.39 ms: 0.435 of the potential survives a hop, 0.08 a refractory period, so a neuron integrates about one hop of input and a steady per-hop input $I$ settles at $1.77\,I$. The hazard's synapse trace (§6.7) leaks with it, being the margin's derivative; the leaky-Hebb trace has its own SYNAPSE_TAU since September 13, 2026 (§6.12), and the row that said they shared this constant stood until September 16. *Swept for the first time that afternoon, §8* |
+| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off and is the **evidence accumulator** (§5.1; Byron, September 17, 2026), under which no engine evaluates the decay at all. A half-life of 1.39 ms: 0.435 of the potential survives a hop, 0.08 a refractory period, so a neuron integrates about one hop of input and a steady per-hop input $I$ settles at $1.77\,I$. The hazard's synapse trace (§6.7) leaks with it, being the margin's derivative; the leaky-Hebb trace has its own SYNAPSE_TAU since September 13, 2026 (§6.12), and the row that said they shared this constant stood until September 16. *Swept for the first time that afternoon, §8* |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
 | REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
@@ -180,7 +184,7 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | TARGET | reversed | what the output should show, derived from the input (§4.3) |
 | CRITIC | row | how the reward is judged (§6.7): row, the fraction of outputs matching the target; class, a dataset's label — the label's group of outputs out-spikes every other group, or nothing; graded, the fraction of the other groups the label's group out-spikes; evidence, the class sums read as evidence at TEMPERATURE — the softmax cross-entropy $\ln q_y$ with $q_k \propto e^{n_k/T}$, mnist's critic since September 16, 2026 (§8); and the decoded and population critics of §4.3 and §6.13 |
 | TEMPERATURE | 2 | the evidence critic's temperature $T$ (§8): the lead in spikes that makes one class $e$ times as likely as another; $T \to 0$ is the class critic, $T \to \infty$ pays every epoch $\ln 0.1$. *Byron, September 16, 2026: "We will have to sweep for temperature eventually." Set at the middle of the first sweep, {1, 2, 4}; the sweep's to set* |
-| ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's); the centred Hebbian term (hebb, §6.7, September 16, 2026) — what each synapse delivered this epoch times its target's spike count minus the target's own expectation of it, $x_{ij}(n_j - \bar n_j)$, Williams §8.4's $y - \bar y$; the uncentred Hebbian ±1 by whether the target fired (wrong_hebb — the rule called hebb until September 16, 2026, renamed at Byron's word because it is uncentred and points nowhere); or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
+| ELIGIBILITY | perturb | what the reward acts on when the threshold decides: the exploration noise (perturb, the pre-alpha's); the centred Hebbian term (hebb) — since September 17, 2026 the single-spike rule of §6.7, charged at every decision of the target: its spike or silence minus its own expectation of it, times what the synapse has in its potential; the epoch form it was from September 16 — what each synapse delivered this epoch times its target's spike count minus the target's own expectation of it, $x_{ij}(n_j - \bar n_j)$, Williams §8.4's $y - \bar y$ — is count_hebb; the uncentred Hebbian ±1 by whether the target fired (wrong_hebb — the rule called hebb until September 16, 2026, renamed at Byron's word because it is uncentred and points nowhere); or hazard — the score of the escape-noise decision, summed over the epoch's decisions on each synapse's own trace (§6.7; needs ESCAPE_DELTA $> 0$). *The Teacher and the command line follow the neuron unless told otherwise: hazard on a network with escape noise, the eligibility every measurement at 0.455 was made with, and this constant when the threshold decides — Claude's reading of the default Byron set, September 15, 2026; additive noise on top of the hazard was never measured* |
 | LATE | count | what a signal arriving after its target fired earns (§6.7) |
 | BASELINE_RATE | 0.05 | per-epoch update of the running reward baseline |
 | HOMEOSTASIS | 10⁻⁶ | per-epoch rate a threshold drifts toward its target firing rate; 0 = off |
@@ -189,7 +193,8 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | UNSTICK_TARGET | 0.5 | firing rate the un-sticking aims for |
 | ~~THRESHOLD_RANGE~~ | — | *eliminated, September 14, 2026 (Byron: "It's artificial"; §2, no artificial restrictions).* Homeostasis and un-sticking moved a threshold no further than [−5, 5]; now a threshold goes where the rules take it. What that clamp did to one sweep is in §3.4 |
 | RATE_MEMORY | 0.01 | per-epoch update of $r_j$: about the last 100 epochs |
-| COUNT_MEMORY | 0.01 | per-epoch update of $\bar n_j$, the expected spike count the hebb eligibility centres on (§6.7, September 16, 2026): the rate memory's window, about the last 100 epochs. It starts at the first count seen in an unforced epoch, so a neuron's first epoch moves nothing rather than everything; a starting value, to be swept |
+| COUNT_MEMORY | 0.01 | per-epoch update of $\bar n_j$, the expected spike count the count_hebb eligibility centres on — the epoch form hebb was until September 17, 2026 (§6.7): the rate memory's window, about the last 100 epochs. It starts at the first count seen in an unforced epoch, so a neuron's first epoch moves nothing rather than everything; a starting value, to be swept |
+| DECISION_MEMORY | 10⁻⁴ | per-decision update of $\hat p_j$, the neuron's expectation of its own spike, which the hebb eligibility charges at every decision (§6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed per decision in this architecture"): about the last 10,000 decisions. *Measured, September 17, 2026:* every neuron that is not refractory decides at every wave, and every Poisson arrival of the drive is a wave, so on the mnist feedforward goo at 100 ms a neuron makes about 3,300 decisions an epoch (3,266 to 3,398 over two seeds, the scaled and ff2-partial wirings, TAU 2 and $\infty$) — not the sixty of a wave a hop this row first assumed. The window is therefore about three epochs, short enough to follow the last few digits rather than be the neuron's label-blind expectation of itself; some 170 epochs there would be DECISION_MEMORY near $2 \times 10^{-6}$. Until that many decisions have been seen the estimate is their plain mean, a rate of $1/n$ at the $n$-th, and the first decision sets it and charges nothing; a starting value, to be swept |
 | STUCK_BELOW, STUCK_ABOVE | 0.01, 0.99 | a neuron with $r_j$ outside this band is stuck |
 | WINDOW | 200 | epochs the reported moving-average accuracy spans (reporting only) |
 
@@ -1944,6 +1949,45 @@ a bored neuron's check (§5.4) compares the leaked potential against the
 falling threshold. Inhibition ($w < 0$) pushes the potential down, and
 once per wave the floor applies: $p \leftarrow \max(p, \text{MINIMUM\_POTENTIAL})$.
 
+**The evidence accumulator — decided (Byron, September 17, 2026: "I don't
+know that there are any changes other than Tau=infinity, although we DO
+need to skip the exponential decay calculation when we select
+evidence-accumulator since it's just going to slow things down").** The
+neuron of §0's second bullet as first written: TAU $= \infty$, so the
+potential is the sum of every signal integrated since the last spike,
+undiminished, until the threshold or the floor — an accumulator of
+evidence, reset by the spike and capped by the floor — and nothing else
+about the neuron changes: the refractory period, the escape noise of §5.2
+and the floor stand as written. *Byron's statement of it, the same
+morning: "since we are keeping weighted synapses the potential is a
+weighted count of evidence, and its derivative delta functions of spike
+arrivals weighted by the evidence each carries"* — with $x_{ij}$ the
+arrivals $j$ integrated along $i \to j$ since its last spike,
+
+$$p_j = \sum_i w_{ij}\,x_{ij}, \qquad
+\dot p_j = \sum_i w_{ij} \sum_{a} \delta(t - t_a), \qquad
+\frac{\partial p_j}{\partial w_{ij}} = x_{ij},$$
+
+exactly while the floor has not bitten, and the last of these is the
+hazard's trace. `--tau inf` selects it, the driver's `tau` knob takes
+`inf`, and a checkpoint carries it. Where the leak's
+exponential was evaluated it is skipped when TAU is infinite, in every
+engine: the lazy leak and the potential read already skipped it, and the
+two places that still paid for $e^{-0} = 1$ skip it from this day — the
+hazard's synapse trace of §6.7, which at TAU $= \infty$ is a plain count
+of the arrivals $j$ integrated along the synapse since its last spike,
+and the decision's score sum, which then needs no decay factor. The skip
+changes no bit: those factors were exactly 1. Two things follow for the
+hazard. Its charge over an interval is exact rather than understated,
+since the margin no longer moves between waves (§5.2's note); and its
+eligibility $\sum_t \hat e_j(t)\,x_{ij}(t)$ has an integer $x_{ij}$, so
+the estimator's presynaptic term is the tally the count_hebb and ADALINE rules
+already keep. The leak sweep of §8 (September 16) ran TAU up to 50 ms and
+found the fast leak best on every seed, but it confounded the leak with
+the learning rate through that same trace; TAU $= \infty$ was not in it,
+is the other end of the axis, and is measured only from here. The leaky
+neuron at 2 ms stays the default until Byron moves it.
+
 ### 5.2 Firing
 
 A neuron fires in a wave iff $p \ge \theta$ and it is not refractory. The
@@ -2124,7 +2168,8 @@ spontaneous rate a rate: a neuron at rest, $s = -\theta_j$, fires at
 $e^{-1/\Delta}\sqrt{N_0/N}$ spikes per hop whatever else is happening. The hazard is
 evaluated at the wave's margin over the interval before it; the potential
 was leaking through that interval, so after a large input this understates
-the hazard a little, and every engine understates it identically.
+the hazard a little, and every engine understates it identically. Under
+the evidence accumulator (§5.1) nothing leaks and it is exact.
 
 *What it is.* Williams §2: a threshold unit with noise on its input is a
 Bernoulli semilinear unit whose squashing function is one minus the noise's
@@ -2531,7 +2576,8 @@ outcome $y_j(t)$, $\partial \ln P/\partial s$ is $(m/\Delta_j)\,e^{-m}/(1 -
 e^{-m})$ when it fired and $-m/\Delta_j$ when it did not, and $\partial
 s/\partial w_{ij}$ is the charge synapse $i \to j$ still had in $j$'s
 potential at the decision — its arrivals integrated since $j$'s last spike,
-each leaked with TAU:
+each leaked with TAU (none of them under the evidence accumulator of §5.1,
+TAU $= \infty$, where $x_{ij}$ is the count of those arrivals):
 
 $$x_{ij}(t) = \sum_{\text{arrivals } a} e^{-(t - t_a)/\text{TAU}}, \qquad
 \hat e_j(t) = \begin{cases} m\,e^{-m}/(1 - e^{-m}) & \text{fired} \\ -m & \text{silent} \end{cases}, \qquad
@@ -2565,8 +2611,8 @@ of the perturb eligibility never was.
 (the conditional mean of §6.1's $\xi_j$ given the outcome) and the Hebbian
 rule centred on the neuron's own rate, Williams §8.4's $y - \bar y$, were
 the two smaller experiments proposed alongside this one. The first is not
-built; the second was, on September 16, 2026, and is the hebb eligibility
-at the end of this section.
+built; the second was, on September 16, 2026, and is the count_hebb
+eligibility below (hebb until September 17, 2026).
 
 *Measured (§3.4, September 15, 2026; Byron: "build and sweep Delta in {0.7
 1.05 1.4} across 10 seeds for 100000 intervals").* $\Delta = 0.7$ scores
@@ -2580,7 +2626,7 @@ and at that width LR is a plateau from 0.025 to 0.0525 at 0.66–0.68, wrong_heb
 beaten on every seed at 0.05, and twelve levels from 0.02625 to 0.04 by
 0.00125 are flat to within seed noise (§3.4). LR 0.03 stands.
 
-**The centred Hebbian eligibility — built September 16, 2026, and the ±1
+**The centred Hebbian eligibility (count_hebb) — built September 16, 2026, and the ±1
 rule renamed.** *Byron, that morning: "Escape noise is destroying the
 network as N². We need escape noise but also need a second learning rule
 that is more Hebbian in nature. Assuming there is no escape noise, what is
@@ -2590,7 +2636,9 @@ refer to it."* So the Hebbian ±1 of this section is **wrong_hebb** from
 that day: every earlier mention and every quotation of *hebb* in this file
 names it, and so do the checkpoints and sweep records written before that
 day (a record naming hebb with no `count_memory` beside it is one of
-those). The name **hebb** belongs to the rule below.
+those). The name **hebb** belonged to the rule below until September 17,
+2026, when it passed to the single-spike rule at the end of this section
+and this one became **count_hebb**.
 
 *Claude's derivation, asked for that morning.* Williams's rule at a synapse
 is the advantage times the characteristic eligibility, $\partial \ln
@@ -2651,7 +2699,7 @@ half the epochs, and worthless when they fire in all of them.
 `Connection.eligibility` as the ADALINE rule does, `Network.tally`
 switched on by a Teacher with this eligibility; the arrays do the same in
 vector form; the Rust loop keeps the tally under `earn` and
-`reinforce_hebb` pays it, the expectation $\bar n_j$ being the Teacher's,
+`reinforce_count_hebb` pays it, the expectation $\bar n_j$ being the Teacher's,
 kept in Python beside $r_j$ and handed over per epoch (the ±1 rule is
 `reinforce_wrong_hebb`). `Neuron.expected_count` is checkpointed beside the
 rate memory. The three engines agree to the bit on goo under escape noise
@@ -2660,6 +2708,95 @@ with learning on (`tests/test_hazard.py`, `tests/test_arrays.py`,
 and one moving average — and `fast.compare` agreed on the mnist feedforward
 goo of §8 itself, two seeds, learning on, before the sweep below was
 launched. *Measured:* §8, the learning-rate sweep of September 16, 2026.
+
+**The single-spike rule — decided (Byron, September 17, 2026).** *"Let's
+derive the REINFORCE rule for the synaptic weight update for a SINGLE
+postsynaptic spike at time t. We will be modifying the existing hebb and
+hazard eligibilities. Hebb assumes there is no hazard and that the
+postsynaptic spike was generated by presynaptic activity. Hazard assumes
+that there is escape noise."* Claude's derivation, on the evidence
+accumulator of §5.1, and Byron's three decisions on what it left open, are
+below. The rule is one rule with two expectations, and it replaces the
+epoch form of hebb above, which is **count_hebb** from this day (*Claude's
+name, to be corrected in a word*): every record before September 17 that
+names hebb with a `count_memory` beside it means count_hebb.
+
+*The rule, per decision.* At every decision of neuron $j$, at time $t'$,
+with outcome $y_j(t') \in \{0, 1\}$, every incoming synapse's score moves by
+
+$$e_{ij} \mathrel{+}= \big(c_j(t') - q_j(t')\big)\,x_{ij}(t'),$$
+
+$x_{ij}(t')$ the synapse's trace — what it has in $j$'s potential: the
+count of its arrivals since $j$'s last spike under the accumulator, the
+leaked charge under the leak — $c_j$ the decision's credit and $q_j$ its
+expectation:
+
+| eligibility | fired: $c_j$, $q_j$ | silent: $c_j$, $q_j$ | the expectation |
+|---|---|---|---|
+| hazard | $m e^{-m}/(1 - e^{-m})$, 0 | 0, $m$ | $m_j(t')$, the hazard's own (§5.2) |
+| hebb | 1, $\hat p_j$ | 0, $\hat p_j$ | $\hat p_j$, the neuron's per-decision estimate of its own spike |
+
+The hazard row is the rule of this section as built, unchanged: the
+interval's log-likelihood, $\ln P = -\sum_{\text{silent}} m + \ln(1 -
+e^{-m})$, differentiated, with $\partial m/\partial w_{ij} = (m/\Delta_j)\,
+x_{ij}$ and the $1/\Delta_j$ folded into LR. The hebb row is what
+survives of REINFORCE when the spike was caused and not drawn: the
+Bernoulli form $(y - \hat p)\,x$ with the probability *estimated*, since a
+deterministic neuron has none to differentiate — and, in an accumulator,
+every arrival since the reset has the same $\partial p_j / \partial
+w_{ij}$, one, so the spike credits all of them equally and the last
+arrival no more than the first, where the leaky Hebb of §6.12 handed the
+last nearly everything. $\hat p_j$ is undefined until $j$'s first
+decision, which sets it to the outcome and charges nothing, and after every
+decision, charged first, it moves by $\max(\text{DECISION\_MEMORY},
+1/n)\,(y - \hat p_j)$, $n$ the decisions so far — the plain mean of the
+first ten thousand, an exponential average after (§1.3; *Claude's reading
+of "changed per decision", to be corrected in a word*). Summed over one
+interspike interval ending in a spike at $t$ the rule is, per arrival at
+$t_a$, the credit at the spike minus the spikes expected of $j$ from the
+arrival until then:
+
+$$\text{hazard: } \hat e_j(t) - \big[M_j(t) - M_j(t_a)\big], \qquad
+\text{hebb: } 1 - \big[\hat P_j(t) - \hat P_j(t_a)\big],$$
+
+$M_j$ and $\hat P_j$ the cumulative expectation over $j$'s decisions since
+its last spike, one number per neuron. The hazard's is $\ln \rho_j(t) -
+\int_{t_a}^{t} \rho_j$ in continuous time, the escape-noise interval
+likelihood; the regrouping was checked against the built per-decision sum
+on goo 40 at TAU $= \infty$: 88,601 comparisons, worst relative
+difference $2.5 \times 10^{-15}$.
+
+*Byron's three decisions, in his words.* (1) An arrival stays in the
+potential until $j$ spikes, so its debit runs across reads: **"Let them
+run! Epochs are for the convenience of teaching the network, and to some
+extent an emergent property of the time constants, but they don't really
+exist in nature."** Each read pays the score charged since the last read
+and clears it; the arrivals stay open. Under the hazard the debit limits
+itself, a neuron far below threshold expecting few spikes; under hebb it
+grows with the silence at $\hat p_j$ a decision. (2) Hebb's credit at the
+spike, a full unit where the hazard's discounts a spike that was
+expected: **"Defer for now."** (3) Where hebb's expectation is charged:
+**"Expectation is changed per decision in this architecture"** — per
+decision, not per unit time, and the estimate itself moves per decision.
+
+*What the synapse owns, under the accumulator.* Each event is one
+operation on the synapse or on the neuron, and no loop over a fan-in runs
+at a decision: an **arrival** integrated counts one on the trace and notes
+$E_j$, the neuron's expected spikes since its last spike, as $B_{ij}
+\mathrel{+}= E_j$; a **decision** adds its $q_j$ to $E_j$ and nothing
+else; the **spike** settles every open arrival, $e_{ij} \mathrel{+}=
+c_j\,x_{ij} - (x_{ij} E_j - B_{ij})$, clears the trace and the note, and
+restarts $E_j$ at 0; the **floor**, a forced spike and a discharge settle
+with no credit; the **read** settles the debit so far, pays LR $\cdot A
+\cdot e_{ij}$, and clears the score, the open arrivals counting from now.
+Under the leak the same rule is charged per decision with the leaked
+trace, as the hazard was — the regrouping needs factors of $e^{t/\tau}$
+that overflow within a second of run. The result is not bit-identical to
+the per-decision sum, only equal to a part in $10^{15}$; the three engines
+are bit-identical to each other (§6.15). Built in every engine,
+checkpointed ($\hat p_j$, the decisions to date, $E_j$, $B_{ij}$), and
+`--eligibility count_hebb` runs the epoch form as recorded. *Not measured
+yet.*
 
 ### 6.8 Earned activity — decided for now
 
@@ -3218,12 +3355,28 @@ agreement on the configuration is in `tests/test_hazard.py`. The lesson of
 
 *The centred Hebbian eligibility, September 16, 2026.* The loop tallies
 what each synapse delivered under `earn`, as it does for the teacher's
-eligibility, and `reinforce_hebb` pays the tally times the centred count
+eligibility, and `reinforce_count_hebb` (`reinforce_hebb` until September 17,
+2026) pays the tally times the centred count
 the Teacher's book hands it each epoch — $\bar n_j$ is kept in Python
 beside $r_j$, in the object engine's order, and moved after the update. The
 ±1 rule is `reinforce_wrong_hebb`. Agreement to the bit on goo under escape
 noise and on the mnist feedforward goo, learning on (`tests/test_hazard.py`,
 `tests/test_fast.py`).
+
+*The single-spike rule, September 17, 2026 (§6.7).* The loop keeps $\hat p_j$,
+the decisions to date, $E_j$ and $B_{ij}$ beside the traces and scores,
+charges every decision as §6.7 says — lazily per arrival under the
+accumulator, per decision under the leak — settles at the spike, the floor
+and the read (`settle_scores`), and `reinforce_scores` pays hebb and hazard
+alike; `reinforce_count_hebb` is the epoch form. Agreement to the bit on goo
+under escape noise at TAU 2 and TAU $\infty$, and with the threshold deciding
+(`tests/test_hazard.py`); and `fast.compare` agreed on the mnist feedforward
+goos themselves before any sweep ran the rule — the scaled wiring and
+ff2-partial at $P$ 0.25, hebb and hazard, TAU 2 and $\infty$, seeds 1 and 2,
+four epochs of 100 ms, learning on: sixteen configurations, every one to
+the bit. The hazard at TAU 2 is the committed rule's to the bit in the
+objects and the arrays (two seeds, sixty epochs, learning on), so the
+sweeps launched before the change measured the same rule.
 
 *The count's scaling of every hazard (§5.2, September 16, 2026)* is a
 per-neuron factor the loop takes beside the widths (`set_escape_scales`),
@@ -3259,7 +3412,9 @@ worth more than the rewrite.
   exploration noise all come from the seed's stream, in both engines.
 - **Checkpoints round-trip.** A checkpoint rebuilds the network from its
   seed and settings and reloads its weights, thresholds, clock, spike
-  times, synapse stamps, signals in flight and dopamine, in either engine.
+  times, synapse stamps, signals in flight and dopamine — and, since
+  September 17, 2026, each neuron's per-decision expectation and expected
+  count and each synapse's note (§6.7) — in either engine.
 - **The network keeps living.** There is no training run and no evaluation
   run, only one run that keeps going; a rule may not assume an end.
 
@@ -4175,8 +4330,8 @@ the layout, the inputs, and whether anything outside the network trains it.
   escape noise but also need a second learning rule that is more Hebbian
   in nature" — and, on the derivation now in §6.7: "Please build and test
   the rule, and please sweep three seeds for LR with the new hebb in {0.03
-  0.05 0.02 0.01 0.005 0.003}").** The rule is §6.7's hebb eligibility,
-  $e_{ij} = x_{ij}(n_j - \bar n_j)$, built and agreeing in all three
+  0.05 0.02 0.01 0.005 0.003}").** The rule is §6.7's centred epoch eligibility,
+  $e_{ij} = x_{ij}(n_j - \bar n_j)$ — hebb that day, count_hebb since September 17 — built and agreeing in all three
   engines that morning; the ±1 rule is wrong_hebb since. The sweep: the
   same feedforward goo of 445 as the sweeps above — threshold 0.6, floor
   −2.4, $\Delta$ 0.455 (escape noise stays on, as Byron said it must; the
@@ -4236,7 +4391,7 @@ the layout, the inputs, and whether anything outside the network trains it.
 
   **The centred rule aligns several times faster, then stalls; the hazard
   is slower and keeps going.** Paired on the seed at the five shared rates
-  (seeds 1 to 3, the same epochs in the same order): at 1,000 epochs hebb's
+  (seeds 1 to 3, the same epochs in the same order): at 1,000 epochs count_hebb's
   correlation is +0.08 to +0.11 where the hazard's is +0.01 to +0.02; at
   5,000 it is +0.10 above the hazard's at LR 0.003 and 0.005, and +0.09 to
   +0.10 above at 25,000 — the sign agreement of §0.1's wrong_hebb sweep was
@@ -4247,7 +4402,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   accumulating, and the cumulative correlation dilutes. The hazard's on the
   same seeds climbs through +0.26 and +0.21 at 100,000 and is higher on
   fourteen of the fifteen paired arms by then. The read did not move under
-  hebb — 0.058 to 0.072 right against 0.06, below the hazard's on the
+  count_hebb — 0.058 to 0.072 right against 0.06, below the hazard's on the
   paired seeds by 0.015 to 0.024 at the rates where the hazard's moved —
   and the reward is lower at every shared rate, by 0.02 to 0.17.
 
@@ -4263,7 +4418,7 @@ the layout, the inputs, and whether anything outside the network trains it.
   was built for — while the neurons vary it is the better estimator, by a
   wide margin — and it wants what the hazard has: a neuron at the rail
   that can still take a chance. Two experiments follow and neither is run:
-  the composition, hazard plus hebb by addition (§6.7), not built as an
+  the composition, hazard plus count_hebb by addition (§6.7), not built as an
   option yet; and rates below 0.003, where the hazard's read moved and
   where the centred rule's drift to the rails would be slower.
 

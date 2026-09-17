@@ -108,7 +108,8 @@ TARGETS: dict[str, Target] = {
 RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
 # means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
 # are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
-ELIGIBILITIES = ("perturb", "wrong_hebb", "hebb", "hazard")  # wrong_hebb: the +-1 by whether the target fired; hebb: what the
+ELIGIBILITIES = ("perturb", "wrong_hebb", "hebb", "count_hebb", "hazard")  # wrong_hebb: the +-1 by whether the target fired;
+# hebb: the single-spike rule (§6.7, September 17, 2026), charged at every decision of the target; count_hebb, the epoch form: what the
 # synapse delivered times the target's count minus its expectation (§6.7); hazard: the score of the escape-noise decision
 # (§5.2) on each synapse's trace (§6.7)
 LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
@@ -597,16 +598,18 @@ def reinforce(
             raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
         if late != "count" or leaky:
             raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
-    if eligibility == "hebb" and (late != "count" or leaky):
-        raise ValueError("the hebb eligibility carries its own tally of what each synapse delivered: late = count and no "
-                         "leaky trace (§6.7)")
+    if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):
+        raise ValueError(f"the {eligibility} eligibility carries its own trace of what each synapse delivered: late = count "
+                         "and no leaky trace (§6.7)")
     if arrays(grid):
         return grid.reinforce(advantage, lr, sigma, eligibility, late, leaky)
+    if eligibility in ("hazard", "hebb"):
+        grid.settle_scores()  # under the evidence accumulator the open arrivals' debit is brought into the score first (§6.7)
     if not advantage:
         return 0
     low, high = grid.weight_range
     step = lr * advantage
-    if eligibility == "hazard":  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
+    if eligibility in ("hazard", "hebb"):  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
         changed = 0
         for connection in grid.connections.values():
             if not connection.score or connection.target.forced:
@@ -619,7 +622,7 @@ def reinforce(
             connection.weight = weight
             changed += 1
         return changed
-    if eligibility == "hebb":  # §6.7: what each synapse delivered times its target's count minus the target's expectation
+    if eligibility == "count_hebb":  # §6.7's epoch form: what each synapse delivered times its target's count minus its expectation
         changed = 0
         for connection in grid.connections.values():
             target = connection.target
@@ -758,7 +761,8 @@ class Teacher:
         self.lr = lr
         self.sigma = sigma if eligibility == "perturb" else 0.0
         self.eligibility = eligibility
-        grid.tally = eligibility == "hebb"  # the tally of what each synapse delivered, the x_ij of §6.7, in whichever engine
+        grid.tally = eligibility == "count_hebb"  # the tally of what each synapse delivered, the x_ij of §6.7's epoch form, in whichever engine
+        grid.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions against its own expectation
         self.baseline_rate = baseline_rate
         self.window = window
         self.rng = random.Random(seed)

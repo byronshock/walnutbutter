@@ -175,7 +175,15 @@ pub struct Engine {
     escape_scale: Vec<f64>, // per neuron: sqrt(N0 / N), the count's scaling of every hazard (§5.2, September 16, 2026)
     exposed_since: Vec<f64>, // per neuron: since when its hazard has run
     draw: Vec<f64>,     // per neuron: this wave's uniform for the decision
-    hazard: bool,       // any delta > 0: the decision is a draw and the traces and scores are kept
+    hazard: bool,       // any delta > 0: the decision is a draw
+    centred: bool,      // the hebb eligibility charges every decision against the neuron's own expectation (§6.7)
+    traced: bool,       // hazard || centred: the traces and scores are kept
+    decision_memory: f64,  // DECISION_MEMORY: the per-decision move of each neuron's expectation of its own spike
+    expectation: Vec<f64>, // per neuron: p_hat_j, NaN until its first decision
+    decisions: Vec<u64>,   // per neuron: decisions to date, for the expectation's warm start
+    expected: Vec<f64>,    // per neuron: E_j, the spikes expected over its decisions since its last spike (§6.7)
+    credit: Vec<f64>,      // per neuron: what its firing decision credits each open arrival with, for fire() to settle
+    noted: Vec<f64>,       // per edge: B_ij, the sum over its open arrivals of the target's E_j as each arrived
 
     // --- the clock and the rules ------------------------------------------------------
     tau: f64,
@@ -268,6 +276,14 @@ impl Engine {
             exposed_since: vec![0.0; neurons],
             draw: vec![1.0; neurons],
             hazard: false,
+            centred: false,
+            traced: false,
+            decision_memory: 1e-4,
+            expectation: vec![f64::NAN; neurons],
+            decisions: vec![0; neurons],
+            expected: vec![0.0; neurons],
+            credit: vec![0.0; neurons],
+            noted: vec![0.0; edges],
             tau,
             refractory,
             hop,
@@ -345,10 +361,18 @@ impl Engine {
         self.forced.iter_mut().for_each(|f| *f = false);
         self.noise.iter_mut().for_each(|x| *x = 0.0); // Neuron.reset clears it too
         self.spikes_at_reset.copy_from_slice(&self.spikes); // Neuron.reset snapshots the count
-        if self.hazard {
-            self.score.iter_mut().for_each(|s| *s = 0.0); // the hazard eligibility is the epoch's (§6.7)
+        if self.traced {
             if discharge {
-                self.trace.iter_mut().for_each(|x| *x = 0.0); // nothing is left in a zeroed potential
+                for i in 0..self.neurons {
+                    self.clear_arrivals(i); // nothing is left in a zeroed potential (§6.7)
+                }
+            }
+            self.score.iter_mut().for_each(|s| *s = 0.0); // the score is the epoch's (§6.7)
+            if self.tau.is_infinite() {
+                // an open arrival's debit counts from here: what it accrued was paid, or dropped, with the score
+                for edge in 0..self.weight.len() {
+                    self.noted[edge] = self.trace[edge] * self.expected[self.edge_target[edge] as usize];
+                }
             }
         }
         if clear_eligibility {
@@ -398,17 +422,18 @@ impl Engine {
         changed
     }
 
-    /// §6.7 with the hebb eligibility: every synapse into an unforced neuron moves by `lr * advantage * x_ij * c_j`,
+    /// §6.7's epoch form, count_hebb (the rule called hebb until September 17, 2026): every synapse into an unforced
+    /// neuron moves by `lr * advantage * x_ij * c_j`,
     /// x_ij the signals it delivered this epoch that its target integrated (the tally, kept when `earn` is set) and
     /// c_j the target's spike count minus its expected count, which the Teacher keeps in Python (fast.py) as it keeps
     /// the rate memory, and hands over per epoch. Returns connections changed.
-    fn reinforce_hebb(&mut self, advantage: f64, lr: f64, centred: Vec<f64>) -> PyResult<usize> {
+    fn reinforce_count_hebb(&mut self, advantage: f64, lr: f64, centred: Vec<f64>) -> PyResult<usize> {
         if centred.len() != self.neurons {
             return Err(PyValueError::new_err("one centred count per neuron"));
         }
         if !self.earn {
             return Err(PyValueError::new_err(
-                "the hebb eligibility needs the tally: build the engine with earn = True, so every synapse counts \
+                "the count_hebb eligibility needs the tally: build the engine with earn = True, so every synapse counts \
                  what it delivered (§6.7)",
             ));
         }
@@ -483,6 +508,7 @@ impl Engine {
         }
         self.delta = deltas;
         self.hazard = on;
+        self.traced = on || self.centred;
         Ok(())
     }
 
@@ -495,14 +521,81 @@ impl Engine {
         Ok(())
     }
 
-    /// §6.7 with the hazard eligibility: every synapse into an unforced neuron moves by `lr * advantage * score`,
-    /// the score being what the neuron's decisions summed to on that synapse's trace this epoch.
+    /// The hebb eligibility (§6.7, the single-spike rule): every neuron charges its decisions against its own
+    /// expectation, moved by `memory` a decision. Keeps the traces whether or not there is escape noise.
+    fn set_centred(&mut self, on: bool, memory: f64) {
+        self.centred = on;
+        self.decision_memory = memory;
+        self.traced = self.hazard || on;
+    }
+
+    /// Each neuron's p_hat_j (NaN for none yet), decisions to date and E_j, as a checkpoint carries them (§6.7).
+    fn set_centred_state(&mut self, expectation: Vec<f64>, decisions: Vec<u64>, expected: Vec<f64>) -> PyResult<()> {
+        if expectation.len() != self.neurons || decisions.len() != self.neurons || expected.len() != self.neurons {
+            return Err(PyValueError::new_err("one expectation, decision count and expected count per neuron"));
+        }
+        self.expectation = expectation;
+        self.decisions = decisions;
+        self.expected = expected;
+        Ok(())
+    }
+    fn expectations(&self) -> Vec<f64> {
+        self.expectation.clone()
+    }
+    fn decision_counts(&self) -> Vec<u64> {
+        self.decisions.clone()
+    }
+    fn expected_since_spike(&self) -> Vec<f64> {
+        self.expected.clone()
+    }
+    /// Each synapse's note, B_ij (§6.7).
+    fn set_notes(&mut self, notes: Vec<f64>) -> PyResult<()> {
+        if notes.len() != self.weight.len() {
+            return Err(PyValueError::new_err("one note per edge"));
+        }
+        self.noted = notes;
+        Ok(())
+    }
+    fn notes(&self) -> Vec<f64> {
+        self.noted.clone()
+    }
+
+    /// Under the evidence accumulator (§5.1): every open arrival's debit into its synapse's score (§6.7); the pay
+    /// calls it first, and the arrivals stay open, their debit counting from now.
+    fn settle_scores(&mut self) {
+        if !self.tau.is_infinite() || !self.traced {
+            return;
+        }
+        for edge in 0..self.weight.len() {
+            let x = self.trace[edge];
+            if x != 0.0 {
+                let e = x * self.expected[self.edge_target[edge] as usize];
+                self.score[edge] -= e - self.noted[edge];
+                self.noted[edge] = e;
+            }
+        }
+    }
+
+    /// §6.7 with the hazard eligibility: `reinforce_scores`, which needs escape noise here.
     fn reinforce_hazard(&mut self, advantage: f64, lr: f64) -> PyResult<usize> {
         if !self.hazard {
             return Err(PyValueError::new_err(
                 "the hazard eligibility needs escape noise: set_deltas with a positive width first (§5.2)",
             ));
         }
+        self.reinforce_scores(advantage, lr)
+    }
+
+    /// §6.7, the single-spike rule under the hazard and the hebb eligibility alike: every synapse into an unforced
+    /// neuron moves by `lr * advantage * score`, the score being what the neuron's decisions charged on that synapse's
+    /// trace this epoch, settled first under the evidence accumulator.
+    fn reinforce_scores(&mut self, advantage: f64, lr: f64) -> PyResult<usize> {
+        if !self.traced {
+            return Err(PyValueError::new_err(
+                "the scores need a trace: escape noise (set_deltas) or the centred rule (set_centred) first (§6.7)",
+            ));
+        }
+        self.settle_scores();
         if advantage == 0.0 {
             return Ok(0);
         }
@@ -587,10 +680,18 @@ impl Engine {
                         self.delivered_wave[edge] = self.wave_no as i64;
                         if self.receive(target, self.weight[edge], time) {
                             self.last_signal[edge] = time;
-                            if self.hazard {
-                                // escape noise (§6.7): what this synapse now has in its target's potential
-                                self.trace[edge] =
-                                    self.trace[edge] * (-(time - self.trace_at[edge]) / self.tau).exp() + 1.0;
+                            if self.traced {
+                                // what this synapse now has in its target's potential (§6.7). Under the evidence
+                                // accumulator (§5.1, TAU infinite) nothing leaks, the trace is the count of arrivals
+                                // -- the decay, exp(-0) = 1, is not evaluated -- and the arrival notes the target's
+                                // expected spikes so far, so its debit counts from here
+                                if self.tau.is_infinite() {
+                                    self.trace[edge] += 1.0;
+                                    self.noted[edge] += self.expected[target];
+                                } else {
+                                    self.trace[edge] =
+                                        self.trace[edge] * (-(time - self.trace_at[edge]) / self.tau).exp() + 1.0;
+                                }
                                 self.trace_at[edge] = time;
                             }
                             if self.earn {
@@ -613,8 +714,8 @@ impl Engine {
                 let i = i as usize;
                 if self.potential[i] < self.floor[i] {
                     self.potential[i] = self.floor[i];
-                    if self.hazard {
-                        self.clear_traces(i); // the floor bit: the weights are not in it (§6.7)
+                    if self.traced {
+                        self.clear_arrivals(i); // the floor bit: the weights are not in it (§6.7)
                     }
                 }
             }
@@ -793,8 +894,8 @@ impl Engine {
             let p = self.potential[i] + draw;
             if p < self.floor[i] {
                 self.potential[i] = self.floor[i];
-                if self.hazard {
-                    self.clear_traces(i); // the floor bit: the weights are not in it (§6.7)
+                if self.traced {
+                    self.clear_arrivals(i); // the floor bit: the weights are not in it (§6.7)
                 }
             } else {
                 self.potential[i] = p;
@@ -808,6 +909,35 @@ impl Engine {
         let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
         for k in lo..hi {
             self.trace[self.in_edges[k] as usize] = 0.0;
+        }
+    }
+
+    /// Under the evidence accumulator (§5.1): close every open arrival on neuron `i`'s incoming synapses (§6.7). Each
+    /// score takes the credit for its count and the debit accrued since each arrival, the spikes expected of `i` from
+    /// then until now; then its count and its note are cleared. A spike settles with its decision's credit; the floor,
+    /// a forced spike and a discharge with none.
+    fn settle_arrivals(&mut self, i: usize, credit: f64) {
+        let expected = self.expected[i];
+        let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
+        for k in lo..hi {
+            let edge = self.in_edges[k] as usize;
+            let x = self.trace[edge];
+            if x != 0.0 {
+                self.score[edge] += credit * x - (x * expected - self.noted[edge]);
+                self.trace[edge] = 0.0;
+                self.noted[edge] = 0.0;
+            }
+        }
+    }
+
+    /// Nothing any synapse delivered is in the potential: the floor bit, or it was discharged (§6.7). Under the
+    /// evidence accumulator the open arrivals close without credit, their debit so far settled; under the leak the
+    /// traces are zeroed.
+    fn clear_arrivals(&mut self, i: usize) {
+        if self.tau.is_infinite() {
+            self.settle_arrivals(i, 0.0);
+        } else {
+            self.clear_traces(i);
         }
     }
 
@@ -826,26 +956,61 @@ impl Engine {
         self.draw.copy_from_slice(&draws);
     }
 
-    /// neuron.py's decide: the threshold when the width is 0, else the escape-noise draw (§5.2), and under it the
-    /// hazard eligibility of every incoming synapse is settled for the decision (§6.7): each score moves by
-    /// e_j * trace, e_j = m e^-m / (1 - e^-m) when the neuron fires and -m when it does not.
+    /// neuron.py's decide: the threshold when the width is 0, else the escape-noise draw (§5.2). The decision charges
+    /// the eligibility of every incoming synapse (§6.7, the single-spike rule): each score moves by (c - q) * trace,
+    /// the credit c and the expectation q of the decision -- the hazard's m e^-m / (1 - e^-m) and 0 when it fires,
+    /// 0 and m when it does not; the centred rule's outcome, 1 or 0, and the neuron's own expectation of it, moved
+    /// after the charge. Under the evidence accumulator the charge is lazy: q goes onto the neuron's expected count
+    /// and a spike's credit is left for fire() to settle per arrival.
     fn decide(&mut self, i: usize, now: f64) -> bool {
-        if self.delta[i] <= 0.0 {
-            return self.can_fire(i, now);
-        }
         if self.refractory_at(i, now) {
             return false;
         }
-        let s = self.potential_at(i, now) - self.threshold_at(i, now);
-        let mut elapsed = now - self.exposed_since[i];
-        if elapsed < 0.0 {
-            elapsed = 0.0;
+        let mut m = 0.0;
+        let fired = if self.delta[i] <= 0.0 {
+            self.can_fire(i, now)
+        } else {
+            let s = self.potential_at(i, now) - self.threshold_at(i, now);
+            let mut elapsed = now - self.exposed_since[i];
+            if elapsed < 0.0 {
+                elapsed = 0.0;
+            }
+            m = (elapsed / self.hop * self.escape_scale[i] * (s / self.delta[i]).exp()).min(1e3);
+            self.exposed_since[i] = now;
+            self.draw[i] < -(-m).exp_m1()
+        };
+        let credit;
+        let q;
+        if self.centred {
+            let y = if fired { 1.0 } else { 0.0 };
+            let p = self.expectation[i];
+            self.decisions[i] += 1;
+            if p.is_nan() {
+                self.expectation[i] = y; // the first decision sets the expectation and charges nothing
+                return fired;
+            }
+            credit = y;
+            q = p;
+            self.expectation[i] = p + f64::max(self.decision_memory, 1.0 / self.decisions[i] as f64) * (y - p);
+        } else if m > 0.0 {
+            if fired {
+                credit = m * (-m).exp() / -(-m).exp_m1(); // m e^-m / (1 - e^-m), finite at any m
+                q = 0.0;
+            } else {
+                credit = 0.0;
+                q = m;
+            }
+        } else {
+            return fired;
         }
-        let m = (elapsed / self.hop * self.escape_scale[i] * (s / self.delta[i]).exp()).min(1e3);
-        let fired = self.draw[i] < -(-m).exp_m1();
-        self.exposed_since[i] = now;
-        if m > 0.0 {
-            let e = if fired { m * (-m).exp() / -(-m).exp_m1() } else { -m }; // m e^-m / (1 - e^-m), finite at any m
+        if self.tau.is_infinite() {
+            // the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike
+            self.expected[i] += q;
+            if fired {
+                self.credit[i] = credit;
+            }
+        } else {
+            let e = credit - q;
             let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
             for k in lo..hi {
                 let edge = self.in_edges[k] as usize;
@@ -912,8 +1077,15 @@ impl Engine {
         self.last_update[i] = now;
         self.potential[i] = 0.0; // the spike resets the potential
         self.exposed_since[i] = now + self.refractory; // the hazard resumes when the refractory period ends (§5.2)
-        if self.hazard {
-            self.clear_traces(i); // nothing any synapse delivered is still in the potential (§6.7)
+        if self.traced {
+            if self.tau.is_infinite() {
+                let credit = self.credit[i];
+                self.settle_arrivals(i, credit); // the evidence accumulator: the spike credits and closes every open arrival (§6.7)
+            } else {
+                self.clear_traces(i); // nothing any synapse delivered is still in the potential (§6.7)
+            }
+            self.expected[i] = 0.0;
+            self.credit[i] = 0.0;
         }
         self.spikes[i] += 1;
         self.fired_wave[i] = self.wave_no as i64;

@@ -99,7 +99,7 @@ def test_it_agrees_with_the_object_engine_under_the_reinforce_rule(eligibility):
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-@pytest.mark.parametrize("eligibility", ["wrong_hebb", "hebb"])
+@pytest.mark.parametrize("eligibility", ["wrong_hebb", "hebb", "count_hebb"])
 def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine(eligibility):
     """§3.4 on §6.15: the container the sweep is about, on the engine the sweep runs on, bit for bit."""
     from walnutbutter.goo import Goo

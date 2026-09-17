@@ -39,11 +39,13 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.teacher_threshold == C.TEACHER_THRESHOLD and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
 
-def test_the_count_memory_and_the_four_eligibilities():
-    """§1.3 (September 16, 2026): n_bar_j moves at COUNT_MEMORY an epoch, the rate memory's window; the +-1 rule is wrong_hebb."""
+def test_the_two_memories_and_the_five_eligibilities():
+    """§1.3: n_bar_j moves at COUNT_MEMORY an epoch (count_hebb, the epoch form), p_hat_j at DECISION_MEMORY a decision (hebb,
+    the single-spike rule of September 17, 2026); the +-1 rule is wrong_hebb."""
     from walnutbutter.learning import ELIGIBILITIES
-    assert C.COUNT_MEMORY == C.RATE_MEMORY == 0.01
-    assert ELIGIBILITIES == ("perturb", "wrong_hebb", "hebb", "hazard")
+    assert C.COUNT_MEMORY == C.RATE_MEMORY == 0.01 and C.DECISION_MEMORY == 1e-4
+    assert ELIGIBILITIES == ("perturb", "wrong_hebb", "hebb", "count_hebb", "hazard")
+    assert build_parser().parse_args(["--eligibility", "count_hebb"]).eligibility == "count_hebb"
     assert build_parser().parse_args(["--eligibility", "wrong_hebb"]).eligibility == "wrong_hebb"
 
 
