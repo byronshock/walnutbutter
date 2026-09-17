@@ -168,6 +168,69 @@ to a part in $10^9$ (`tests/test_hazard.py`, factor on and off). With the
 factor off every engine is the committed rule to the bit. *Not measured
 yet.*
 
+## 0.3 Exploration at the synapse — an observation (Byron, September 17, 2026)
+
+*Placed at the top at Byron's instruction, beside §0.1 and §0.2 and not
+among §0's rules.*
+
+**Byron, 06:05 MDT:** *"Computationally exploration noise can be generated at
+the synapses, and semantically this is clean: a SYNAPSE explores its own
+impulse response, rather than a NEURON exploring its impulse response!"*
+
+What it changes in the reading of what exists. The escape noise of §5.2 is a
+neuron's: one draw per neuron per wave, and a synapse is credited by what it
+happened to have in the potential when its neuron took the chance (§6.7).
+Generated at the synapse, the exploration and the credit it earns belong to
+the same object — the synapse perturbs its own contribution and is scored
+on that — which is the "separate mechanism for synapse hazard generation"
+being specified the same morning, with θ ignored and the potential not
+leaking, and a neuron of fan-in $d$ taking a hazard spike within a hop with
+probability exactly $1/d$ (§5.2, to be written).
+
+*Claude's note, corrected the same morning at Byron's question.* This is not
+the weight perturbation of Werfel, Xie and Seung (BIBLIOGRAPHY.md): they add
+a Gaussian matrix to the weights of a deterministic linear perceptron and
+keep or reverse it by the change in error, which perturbs a parameter, not
+an event, and explores with no hazard at all. The one result of theirs that
+carries over is about dimension, not mechanism: an estimator's largest
+usable learning rate falls as the first power of the dimension of the noise
+it injects, and noise at every synapse has as many dimensions as there are
+synapses where noise at every neuron has as many as there are neurons. The
+precedent for a synapse exploring by its own stochastic events is Seung
+(2003), *Learning in spiking neural networks by reinforcement of stochastic
+synaptic transmission*, Neuron 40(6), 1063-1073
+(https://doi.org/10.1016/S0896-6273(03)00761-X): each synapse's transmission
+is a random release, and the synapse is reinforced by a global reward
+through an eligibility of its own release. Not yet in BIBLIOGRAPHY.md.
+*Not specified or built yet.*
+
+## 0.4 How long a novel thing takes to learn — an observation (Byron, September 17, 2026)
+
+*Placed at the top at Byron's instruction, beside §0.1–§0.3 and not among
+§0's rules.*
+
+**Byron, 06:59 MDT:** *"I think eventually we will have higher exploration
+rates, but I am okay waiting 2 seconds for the network to learn each novel
+thing. Ideally I'd like this to be on the order of the perceptual frame."*
+
+The 2 seconds is not a time constant anyone set; it is the exploration rate
+being specified for the port (§0.3), a probability of $(2d - 1)/(2d^2)$ of an
+exploration spike per refractory period for a neuron of fan-in $d$ ("FOR
+NOW"), read as a waiting time. A neuron then waits on average
+$2d^2/(2d - 1)$ refractory periods between exploration spikes, about
+$(d + \tfrac12) \times 5$ ms: **1.98 s for an output of the fully connected
+mnist goo, $d = 395$**, and 112 ms for a neuron hearing 22. The output zone
+of sixty explores as a whole every 33 ms. So at the zone the network already
+explores within a perceptual frame; each neuron, whose own exploration is
+what its synapses are credited for, does so a few hundred times more slowly.
+
+*What the goal would take (Claude's arithmetic).* For one neuron to explore
+once a frame of $T_f$ it needs a probability of about $5\text{ ms}/T_f$ per
+refractory period — 0.1 at 50 ms, 0.05 at 100 ms, 0.025 at 200 ms — which
+no longer falls as $1/d$: it is a rate set by the frame, not by the fan-in.
+And the ISI factor of §0.2 weighs a charge made that long after a spike
+lightly: 0.030 at 50 ms, 0.0077 at 100 ms, 0.0019 at 200 ms.
+
 ## 1. Global constants — open
 
 One value each, for the whole network. `constants.py` is their only home in
@@ -203,10 +266,10 @@ at all.
 | GOO_MINIMUM_POTENTIAL | −0.8 | goo's floor, GOO_THRESHOLD × MINIMUM_POTENTIAL / THRESHOLD: the grid's ratio of −4, as every goo sweep ran it (§5.2). A goo of 60 starts at −2.62; it followed the threshold down from −4 |
 | GOO_SCALING_FACTOR | 0.05 | goo's wiring (§3.4, the scaled rule): every neuron hears $N \times$ GOO_SCALING_FACTOR synapses in expectation — 32.2 on the mnist goo of 644, 3 on goo 60 — $P(i \to j)$ being that fan-in over the sources $j$ may hear, stopped at 1: $N - 1$ for a neuron outside the input zone, $N - I$ for one inside it, since no neuron projects onto itself and no input neuron onto another. *Byron, September 16, 2026: "P_ij necessary to give j an average of N * scaling_factor inputs. Please default scaling_factor to 0.05. I realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an oversaturated or dull network."* |
 | GOO_PROJECTION | 0.2 | **superseded as the wiring's knob by GOO_SCALING_FACTOR, September 16, 2026;** the probability of the three earlier wirings, which `--wiring zones-equal`, `zones` and `uniform` still build (§3.4). Under the zone rule with equal fan-in: the probability an ordered pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and a projection from the interior onto a zone neuron takes $\min(1, P(N-1)/H)$ so that every neuron hears $P(N-1)$ synapses in expectation (the zone rule with equal fan-in, reinstated the night of September 15, 2026 after an evening of one probability). *The rule Byron's, September 14, 2026; the value set from his two sweeps, September 15 ("the word"):* the plateau in $P$ runs 0.15 to 0.5, with cliffs at 0.1 and from 0.6 up to the fully connected goo, which was the default and the worst value; 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and about 650 projections at sixty neurons — four times the speed of $P = 1$ |
-| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off and is the **evidence accumulator** (§5.1; Byron, September 17, 2026), under which no engine evaluates the decay at all. A half-life of 1.39 ms: 0.435 of the potential survives a hop, 0.08 a refractory period, so a neuron integrates about one hop of input and a steady per-hop input $I$ settles at $1.77\,I$. The hazard's synapse trace (§6.7) leaks with it, being the margin's derivative; the leaky-Hebb trace has its own SYNAPSE_TAU since September 13, 2026 (§6.12), and the row that said they shared this constant stood until September 16. *Swept for the first time that afternoon, §8* |
+| TAU | 2 ms | leak time constant of the potential, computed lazily on arrival; $\infty$ switches it off and is the **evidence accumulator** (§5.1; Byron, September 17, 2026), under which no engine evaluates the decay at all. A half-life of 1.39 ms: 0.287 of the potential survives a hop of 2.5 ms, 0.08 a refractory period, so a neuron integrates about one hop of input and a steady per-hop input $I$ settles at $1.40\,I$ (0.435 and $1.77\,I$ at the 1.67 ms hop of three hops, before September 17, 2026). The hazard's synapse trace (§6.7) leaks with it, being the margin's derivative; the leaky-Hebb trace has its own SYNAPSE_TAU since September 13, 2026 (§6.12), and the row that said they shared this constant stood until September 16. *Swept for the first time that afternoon, §8* |
 | MINIMUM_POTENTIAL | −1 | floor on $p$: inhibition and carried-over charge go no lower. Quoted at THRESHOLD_FAN_IN like $\theta$, and rescaled with it (§5.2), so $p^{\min}/\theta$ stays −4 |
 | REFRACTORY | 5 ms | absolute refractory period |
-| REFRACTORY_HOPS | 3 | the refractory period divided by the time a signal takes to travel one hop; not an integer, started at 3 |
+| REFRACTORY_HOPS | 2 | the refractory period divided by the time a signal takes to travel one hop; not an integer. Started at 3 (a hop of 1.67 ms); 2 since September 17, 2026 (Byron: "Please set hops=2 by default"), a hop of 2.5 ms, so a spike can come back on a loop of two hops the moment the refractory period ends. Every result before that day ran at 3 |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given. Swept September 14, 2026 (§4.2); no problem overrides it |
 | INPUT_DRIVE | rate | how a bit becomes spikes (§4.3): a Poisson process drives each input neuron across the epoch. `forced`, one mandated spike at $t_e$, locks every spike onto a hop lattice and is retired as the default |
 | INPUT_CV | 0.6 | how the drive is specified (§4.3): the coefficient of variation of the spike train it produces. The rate follows exactly, $(1-\text{CV})/\text{REFRACTORY}$, so 80 Hz and 2.8 spikes an epoch |
@@ -1384,7 +1447,8 @@ nothing sticks. LR 0.03 stands: on this task and network any LR from
 
 Time is in nominal milliseconds. A signal takes one **hop** to travel a
 connection, $h = \text{REFRACTORY} / \text{REFRACTORY\_HOPS}$ (Byron,
-September 11, 2026; not an integer, started at 3). Each input has a time
+September 11, 2026; not an integer, started at 3, and 2 since September 17,
+2026, §1.2). Each input has a time
 $t_e$; the first is at 0 and by default each is INTERVAL after the last.
 There is no other delay: the time component of signalling is carried by
 the hop and the refractory period.
@@ -2011,7 +2075,8 @@ $$p \leftarrow p \, e^{-(t - t_{\text{last}}) / \tau}, \qquad t_{\text{last}} \l
 
 with $\tau$ = TAU (Byron, September 12, 2026, bringing the leak back:
 "I don't like the infinite impulse response without the leak"; the default
-is the 2 ms his earlier sweep chose, and a hop is now 1.7 ms, so the leak
+is the 2 ms his earlier sweep chose, and a hop was then 1.7 ms and is 2.5 ms
+since September 17, 2026, so the leak
 acts within a cascade as well as between inputs). The exploration noise
 (§6.1) is added on top of the leaked potential at the input's moment, and
 a bored neuron's check (§5.4) compares the leaked potential against the

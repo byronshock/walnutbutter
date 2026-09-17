@@ -66,7 +66,8 @@ def test_run_epoch_resets_the_mesh_and_presents_a_new_input(capsys):
     assert other.input_bits == grid.input_bits
 
 
-def test_run_epoch_clears_every_neuron_before_firing(capsys):
+def test_run_epoch_clears_every_neuron_before_firing(capsys, monkeypatch):
+    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
     grid = main(across=6, rows=3, weight=1.0, seed=1, permute=False)
     fired_before = {n.name: n.fired_in_wave for n in grid.neurons.values()}
     run_epoch(grid, bits=[False, True, False])  # a specific, different input

@@ -59,7 +59,8 @@ GOO_PROJECTION = 0.2  # the probability of the three earlier wirings (--wiring z
 # that learns -- about 650 projections at sixty neurons, four times the speed of the fully connected goo, which was 1
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
-REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11, 2026)
+REFRACTORY_HOPS = 2.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
+# 2026). 3 until September 17, 2026 (Byron: "Please set hops=2 by default"): a hop of 2.5 ms, not 1.67
 INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
 # shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms
 # the problems had inherited and never chosen (Byron, same day, defaulting it here and removing every override)
