@@ -15,19 +15,23 @@ from pathlib import Path
 from .butter import CELL_AREA
 from .cartesian import CartesianNodes
 from .columns import HexColumns
+from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
+from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
 from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
-    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW,
-    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
+    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
+    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, ISI_FACTOR, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
-    THRESHOLD, THRESHOLD_RANGE, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
+    THRESHOLD_FAN_IN,
+    THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
 )
 from .dopamine import ORDERS, Dopamine
 from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
+from .problems import dataset_stream
 from .monitor import main, run_epoch
 from .network import input_stream
 from .neuron import Neuron
@@ -86,6 +90,90 @@ def build_parser() -> argparse.ArgumentParser:
         "horizontally always connects, at any "
         "height; the rest is --omega shortcuts. The bottom layer is the input and the top layer the output "
         "(with one layer: bottom row in, top row out, and the stack is the hex grid exactly)",
+    )
+    parser.add_argument(
+        "--goo",
+        type=int,
+        nargs="?",
+        const=GOO_COUNT,
+        default=None,
+        metavar="N",
+        help=f"goo: N neurons with no positions at all, wired by the scaled rule at --scaling-factor, no neighbourhood and no "
+        f"shortcuts (default: {GOO_COUNT}, the working network since September 14, 2026). Goo has its own "
+        f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
+        f"--threshold and --minimum-potential override (a value equal to the grid's default is taken as not given). "
+        f"The first --across neurons are the input zone and the last --across (or the problem's outputs) the output, because with no rows "
+        f"there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is no geometry "
+        f"to draw, so it cannot be shown",
+    )
+    parser.add_argument(
+        "--hidden-neurons",
+        "--hidden_neurons",
+        dest="hidden_neurons",
+        type=int,
+        default=None,
+        metavar="H",
+        help="goo's hidden count (AUTHORITY.md §8; Byron, September 16, 2026: 'How will we know if they are buying us anything "
+        "if they are always part of the economy?'): the goo is the input zone, H hidden neurons and the output zone, so "
+        "--hidden-neurons sizes it instead of --goo; 0 is allowed under the scaled rule, the outputs then hearing the inputs "
+        "directly (default: the problem's, 199 for mnist; otherwise --goo sizes the goo and the hidden count follows)",
+    )
+    parser.add_argument(
+        "--scale-with-fan-in",
+        "--scale_with_fan_in",
+        dest="scale_with_fan_in",
+        action="store_true",
+        default=None,
+        help="rescale each neuron's potential axis by its in-degree over THRESHOLD_FAN_IN (AUTHORITY.md §5.2): "
+        "--threshold and --minimum-potential are quoted at an interior hex cell's 18 incoming synapses, so a "
+        "neuron with four times the fan-in starts four times as far from zero in both directions. On by default "
+        "for goo and off for every other container, because turning it on for the grid would move every "
+        "threshold every result to date was measured at",
+    )
+    parser.add_argument(
+        "--projection",
+        type=float,
+        default=GOO_PROJECTION,
+        metavar="P",
+        help=f"the probability of goo's three earlier wirings, under --wiring zones-equal, zones or uniform (AUTHORITY.md "
+        f"§3.4); the scaled rule does not read it. Under the zone rule: the probability an ordered pair with an interior end "
+        f"projects, one way, each direction its own draw; pairs with both ends in a zone never project, and under "
+        f"zones-equal an interior-to-zone projection is scaled up so that every neuron hears the same number in expectation "
+        f"(default: {GOO_PROJECTION:g})",
+    )
+    parser.add_argument(
+        "--scaling-factor",
+        "--scaling_factor",
+        dest="scaling_factor",
+        type=float,
+        default=GOO_SCALING_FACTOR,
+        metavar="S",
+        help=f"goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026): every neuron hears N times S "
+        f"synapses in expectation, each ordered pair projecting, one way, at that fan-in over the sources the target may "
+        f"hear, stopped at 1: the hidden neurons for an input, the inputs and hidden neurons for an output, everyone else "
+        f"for a hidden neuron. No neuron projects onto itself, no input onto another input, and no output onto any zone "
+        f"(the outputs apart, Byron, September 16, 2026): an output hears the inputs directly and projects onto the hidden "
+        f"alone (default: {GOO_SCALING_FACTOR:g}: 32.2 synapses on the mnist goo of 644, 3 on goo 60)",
+    )
+    parser.add_argument(
+        "--wiring",
+        choices=WIRINGS,
+        default="scaled",
+        help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor, the "
+        "outputs apart since 03:05 that night; ff2, fully connected feedforward -- every input onto every output and nothing "
+        "else, two layers and no hidden neurons (Byron, the same afternoon); ff2-partial, the same two layers with each "
+        "input-to-output pair drawn at --projection (Byron, September 17); scaled-open, the night's first version, the outputs open to every zone; "
+        "or one of the three before them at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
+        "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
+        "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "
+        "every ordered pair). The two zone wirings need an interior (default: scaled)",
+    )
+    parser.add_argument(
+        "--no-scale-with-fan-in",
+        "--no_scale_with_fan_in",
+        dest="scale_with_fan_in",
+        action="store_false",
+        help="run goo at a flat --threshold and --minimum-potential, as every other container does",
     )
     parser.add_argument(
         "--engine",
@@ -290,11 +378,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--read",
-        choices=("fired", "again", "window", "rate"),
+        choices=("fired", "again", "window", "rate", "count"),
         default=None,
         help="what the teacher reads at the end of an epoch (AUTHORITY.md §4.3): fired this epoch, spiked again after "
-        "the input's moment, fired within the read window, or rate, the exponential-window firing-rate estimate scored "
-        "against RATE_ON and RATE_OFF (default: the problem's)",
+        "the input's moment, fired within the read window, rate (the exponential-window firing-rate estimate scored "
+        "against RATE_ON and RATE_OFF), or count: the epoch's spikes counted, a rate estimated from the count, and the "
+        "neuron on if that exceeds --teacher-threshold (default: the problem's)",
+    )
+    parser.add_argument(
+        "--teacher-threshold",
+        "--teacher_threshold",
+        dest="teacher_threshold",
+        type=float,
+        default=TEACHER_THRESHOLD,
+        metavar="HZ",
+        help=f"the count read's line between off and on, in Hz (default: {TEACHER_THRESHOLD:g}, the middle of the "
+        f"one-spike band: at a 35 ms epoch one spike is 28.6 Hz and reads on, none reads off; 42.9 would mean two)",
     )
     parser.add_argument(
         "--read-window",
@@ -334,6 +433,22 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help=f"neurons per raw bit where the coding repeats it (AUTHORITY.md §4.3): population coding uses this many, and "
         f"population-complement uses this many and then complement-codes the lot (default: the problem's, else {POPULATION})",
+    )
+    parser.add_argument(
+        "--outputs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="the output zone's width on goo (AUTHORITY.md §3.4, §8): the problem's unless given -- mnist's 60 since "
+        "September 16, 2026; --outputs 50 --population 5 --output-coding population is its earlier layout",
+    )
+    parser.add_argument(
+        "--output-coding",
+        choices=("population", "complement"),
+        default=None,
+        help="how the output zone codes the classes (AUTHORITY.md §8): a population of --population neurons a class, or "
+        "complement -- those fire-if-one populations and then, in the same order, as many fire-if-zero populations, "
+        "twice the width, the class's evidence being one sum minus the other (default: the problem's)",
     )
     parser.add_argument(
         "--drive",
@@ -432,7 +547,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"how the reward is judged: row (fraction of output neurons matching the target), sustained (of the "
         f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), decoded "
         f"(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
-        f"(all data bits right or nothing). Default: {CRITIC}, or the problem's",
+        f"(all data bits right or nothing); class, graded and evidence score a dataset's label (§8): class pays 1 when the "
+        f"label's group of outputs out-spikes every other, graded the fraction of the other groups it out-spikes, and "
+        f"evidence reads the group sums as log-odds at --temperature and pays the softmax cross-entropy ln q_label, "
+        f"chance ln 0.1. Default: {CRITIC}, or the problem's",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=TEMPERATURE,
+        metavar="T",
+        help=f"the evidence critic's temperature (AUTHORITY.md §8): a lead of T spikes makes a class e times as likely; "
+        f"T -> 0 is the class critic, T -> infinity pays every epoch ln 0.1 (default: {TEMPERATURE:g})",
     )
     parser.add_argument(
         "--lr",
@@ -447,10 +573,25 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"exploration noise: std dev added to each neuron's potential at every input (default: {SIGMA:g}; 0 = off)",
     )
     parser.add_argument(
+        "--delta",
+        type=float,
+        default=ESCAPE_DELTA,
+        metavar="D",
+        help=f"escape noise (AUTHORITY.md §5.2): the firing decision is a draw, D times the neuron's starting threshold "
+        f"wide -- one expected spike per hop at threshold, e times more per D of margin above it, so a neuron nobody talks "
+        f"to fires on its own at a rate its margin sets (default: {ESCAPE_DELTA:g}; 0 = the deterministic threshold)",
+    )
+    parser.add_argument(
         "--eligibility",
         choices=ELIGIBILITIES,
-        default=ELIGIBILITY,
-        help=f"what the global reward acts on: the neuron's exploration noise (perturb) or plain Hebbian (default: {ELIGIBILITY})",
+        default=None,
+        help=f"what the global reward acts on: the neuron's exploration noise (perturb); the centred Hebbian term charged at "
+        f"every decision, the target's spike or silence minus its own expectation of it times what the synapse has in its "
+        f"potential (hebb, the single-spike rule of September 17, 2026); its epoch form, what each synapse delivered this "
+        f"epoch times the target's count minus its expectation (count_hebb, hebb until that day); the uncentred "
+        f"+-1 by whether the target fired (wrong_hebb, the rule hebb replaced on September 16, 2026); or the score of the "
+        f"escape-noise decision on each synapse's trace (hazard, needs --delta; AUTHORITY.md §6.7) (default: hazard "
+        f"when the network has escape noise, else {ELIGIBILITY})",
     )
     parser.add_argument(
         "--homeostasis",
@@ -470,22 +611,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSTICK,
         metavar="RATE",
-        help=f"per-epoch rate at which a stuck output neuron's threshold moves toward --unstick-target; only "
-        f"output neurons firing >99%% or <1%% of the time are touched, only while stuck (default: {UNSTICK:g}; 0 = off)",
+        help=f"per-epoch rate at which a stuck neuron's threshold moves toward --unstick-target -- every neuron, "
+        f"not the outputs only, since September 14, 2026 (AUTHORITY.md §6.7); only "
+        f"neurons firing >99%% or <1%% of the time are touched, only while stuck, and never one forced this epoch "
+        f"(default: {UNSTICK:g}; 0 = off)",
     )
     parser.add_argument(
         "--unstick-target",
         type=float,
         default=UNSTICK_TARGET,
-        help=f"firing rate the output un-sticking aims for (default: {UNSTICK_TARGET:g})",
-    )
-    parser.add_argument(
-        "--threshold-range",
-        type=float,
-        nargs=2,
-        metavar=("LOW", "HIGH"),
-        default=THRESHOLD_RANGE,
-        help=f"limits homeostasis may move a threshold to (default: {THRESHOLD_RANGE[0]:g} {THRESHOLD_RANGE[1]:g})",
+        help=f"firing rate the un-sticking aims for (default: {UNSTICK_TARGET:g})",
     )
     parser.add_argument(
         "--minimum-potential",
@@ -513,6 +648,15 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MS",
         help=f"leak time constant of every neuron, nominal milliseconds (default: {TAU:g}; inf switches the leak off). "
         "The leak is computed only when a signal reaches a neuron",
+    )
+    parser.add_argument(
+        "--no-isi-factor",
+        dest="isi_factor",
+        action="store_false",
+        default=ISI_FACTOR,
+        help="do not weigh the single-spike rule's charges by the ISI factor (AUTHORITY.md §0.2), f(t - ISI) with t the "
+        "time since the neuron's last spike and ISI 5.1 ms; the factor is on by default, and every run before "
+        "September 17, 2026 ran without it",
     )
     parser.add_argument(
         "--refractory",
@@ -602,14 +746,24 @@ def cli_main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code (0 = success)."""
     args = build_parser().parse_args(argv)
     args.given_rule = args.rule  # what --rule said, if anything: it outlives a checkpoint's problem
-    args.show = not args.headless and args.seeds is None  # a seed batch is headless by definition
+    # a seed batch is headless by definition, and so is goo: it has no positions, so there is nothing to draw
+    args.show = not args.headless and args.seeds is None and args.goo is None
     args.fast = args.show and not args.step
+    if args.goo is not None and args.save:
+        print("error: goo has no geometry to draw, so --save has no picture to write", file=sys.stderr)
+        return 2
+    if args.goo is not None and (args.nodes is not None or args.layers is not None):
+        other = "--nodes" if args.nodes is not None else "--layers"
+        print(f"error: --goo is a container of its own; it cannot be combined with {other}", file=sys.stderr)
+        return 2
     try:
         apply_problem(args)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    apply_container(args)
     was_verbose, was_refractory, was_hops, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau
+    was_isi_factor = Neuron.isi_factor
     Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
     if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
         print("error: --tau, --refractory, --refractory-hops and --interval must be positive", file=sys.stderr)
@@ -624,10 +778,12 @@ def cli_main(argv: list[str] | None = None) -> int:
         print("error: --punish-gain must not be negative and --weight-decay must be in [0, 1)", file=sys.stderr)
         return 2
     Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = args.refractory, args.refractory_hops, args.bored_after, args.tau
+    Neuron.isi_factor = args.isi_factor  # §0.2
     try:
         return _run(args)
     finally:
         Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hops, was_bored, was_tau
+        Neuron.isi_factor = was_isi_factor
 
 
 def READ_MEANS(args) -> str:
@@ -655,6 +811,12 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
     if not problem.trained:
         args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
+    if problem.homeostasis is not None and args.homeostasis == HOMEOSTASIS:
+        args.homeostasis = problem.homeostasis  # the problem's, unless --homeostasis was given (a value equal to the default is taken as not given)
+    if problem.unstick is not None and args.unstick == UNSTICK:
+        args.unstick = problem.unstick
+    if problem.lr is not None and args.lr == LR:  # the problem's own rate, unless --lr was given (a value equal to LR counts as not given)
+        args.lr = problem.lr
     if problem.target is not None:
         args.target = problem.target
     if args.critic is None:
@@ -671,6 +833,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
     if args.population is None:
         args.population = problem.population if problem.population is not None else POPULATION
+    if args.output_coding is None:
+        args.output_coding = problem.output_coding  # how the output zone codes the classes (§8)
     if args.flip is None:
         args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
@@ -684,8 +848,32 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read_window = READ_WINDOW
     args.grid_reach, args.input_cells = problem.reach, problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
+    if args.outputs is None:
+        args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8), unless --outputs
+    args.clock = problem.clock  # clock neurons at the front of the input zone, always driven (§4.3)
+    args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
+    if args.hidden_neurons is None:
+        args.hidden_neurons = problem.hidden_neurons  # the problem's hidden count, unless --hidden-neurons was given (§8)
+    if args.goo is None and args.hidden_neurons is not None and args.nodes is None and not args.layers:
+        args.goo = args.across + args.hidden_neurons + (args.outputs or args.across)  # inputs + hidden + outputs
+    if args.goo is None and problem.goo is not None and args.nodes is None and not args.layers:
+        args.goo = problem.goo  # the problem is posed on goo of this many neurons unless a grid was asked for
     if args.rows == ROWS and problem.rows != ROWS:
         args.rows = problem.rows  # the problem's rows, unless --rows was given (a value equal to the default is taken as not given)
+
+
+def apply_container(args: argparse.Namespace) -> None:
+    """Goo's own threshold and floor (AUTHORITY.md §1.2) unless --threshold or --minimum-potential was given.
+
+    A value equal to the grid's default is taken as not given, as --rows is;
+    the sweep driver, which knows what an arm swept, decides for itself.
+    """
+    if args.goo is None:
+        return
+    if args.threshold == THRESHOLD:
+        args.threshold = GOO_THRESHOLD
+    if args.minimum_potential == MINIMUM_POTENTIAL:
+        args.minimum_potential = GOO_MINIMUM_POTENTIAL
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -769,6 +957,51 @@ def _run(args: argparse.Namespace) -> int:
             input_bits = parse_bits(args.input) if args.input is not None else None
             if loaded:
                 grid, data = loaded
+            elif args.goo is not None:
+                if args.hidden_neurons is not None and (args.hidden_neurons < 0 or args.goo != args.across + args.hidden_neurons + (args.outputs or args.across)):
+                    print(f"error: --hidden-neurons {args.hidden_neurons} with {args.across} in and {args.outputs or args.across} "
+                          f"out is a goo of {args.across + args.hidden_neurons + (args.outputs or args.across)}, not --goo {args.goo}",
+                          file=sys.stderr)
+                    return 2
+                if args.wiring in ZONE_WIRINGS and args.goo <= args.across + (args.outputs or args.across):
+                    print(
+                        f"error: the {args.wiring} wiring needs an interior for its zones to talk through: --goo must "
+                        f"exceed the zones together, got {args.goo} for {args.across} in and {args.outputs or args.across} out",
+                        file=sys.stderr,
+                    )
+                    return 2
+                if args.goo < args.across + (args.outputs or args.across):
+                    print(f"error: the zones would overlap: --goo must be at least the zones together, got {args.goo} for "
+                          f"{args.across} in and {args.outputs or args.across} out", file=sys.stderr)
+                    return 2
+                if not 0.0 < args.projection <= 1.0:
+                    print(f"error: --projection must be in (0, 1], got {args.projection}", file=sys.stderr)
+                    return 2
+                if args.scaling_factor <= 0.0:
+                    print(f"error: --scaling-factor must be positive, got {args.scaling_factor}", file=sys.stderr)
+                    return 2
+                grid = Goo(
+                    count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
+                    permute=not args.no_permute, weight_range=settings["weight_range"],
+                    minimum_potential=args.minimum_potential,
+                    scale_with_fan_in=args.scale_with_fan_in is not False,
+                    projection=args.projection, outputs=args.outputs, wiring=args.wiring,
+                    scaling_factor=args.scaling_factor,
+                )
+                print(f"{grid!r}: {grid.mean_out_degree():.1f} projections per neuron; {_wiring_summary(grid)}", file=sys.stderr)
+                inner, edge = (grid.interior() or grid.all_neurons())[0], grid.all_neurons()[0]
+                if grid.scale_with_fan_in_on:
+                    print(
+                        f"fan-in scaling (§5.2): an interior neuron hears {len(inner.incoming)} synapses and starts at "
+                        f"threshold {inner.threshold:.3f}, floor {inner.minimum_potential:.3f}; a zone neuron hears "
+                        f"{len(edge.incoming)} and starts at {edge.threshold:.3f}, {edge.minimum_potential:.3f}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"fan-in scaling off: a flat threshold {edge.threshold:g} and floor {edge.minimum_potential:g}",
+                        file=sys.stderr,
+                    )
             elif args.layers is not None:
                 if args.layers < 1:
                     print(f"error: --layers needs at least 1, got {args.layers}", file=sys.stderr)
@@ -787,18 +1020,42 @@ def _run(args: argparse.Namespace) -> int:
                 grid.connect_within(reach=args.reach, weight=args.weight)
             else:
                 grid = GridOfNeurons(**settings, reach=args.grid_reach)
+            if args.scale_with_fan_in and args.goo is None and not loaded:
+                grid.scale_with_fan_in(args.threshold, args.minimum_potential)
+                print(
+                    f"fan-in scaling (§5.2): every threshold and floor rescaled by in-degree / "
+                    f"{THRESHOLD_FAN_IN:g}",
+                    file=sys.stderr,
+                )
             if args.input_cells and not loaded:
                 grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
+            if not loaded or args.delta != ESCAPE_DELTA:
+                grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
+            if args.eligibility is None:  # the eligibility follows the neuron (§1.3)
+                args.eligibility = "hazard" if grid.hazard else ELIGIBILITY
             grid.problem = args.problem
             grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
+            grid.clock = args.clock
+            if args.clock:
+                print(f"clock neurons: the first {args.clock} input neurons are driven every epoch whatever the pattern "
+                      f"(§4.3), and take no raw bits", file=sys.stderr)
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
             grid.explore, grid.rate_on = args.explore, args.rate_on
+            grid.teacher_threshold = args.teacher_threshold
             grid.population = args.population
+            grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
+            grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
-            if args.input_seed is not None:
+            if args.data is not None:
+                patterns, labels = dataset_stream(args.data, args.input_seed if args.input_seed is not None else seed)
+                grid.use_input_stream(patterns, labels)
+                print(f"inputs: the {len(patterns):,} images of {args.data} in the shuffle of seed "
+                      f"{args.input_seed if args.input_seed is not None else seed}, with their labels, going round "
+                      f"again when the run outlasts them (§4.5, §8)", file=sys.stderr)
+            elif args.input_seed is not None:
                 grid.use_input_stream(input_stream(max(1, args.epochs), grid.raw_bit_count(), args.input_seed))
                 print(f"inputs: {max(1, args.epochs):,} patterns drawn up front from input seed {args.input_seed} "
                       f"(§4.5), the same for any network run at this input seed", file=sys.stderr)
@@ -840,7 +1097,8 @@ def _run(args: argparse.Namespace) -> int:
                 )
             if not args.no_permute or loaded:
                 laid = "coded" if grid.coding == "complement" else "raw"
-                print(f"input permutation: place i along the bottom row shows {laid} bit {grid.permutation}", file=sys.stderr)
+                where = "the input zone" if isinstance(getattr(grid, "mesh", grid), Goo) else "the bottom row"
+                print(f"input permutation: place i along {where} shows {laid} bit {grid.permutation}", file=sys.stderr)
             if args.rule != "reinforce":
                 grid.rule = args.rule
                 if grid.dopamine is None:  # a loaded checkpoint brings its own pool
@@ -858,12 +1116,18 @@ def _run(args: argparse.Namespace) -> int:
                       f"{f', leaky Hebb {args.hebb:g}' if args.hebb else ''}", file=sys.stderr)
             else:
                 grid.dopamine = None  # the reinforce rule keeps no pool, so §6.8's weight decay does not run under it
-                # the Teacher zeroes sigma for the hebb eligibility, so the network is deterministic: report what runs
+                # the Teacher zeroes sigma for the Hebbian eligibilities, so the network is deterministic: report what runs
                 effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
+                if effective_sigma or args.delta:
+                    exploring = ""
+                elif args.eligibility in ("hebb", "count_hebb"):
+                    exploring = " (no injected noise: the centred Hebbian rule, explored by whatever varies the counts)"
+                else:
+                    exploring = " (no exploration: reward-modulated Hebb, not a policy gradient)"
                 print(f"rule: reinforce ({args.eligibility} eligibility"
                       f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
-                      f"sigma {effective_sigma:g} ({args.explore})"
-                      f"{' (no exploration: reward-modulated Hebb, not a policy gradient)' if not effective_sigma else ''}"
+                      f"sigma {effective_sigma:g} ({args.explore}), escape delta {args.delta:g}"
+                      f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}{exploring}"
                       f", no weight decay; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
@@ -888,7 +1152,6 @@ def _run(args: argparse.Namespace) -> int:
                     seed=seed,
                     homeostasis=args.homeostasis,
                     target_rate=args.target_rate,
-                    threshold_range=tuple(args.threshold_range),
                     discharge=args.discharge,
                     unstick=args.unstick,
                     unstick_target=args.unstick_target,
@@ -941,7 +1204,7 @@ def _run(args: argparse.Namespace) -> int:
             return 2
 
         mesh = getattr(grid, "mesh", grid)
-        if args.omega > 0 and not isinstance(mesh, CartesianNodes):
+        if args.omega > 0 and not isinstance(mesh, (CartesianNodes, Goo)):
             print(
                 f"omega {args.omega:g}: {len(mesh.small_world_connections())} small-world "
                 f"connections among {len(mesh.connections)}",
@@ -1020,11 +1283,40 @@ def _run_nodes(args: argparse.Namespace, width: int, height: int) -> int:
     return 0
 
 
+def _wiring_summary(grid: Goo) -> str:
+    """One line on what goo's wiring lets talk to what, for the run's header."""
+    if grid.wiring == "scaled":
+        hidden = grid.interior_count()
+        heard = (f"an input from the {hidden} hidden at P {grid.input_projection():.3g}" if hidden
+                 else "an input from no one, left at the container's threshold (§5.2)")
+        return (f"every neuron hears {grid.expected_fan_in():g} synapses in expectation where it has sources: {heard}, an "
+                f"output from the {grid.count - grid.outputs} inputs and hidden at {grid.output_projection():.3g}"
+                + (f", a hidden neuron from the {grid.count - 1} others at {grid.hidden_projection():.3g}" if hidden else "")
+                + "; the outputs project onto the hidden alone")
+    if grid.wiring == "scaled-open":
+        return (f"every neuron hears {grid.expected_fan_in():g} synapses in expectation, an input neuron from the "
+                f"{grid.count - grid.across} outside its zone at P {grid.input_projection():.3g} and every other neuron "
+                f"from the {grid.count - 1} others at {grid.hidden_projection():.3g}")
+    if grid.wiring == "uniform":
+        return f"every ordered pair at P {grid.projection:g}, the zones included"
+    return f"the zones talk only through the {len(grid.interior())} interior neurons"
+
+
 def _seed_worker(job: dict) -> dict:
     """One seed's headless run, in its own process. Returns a summary row."""
     Neuron.verbose = False
     seed, epochs = job["seed"], job["epochs"]
-    if job.get("lattice"):
+    if job.get("goo") is not None:
+        settings = job["settings"]
+        grid = Goo(
+            count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
+            seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
+            minimum_potential=settings["minimum_potential"],
+            scale_with_fan_in=job.get("scale_with_fan_in") is not False,
+            projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
+            wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
+        )
+    elif job.get("lattice"):
         settings = job["settings"]
         grid = CartesianNodes(
             across=settings["across"], rows=settings["rows"], seed=seed, threshold=settings["threshold"],
@@ -1036,18 +1328,23 @@ def _seed_worker(job: dict) -> dict:
         grid = GridOfNeurons(**job["settings"], seed=seed, reach=job.get("grid_reach", 2))
         if job.get("input_cells"):
             grid.set_input_cells(job["input_cells"])
-    if job.get("layers"):
+    if job.get("layers") and job.get("goo") is None:
         grid = HexColumns(layers=job["layers"], **job["settings"], seed=seed)
+    if job.get("scale_with_fan_in") and job.get("goo") is None:
+        grid.scale_with_fan_in(job["settings"]["threshold"], job["settings"]["minimum_potential"])
     if job.get("ecc"):
         grid.use_ecc(job["ecc"])
     Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
+    Neuron.isi_factor = job.get("isi_factor", Neuron.isi_factor)  # §0.2, in each worker
     grid.interval = job.get("interval", grid.interval)
+    grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's
     grid.problem = job.get("problem")
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
     grid.coding = job.get("coding", "complement")
+    grid.clock = job.get("clock", 0)
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
     grid.flip = job.get("flip", 0.0)
     grid.hebb_rate = job.get("hebb", 0.0)
@@ -1055,8 +1352,14 @@ def _seed_worker(job: dict) -> dict:
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
+    grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
+    grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
+    grid.output_coding = job.get("output_coding", "population")  # how the output zone codes the classes (§8)
+    grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
-    if job.get("input_seed") is not None:
+    if job.get("data") is not None:
+        grid.use_input_stream(*dataset_stream(job["data"], job["input_seed"] if job.get("input_seed") is not None else seed))
+    elif job.get("input_seed") is not None:
         grid.use_input_stream(input_stream(epochs, grid.raw_bit_count(), job["input_seed"]))
     if job["teacher"].get("rule", RULE) == "dopamine":
         grid.dopamine = Dopamine(**job["dopamine"])
@@ -1105,6 +1408,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
         weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
     )
+    if args.eligibility is None:  # the eligibility follows the neuron (§1.3): every seed's network gets args.delta
+        args.eligibility = "hazard" if args.delta > 0 else ELIGIBILITY
     teacher_kwargs = dict(
         target=args.target,
         lr=args.lr,
@@ -1112,7 +1417,6 @@ def _run_seeds(args: argparse.Namespace) -> int:
         eligibility=args.eligibility,
         homeostasis=args.homeostasis,
         target_rate=args.target_rate,
-        threshold_range=tuple(args.threshold_range),
         discharge=args.discharge,
         unstick=args.unstick,
         unstick_target=args.unstick_target,
@@ -1137,15 +1441,20 @@ def _run_seeds(args: argparse.Namespace) -> int:
             Path(save).parent.mkdir(parents=True, exist_ok=True)
         lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
-                     "save": save, "lattice": lattice, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
+                     "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
-                     "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
+                     "tau": args.tau, "isi_factor": args.isi_factor, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
+                     "teacher_threshold": args.teacher_threshold, "delta": args.delta,
+                     "population": args.population, "output_coding": args.output_coding, "temperature": args.temperature,
+                     "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":
         try:
@@ -1157,9 +1466,19 @@ def _run_seeds(args: argparse.Namespace) -> int:
     wiring = (f"lattice, reach {args.reach:g}" if args.nodes is not None
               else f"{args.layers} layers of hexagonal columns, omega {args.omega:g}" if args.layers
               else f"hex grid, omega {args.omega:g}")
+    shape = f"{args.across}x{args.rows} {wiring}"
+    if args.goo is not None:
+        density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
+                   else f"at projection {args.projection:g} under the {args.wiring} wiring")
+        hidden = args.goo - args.across - (args.outputs or args.across)
+        shape = f"{args.goo} neurons of goo {density}, {args.across} in, {hidden} hidden and {args.outputs or args.across} out"
+    # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
+    scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
+    shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
+    shape += f", {args.rule} rule" + (f" with the {args.eligibility} eligibility" if args.rule == "reinforce" else "")
+    shape += f", escape delta {args.delta:g}" if args.delta else ""
     print(
-        f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, "
-        f"{args.across}x{args.rows} {wiring}",
+        f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,
     )
     started = time.perf_counter()

@@ -19,10 +19,14 @@ def quiet(monkeypatch):
 
 
 def test_the_problems_and_the_default():
-    assert set(PROBLEMS) == {"reversal", "sustain_inputs", "improved_sustain", "population_copy",
+    assert set(PROBLEMS) == {"reversal", "copy", "sustain_inputs", "improved_sustain", "population_copy", "mnist",
                              "population_denoise", "shallow_copy", "shallow_not", "doubled_copy",
                              "reaching_copy"}
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"
+    # copy (Byron, September 14, 2026): eight complement-coded input neurons, eight outputs, place for place, unpermuted
+    copy = PROBLEMS["copy"]
+    assert (copy.across, copy.coding, copy.target, copy.critic, copy.rule) == (8, "complement", "copy", "row", "reinforce")
+    assert copy.trained and not copy.permute and not copy.quash
     assert PROBLEMS["reversal"].trained and not PROBLEMS["sustain_inputs"].trained
     sustain = PROBLEMS["sustain_inputs"]
     assert sustain.across == 4 and sustain.coding == "raw"  # the 16 four-bit inputs as they are on 4 neurons
@@ -180,7 +184,7 @@ def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
     assert cli_main(["--headless", "--problem", "sustain_inputs", "--seeds", "2", "--seed", "1", "--epochs", "3", "--no-save"]) == 0
     assert cli_main(["--headless", "--problem", "sustain_inputs", "--rule", "reinforce", "--epochs", "3", "--no-save"]) == 0
     err = capsys.readouterr().err  # §6.7: the rule runs on an untrained problem, keeping no dopamine pool and so no decay
-    assert "rule: reinforce (perturb eligibility" in err and "no weight decay" in err
+    assert "rule: reinforce (hazard eligibility" in err and "no weight decay" in err
 
 
 def test_reversal_is_unchanged(tmp_path, capsys):
@@ -630,6 +634,19 @@ def test_the_driving_process_is_not_the_spike_train():
 
 # --- the same problem, only NOT (AUTHORITY.md §8) ------------------------------------
 
+def test_a_problem_can_carry_its_own_learning_rate():
+    """§8, mnist (Byron, September 16, 2026: "default LR to 0.002 for this task"): the constant unless the problem or --lr says."""
+    from walnutbutter.cli import apply_problem, build_parser
+    from walnutbutter.constants import LR
+    assert PROBLEMS["mnist"].lr == 0.002 and PROBLEMS["copy"].lr is None
+    args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
+    assert args.lr == 0.002
+    args = build_parser().parse_args(["--problem", "mnist", "--lr", "0.01"]); apply_problem(args)
+    assert args.lr == 0.01  # given, so kept
+    args = build_parser().parse_args(["--problem", "copy"]); apply_problem(args)
+    assert args.lr == LR
+
+
 def test_shallow_not_is_shallow_copy_with_the_target_complemented():
     from walnutbutter.learning import TARGETS, accuracy, teacher_score
 
@@ -817,3 +834,20 @@ def test_the_array_engine_carries_the_stream_across_the_wrap():
     net.sync_to_mesh()
     assert mesh.input_at == 10  # the mesh picks up where the arrays left off
     assert mesh.new_random_input() == patterns[10]
+
+
+def test_copy_asks_each_output_for_exactly_its_input_place(capsys):
+    """§8 copy: output place i is taught to show coded bit i, unpermuted, on the grid and on goo alike."""
+    from walnutbutter.cli import apply_problem
+    from walnutbutter.goo import Goo
+    from walnutbutter.learning import TARGETS
+    args = build_parser().parse_args(["--problem", "copy"])
+    apply_problem(args)
+    assert args.target == "copy" and args.critic == "row" and args.no_permute and args.across == 8
+    goo = Goo(seed=1, permute=False)
+    goo.set_input_bits([True, False, False, True])
+    assert goo.input_pattern == [True, False, False, True, False, True, True, False]  # the bits, then their negations
+    assert TARGETS["copy"](goo.target_pattern) == goo.input_pattern  # what the eight outputs are asked to show
+    assert len(goo.input_row()) == len(goo.output_row()) == 8
+    assert cli_main(["--problem", "copy", "--goo", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
+    assert "learning copy (" in capsys.readouterr().err  # the Teacher's status names the target it teaches

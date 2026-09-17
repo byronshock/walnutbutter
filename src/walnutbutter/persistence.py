@@ -14,6 +14,8 @@ from pathlib import Path
 
 from .cartesian import CartesianNodes
 from .columns import HexColumns
+from .constants import GOO_SCALING_FACTOR
+from .goo import Goo, scaled_projection
 from .grid import GridOfNeurons
 from .dopamine import Dopamine
 from .neuron import Neuron
@@ -29,9 +31,10 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         grid = grid.mesh
     lattice = isinstance(grid, CartesianNodes)
     columns = isinstance(grid, HexColumns)
+    goo = isinstance(grid, Goo)
     data = {
         "format": FORMAT,
-        "container": "lattice" if lattice else "columns" if columns else "grid",
+        "container": "goo" if goo else "lattice" if lattice else "columns" if columns else "grid",
         "layers": getattr(grid, "layers", 1),
         "across": grid.across,
         "rows": grid.rows,
@@ -45,6 +48,9 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "ecc": grid.ecc,
         "coding": grid.coding,  # complement, raw or population
         "population": grid.population,  # neurons per raw bit under population coding
+        "output_coding": getattr(grid, "output_coding", "population"),  # how the output zone codes the classes (§8)
+        "temperature": grid.temperature,  # the evidence critic's temperature (§8)
+        "clock": grid.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [grid.quash_rate, grid.quash_k],  # the cycle quash (§6.11)
         "flip": grid.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
         "hebb": grid.hebb_rate,  # leaky Hebb (§6.12)
@@ -52,6 +58,7 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "drive": grid.drive,  # how a bit becomes spikes (§4.3)
         "explore": grid.explore,  # when the exploration draw is taken (§6.1)
         "rate": [grid.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
+        "teacher_threshold": grid.teacher_threshold,  # the count read's line in Hz (§4.3)
         "input_rate": [grid.input_rate, grid.input_rate_off],  # per ms, under rate drive
         "input_cells": grid.input_cells,  # an input zone, or None for the bottom row
         "grid_reach": getattr(grid, "reach", None) if not lattice else None,  # hex steps the grid's local wiring covers
@@ -62,6 +69,8 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "time": grid.time,  # the clock, nominal milliseconds
         "interval": grid.interval,
         "tau": Neuron.tau,
+        "isi_factor": Neuron.isi_factor,  # §0.2: whether the single-spike rule's charges were weighed; a checkpoint
+        "target_isi": Neuron.target_isi,  # without the key is from before the factor, and ran without it
         "refractory": Neuron.refractory,
         "refractory_hops": Neuron.refractory_hops,
         "bored_after": Neuron.bored_after,
@@ -71,7 +80,15 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "shortcuts": [] if lattice else [[c.source.name, c.target.name] for c in grid.small_world_connections()],
         "weights": [grid.connections[i].weight for i in range(1, len(grid.connections) + 1)],
         "thresholds": [n.threshold for n in grid.all_neurons()],
+        # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
+        "floors": [n.minimum_potential for n in grid.all_neurons()],
         "rates": [n.rate for n in grid.all_neurons()],
+        "expected_counts": [n.expected_count for n in grid.all_neurons()],  # n_bar_j, the count_hebb eligibility's expectation (§6.7)
+        # the single-spike rule (§6.7, September 17, 2026): p_hat_j, the decisions to date, and E_j, the spikes expected since the
+        # neuron's last spike, so a resumed run charges from where it was
+        "expectations": [n.expectation for n in grid.all_neurons()],
+        "decisions": [n.decisions for n in grid.all_neurons()],
+        "expected_since_spike": [n.expected for n in grid.all_neurons()],
         # the state the clock leaves behind, so a resumed run continues rather than restarts
         "potentials": [n.potential for n in grid.all_neurons()],
         "fired_at": [n.fired_at for n in grid.all_neurons()],
@@ -80,10 +97,24 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
         "spikes": [n.spikes for n in grid.all_neurons()],
         # the synapses' stamps and the signals in flight, so a resumed run continues mid-cascade
         "last_signal": [grid.connections[i].last_signal for i in range(1, len(grid.connections) + 1)],
+        # escape noise (§5.2): the width in units of the starting threshold, each neuron's own in potential units,
+        # since when each hazard has run, and each synapse's trace of what it still has in its target (§6.7)
+        "escape_delta": grid.escape_delta,
+        "deltas": [n.delta for n in grid.all_neurons()],
+        "exposed_since": [n.exposed_since for n in grid.all_neurons()],
+        "traces": [[grid.connections[i].trace, grid.connections[i].trace_at] for i in range(1, len(grid.connections) + 1)],
+        "notes": [grid.connections[i].noted for i in range(1, len(grid.connections) + 1)],  # B_ij, each open arrival's note (§6.7)
         "pending": [[time, connection.id] for time, connection in grid.schedule.pending()],
         "dopamine": None if grid.dopamine is None else grid.dopamine.state(),
         "rule": grid.rule,  # which rule the schedule's hook serves: dopamine, or teacher (eligibility for the read)
     }
+    if goo:
+        data["count"] = grid.count  # goo's whole topology: no positions to record and no shortcuts to verify
+        data["scale_with_fan_in"] = grid.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
+        data["projection"] = grid.projection  # the three earlier wirings' probability (§3.4)
+        data["scaling_factor"] = grid.scaling_factor  # the scaled rule's knob (§3.4): N times it heard in expectation
+        data["outputs"] = grid.outputs  # the output zone's width, when it differs from the input's (§8, mnist)
+        data["wiring"] = grid.wiring  # the rule (§3.4), or one of the three before it; a checkpoint restores under its own
     if lattice:
         index = {n: i for i, n in enumerate(grid.neurons)}
         data["layout"] = grid.layout
@@ -104,7 +135,6 @@ def checkpoint(grid: GridOfNeurons, path: str | Path, teacher=None) -> dict:
             "epochs": teacher.epochs,
             "homeostasis": teacher.homeostasis,
             "target_rate": teacher.target_rate,
-            "threshold_range": list(teacher.threshold_range),
             "unstick": teacher.unstick,
             "unstick_target": teacher.unstick_target,
             "critic": teacher.critic,
@@ -138,6 +168,8 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
     Returns the grid and the checkpoint data (so a Teacher can be resumed).
     """
     data = read_checkpoint(path)
+    if data.get("container") == "goo":
+        return _restore_goo(data), data
     if data.get("container") == "lattice":
         return _restore_lattice(data), data
     if data.get("container") == "columns":
@@ -164,6 +196,55 @@ def restore(path: str | Path) -> tuple[GridOfNeurons, dict]:
     load_weights(grid, data)
     grid.epoch = data["epoch"]
     return grid, data
+
+
+def _restore_goo(data: dict) -> Goo:
+    """Rebuild goo from its count and its wiring rule, then load its weights.
+
+    Where nothing about the topology was drawn -- the earlier wirings at
+    projection 1, the scaled rule where every probability is 0 or 1 -- a goo
+    built without a seed restores exactly; otherwise the seed decided the
+    wiring and is needed, as a grid's is for its shortcuts. A checkpoint from
+    before the zone rule (one that records `direct_projection`) cannot be
+    rebuilt: its zones projected onto each other.
+    """
+    if "direct_projection" in data:
+        raise ValueError(f"{path_of(data)}: goo built before the zone rule of September 14, 2026; its wiring cannot be rebuilt")
+    # the wiring it was built under: recorded since the uniform rule of September 15; before that, the zone rule, with or
+    # without the afternoon's equal fan-in (§3.4)
+    wiring = data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones")
+    scaling_factor = data.get("scaling_factor", GOO_SCALING_FACTOR)
+    if wiring in ("scaled", "scaled-open"):
+        outputs = data.get("outputs") or across_of(data)
+        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), outputs, scaling_factor, zone, wiring == "scaled-open") < 1.0
+                    for zone in ("input", "hidden", "output"))
+        how = f"at scaling factor {scaling_factor:g}"
+    else:
+        drawn = data.get("projection", 1.0) < 1.0
+        how = f"at projection {data.get('projection', 1.0):g}"
+    if drawn and data["seed"] is None:
+        raise ValueError(f"{path_of(data)}: goo wired {how} without a seed cannot be rebuilt")
+    goo = Goo(
+        count=data["count"],
+        across=across_of(data),
+        weight=None if data["random_weights"] else data["weight"],
+        threshold=data["threshold"],
+        seed=data["seed"],
+        permute=False,
+        weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
+        minimum_potential=data.get("minimum_potential", -1.0),
+        scale_with_fan_in=data.get("scale_with_fan_in", True),
+        projection=data.get("projection", 1.0),
+        outputs=data.get("outputs"),
+        wiring=wiring,
+        scaling_factor=scaling_factor,
+    )
+    goo.permutation = list(data["permutation"])
+    goo.ecc = _ecc_name(data)
+    goo.coding = data.get("coding", "complement")
+    load_weights(goo, data)
+    goo.epoch = data["epoch"]
+    return goo
 
 
 def _restore_columns(data: dict) -> HexColumns:
@@ -214,6 +295,8 @@ def load_weights(grid: GridOfNeurons, data: dict) -> None:
         neuron.threshold = threshold
     for neuron, rate in zip(neurons, data.get("rates", [])):
         neuron.rate = rate
+    for neuron, expected in zip(neurons, data.get("expected_counts", [])):
+        neuron.expected_count = expected
     _restore_clock(grid, data)
 
 
@@ -257,6 +340,8 @@ def _restore_lattice(data: dict) -> CartesianNodes:
         neuron.threshold = threshold
     for neuron, rate in zip(neurons, data.get("rates", [])):
         neuron.rate = rate
+    for neuron, expected in zip(neurons, data.get("expected_counts", [])):
+        neuron.expected_count = expected
     _restore_clock(nodes, data)
     nodes.epoch = data["epoch"]
     return nodes
@@ -268,6 +353,8 @@ def _restore_clock(grid, data: dict) -> None:
     grid.interval = data.get("interval", grid.interval)
     grid.horizon = data.get("horizon", grid.time)
     neurons = list(grid.all_neurons())
+    for neuron, floor in zip(neurons, data.get("floors", [])):
+        neuron.minimum_potential = floor  # older checkpoints have none and keep the scalar they were built with
     for neuron, potential in zip(neurons, data.get("potentials", [])):
         neuron.potential = potential
     for neuron, fired_at in zip(neurons, data.get("fired_at", [])):
@@ -280,6 +367,26 @@ def _restore_clock(grid, data: dict) -> None:
         neuron.spikes = spikes
     for connection_id, last in enumerate(data.get("last_signal", []), start=1):
         grid.connections[connection_id].last_signal = last
+    grid.escape_delta = data.get("escape_delta", 0.0)  # escape noise (§5.2); older checkpoints ran the threshold
+    for neuron, delta in zip(neurons, data.get("deltas", [])):
+        neuron.delta = delta
+        neuron.traced = delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
+    from .network import escape_scale
+    grid.escape_scale = escape_scale(len(neurons))  # §5.2: the count's scaling of every hazard is a rule, recomputed not stored
+    for neuron in neurons:
+        neuron.escape_scale = grid.escape_scale
+    for neuron, since in zip(neurons, data.get("exposed_since", [])):
+        neuron.exposed_since = since
+    for connection_id, (trace, at) in enumerate(data.get("traces", []), start=1):
+        grid.connections[connection_id].trace, grid.connections[connection_id].trace_at = trace, at
+    for connection_id, noted in enumerate(data.get("notes", []), start=1):
+        grid.connections[connection_id].noted = noted
+    for neuron, expectation in zip(neurons, data.get("expectations", [])):
+        neuron.expectation = expectation
+    for neuron, decisions in zip(neurons, data.get("decisions", [])):
+        neuron.decisions = decisions
+    for neuron, expected in zip(neurons, data.get("expected_since_spike", [])):
+        neuron.expected = expected
     grid.schedule.clear()
     for time, connection_id in data.get("pending", []):
         grid.schedule.signal(grid.connections[connection_id], time)
@@ -287,6 +394,10 @@ def _restore_clock(grid, data: dict) -> None:
         grid.dopamine = Dopamine.from_state(data["dopamine"])
     grid.rule = data.get("rule", "dopamine")
     grid.population = data.get("population", grid.population)
+    grid.output_coding = data.get("output_coding", "population")  # a population a class until September 16, 2026
+    grid.temperature = data.get("temperature", grid.temperature)
+    grid.clock = data.get("clock", 0)
+    grid.teacher_threshold = data.get("teacher_threshold", grid.teacher_threshold)
     if data.get("quash"):
         grid.quash_rate, grid.quash_k = data["quash"]
     grid.flip = data.get("flip", grid.flip)

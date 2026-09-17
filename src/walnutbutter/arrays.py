@@ -38,8 +38,8 @@ import random
 import numpy as np
 from scipy.sparse import csr_array
 
-from .constants import RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW
-from .exploration import TWO_PI, uniforms
+from .constants import COUNT_MEMORY, DECISION_MEMORY, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW
+from .exploration import TWO_PI, uniforms, hazard_draws
 from .network import Network
 from .neuron import Neuron
 from .clock import TOLERANCE, before, slack
@@ -82,18 +82,24 @@ class ArrayNetwork(Network):
         self.dopamine = mesh.dopamine  # shared: one pool, whichever engine runs
         self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
+        self.output_coding = getattr(mesh, "output_coding", "population")  # how the output zone codes the classes (§8)
+        self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
+        self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.hebb_rate, self.synapse_tau = mesh.hebb_rate, mesh.synapse_tau
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
         self.rate_on = mesh.rate_on
+        self.teacher_threshold = mesh.teacher_threshold  # Hz: the count read's line (§4.3)
         self.flip = mesh.flip
         self.rule = mesh.rule
+        self.tally = getattr(mesh, "tally", False)  # count what each synapse delivers: the count_hebb eligibility's x_ij (§6.7)
         self.seed = mesh.seed
         self.threshold = mesh.threshold
         self.minimum_potential = mesh.minimum_potential
         self._rng = random.Random()
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
         self.input_stream, self.input_at = mesh.input_stream, mesh.input_at  # and the same attached stream (§4.5)
+        self.input_labels, self.input_label = mesh.input_labels, mesh.input_label  # with its labels, when a dataset gave them (§8)
         for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
             setattr(self, name, getattr(mesh, name))
 
@@ -105,7 +111,20 @@ class ArrayNetwork(Network):
         self.threshold_v = np.array([x.threshold for x in neurons], dtype=float)
         self.floor = np.array([x.minimum_potential for x in neurons], dtype=float)
         self.noise = np.array([x.noise for x in neurons], dtype=float)
+        self.escape_delta = mesh.escape_delta  # escape noise (§5.2): ESCAPE_DELTA on this network
+        self.delta_v = np.array([x.delta for x in neurons], dtype=float)  # each neuron's decision width, in potential units
+        self.escape_scale = getattr(mesh, "escape_scale", 1.0)  # sqrt(N0 / N), the count's scaling of every hazard (§5.2)
+        self.escape_scale_v = np.array([x.escape_scale for x in neurons], dtype=float)
+        self.exposed_since = np.array([x.exposed_since for x in neurons], dtype=float)  # since when each hazard has run
+        self.draw = np.ones(n)  # this wave's uniforms for the decisions
         self.rate = np.array([x.rate for x in neurons], dtype=float)
+        self.expected_count = np.array([np.nan if x.expected_count is None else x.expected_count for x in neurons],
+                                       dtype=float)  # n_bar_j, the count_hebb eligibility's expectation (§6.7); NaN until set
+        self.centred = getattr(mesh, "centred", False)  # the hebb eligibility charges every decision (§6.7, the single-spike
+        # rule); `traced`, whether each synapse's trace is kept, is the base class's property: escape noise, or this
+        self.expectation = np.array([np.nan if x.expectation is None else x.expectation for x in neurons], dtype=float)  # p_hat_j
+        self.decisions = np.array([x.decisions for x in neurons], dtype=np.int64)  # decisions to date, for the warm start
+        self.expected = np.array([x.expected for x in neurons], dtype=float)  # E_j: the spikes expected since the last spike
         self.fired_wave = np.full(n, -1, dtype=np.int64)  # -1: has not fired this epoch
         for x in neurons:
             if x.has_fired:
@@ -118,6 +137,7 @@ class ArrayNetwork(Network):
         self.rate_level = np.array([x.rate_level for x in neurons], dtype=float)  # Hz, brought up to rate_at (§4.3)
         self.rate_at = np.array([x.rate_at for x in neurons], dtype=float)
         self.spikes = np.array([x.spikes for x in neurons], dtype=np.int64)
+        self.spikes_at_reset = np.array([x.spikes_at_reset for x in neurons], dtype=np.int64)  # the count read's start (§4.3)
         self.last_update = np.array([x.last_update for x in neurons], dtype=float)  # the lazy leak's bookkeeping
 
         e = len(mesh.connections)
@@ -129,6 +149,10 @@ class ArrayNetwork(Network):
         self.last_signal = np.array([-np.inf if c.last_signal is None else c.last_signal for c in connections], dtype=float)
         self.delivered_wave = np.full(e, -1, dtype=np.int64)  # the wave of this epoch each connection delivered in
         self.eligibility = np.array([c.eligibility for c in connections], dtype=float)  # what each synapse has earned this epoch
+        self.trace = np.array([c.trace for c in connections], dtype=float)  # its charge in its target's potential (§6.7)
+        self.trace_at = np.array([c.trace_at for c in connections], dtype=float)
+        self.score = np.array([c.score for c in connections], dtype=float)  # the eligibility this epoch (§6.7)
+        self.noted = np.array([c.noted for c in connections], dtype=float)  # B_ij: each open arrival's note (§6.7)
         self._active_edges = np.flatnonzero(self.active)
         self._build_matrix()
 
@@ -241,16 +265,29 @@ class ArrayNetwork(Network):
                 incoming, touched = both[:n], both[n:] > 0
                 take = touched & ~refractory
                 self.leak(time, take)  # the lazy leak: a neuron is brought up to date when a signal reaches it
-                potential[take] = np.maximum(potential[take] + incoming[take], floor[take])
+                summed = potential[take] + incoming[take]
+                potential[take] = np.maximum(summed, floor[take])
                 delivering = self.active & (firing[self.source] > 0)
                 self.delivered_wave[delivering] = number
                 integrated = delivering & take[self.target]
                 self.last_signal[integrated] = time
-                if self.rule == "adaline":
+                if self.traced:  # what each synapse now has in its target's potential (§6.7)
+                    if Neuron.tau == math.inf:  # the evidence accumulator (§5.1): a count, no decay evaluated
+                        self.trace[integrated] += 1.0
+                        self.noted[integrated] += self.expected[self.target[integrated]]  # the debit counts from here
+                    else:
+                        self.trace[integrated] = self.trace[integrated] * np.exp(-(time - self.trace_at[integrated]) / Neuron.tau) + 1.0
+                    self.trace_at[integrated] = time
+                    clipped = np.zeros(n, dtype=bool)
+                    clipped[np.flatnonzero(take)[summed < floor[take]]] = True  # the floor bit: the weights are not in it
+                    self._close_arrivals(clipped[self.target])
+                if self.rule == "adaline" or self.tally:
                     # presynaptic activity, as this target saw it: a source that fired twice into the same moment delivers twice
                     self.eligibility[integrated] += firing[self.source[integrated]]
             if self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None:
                 self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)  # §6.1, before the decision
+            if self.hazard:
+                self.draw = np.array(hazard_draws(self.explore_rng, n))  # §5.2: one uniform per neuron, in neuron order
             if stimulus is None:
                 fire_forced = None
             else:
@@ -262,7 +299,50 @@ class ArrayNetwork(Network):
                 facing = threshold - threshold * (time - since) / Neuron.bored_after
             else:
                 facing = threshold
-            ready = ~refractory & (self.potential_at(time) >= facing)  # everyone, touched or not, like the object engine
+            deciding = ~refractory if fire_forced is None else ~refractory & ~fire_forced  # a stimulus decides nothing
+            m = np.zeros(n)
+            if self.hazard:  # the decision is a draw (§5.2)
+                standing = self.potential_at(time)  # a decayed copy: `potential` stays the state, which a spike resets below
+                # a collapsed axis -- no incoming synapses under §5.2's scaling, so no width -- keeps the deterministic rule,
+                # as the objects and Rust do: it is not divided by its zero width (which gave NaN, and silence, until
+                # September 16, 2026)
+                soft = deciding & (self.delta_v > 0.0)
+                elapsed = np.maximum(time - self.exposed_since, 0.0)
+                m[soft] = np.minimum(elapsed[soft] / hop * self.escape_scale_v[soft]
+                                     * np.exp((standing[soft] - facing[soft]) / self.delta_v[soft]), 1e3)
+                ready = np.where(soft, self.draw < -np.expm1(-m), deciding & (standing >= facing))
+                self.exposed_since[soft] = time
+            else:
+                ready = deciding & (self.potential_at(time) >= facing)  # everyone, touched or not, like the object engine
+            # the decision charges the eligibility (§6.7, the single-spike rule): a credit c and an expectation q per neuron
+            credit_v = np.zeros(n)
+            if self.centred:
+                y = ready.astype(float)
+                unset = deciding & np.isnan(self.expectation)
+                self.decisions[deciding] += 1
+                charged = deciding & ~unset
+                credit_v[charged] = y[charged]
+                q = np.where(charged, self.expectation, 0.0)
+                self.expectation[unset] = y[unset]  # the first decision sets the expectation and charges nothing
+                rate = np.maximum(DECISION_MEMORY, 1.0 / self.decisions[charged])
+                self.expectation[charged] = self.expectation[charged] + rate * (y[charged] - self.expectation[charged])
+            else:
+                charged = m > 0.0
+                hit = charged & ready
+                credit_v[hit] = m[hit] * np.exp(-m[hit]) / -np.expm1(-m[hit])  # m e^-m / (1 - e^-m), as the objects compute it
+                q = np.where(charged & ~ready, m, 0.0)
+            if Neuron.isi_factor and charged.any():  # §0.2: each charge weighed by the time since the neuron's last spike
+                w = self._isi_factor(time)
+                credit_v = w * credit_v
+                q = w * q
+            if charged.any():
+                if Neuron.tau == math.inf:  # the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike
+                    self.expected[charged] += q[charged]
+                else:
+                    e = credit_v - q
+                    edges = charged[self.target] & (self.trace != 0.0)
+                    if edges.any():
+                        self.score[edges] += e[self.target[edges]] * self.trace[edges] * np.exp(-(time - self.trace_at[edges]) / Neuron.tau)
             fired = ready if fire_forced is None else (fire_forced | ready)
             idx = np.flatnonzero(fired)
             if len(idx):
@@ -276,6 +356,10 @@ class ArrayNetwork(Network):
                 self.rate_at[idx] = time
                 self.last_update[idx] = time
                 potential[idx] = 0.0  # the spike resets the potential
+                self.exposed_since[idx] = time + Neuron.refractory  # the hazard resumes after the refractory period (§5.2)
+                if self.traced:
+                    self._close_arrivals(fired[self.target], credit_v)  # the potential reset: the spike settles every arrival (§6.7)
+                    self.expected[idx] = 0.0
                 fired_wave[idx] = number
                 self.spikes[idx] += 1
                 if fire_forced is not None:
@@ -290,6 +374,45 @@ class ArrayNetwork(Network):
             if self.dopamine is not None:
                 self._learn(time, idx)  # every wave, fired or not: the pool decays in the same steps as the object engine
         return self.waves
+
+    def _close_arrivals(self, edges: np.ndarray, credit=None) -> None:
+        """Close the open arrivals on `edges` (a mask over connections): under the evidence accumulator settle their credit
+        and debit into the score first (§6.7), under the leak zero the traces. `credit` is per neuron, indexed by target."""
+        if Neuron.tau == math.inf:
+            open_ = edges & (self.trace != 0.0)
+            if open_.any():
+                t = self.target[open_]
+                c = 0.0 if credit is None else credit[t]
+                self.score[open_] += c * self.trace[open_] - (self.trace[open_] * self.expected[t] - self.noted[open_])
+                self.trace[open_] = 0.0
+                self.noted[open_] = 0.0
+        else:
+            self.trace[edges] = 0.0
+
+    def _isi_factor(self, time: float) -> np.ndarray:
+        """neuron.isi_factor per neuron (AUTHORITY.md §0.2), in the same order of operations; 0 where a neuron never fired."""
+        fired = self.fired_at > -np.inf
+        x = np.where(fired, (time - np.where(fired, self.fired_at, 0.0)) / Neuron.target_isi, 0.0)
+        with np.errstate(over="ignore", invalid="ignore"):
+            f = (3.0 * x - 1.0) / (1.0 + x * x * x)
+        return np.where(fired, f, 0.0)
+
+    def settle_scores(self) -> None:
+        """Network.settle_scores as vectors: under the evidence accumulator, every open arrival's debit into its score (§6.7)."""
+        if Neuron.tau != math.inf or not self.traced:
+            return
+        open_ = self.trace != 0.0
+        if open_.any():
+            e = self.trace[open_] * self.expected[self.target[open_]]
+            self.score[open_] -= e - self.noted[open_]
+            self.noted[open_] = e
+
+    def centre(self, on: bool) -> None:
+        """Network.centre: the hebb eligibility charges every decision (§6.7); the mesh's neurons follow, for the checkpoint."""
+        self.centred = bool(on)
+        for neuron in self.neurons_list:
+            neuron.centred = self.centred
+            neuron.traced = self.centred or neuron.delta > 0.0
 
     # --- the epoch ----------------------------------------------------------
 
@@ -329,12 +452,19 @@ class ArrayNetwork(Network):
     def reset(self, discharge: bool = False) -> None:
         if discharge:
             self.potential[:] = 0.0
+            if self.traced:
+                self._close_arrivals(np.ones(len(self.trace), dtype=bool))  # nothing is left in a zeroed potential (§6.7)
+        if self.traced:
+            self.score[:] = 0.0  # the score is the epoch's (§6.7)
+            if Neuron.tau == math.inf:
+                self.noted = self.trace * self.expected[self.target]  # an open arrival's debit counts from here
         self.fired_wave[:] = -1
         self.forced[:] = False
-        if self.rule in ("teacher", "adaline"):
-            self.eligibility[:] = 0.0  # a new epoch earns its own credit
+        if self.rule in ("teacher", "adaline") or self.tally:
+            self.eligibility[:] = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
         self.noise[:] = 0.0
         self.delivered_wave[:] = -1
+        self.spikes_at_reset = self.spikes.copy()  # Neuron.reset snapshots the count
         self.waves = []
 
     def leak(self, now: float, which=None) -> None:
@@ -369,7 +499,10 @@ class ArrayNetwork(Network):
         draw = noise[:n]
         # hold_fired: a neuron that already fired this epoch keeps the noise it decided under (§6.1)
         self.noise = np.where(self.fired_wave >= 0, self.noise, draw) if hold_fired else draw
-        np.maximum(self.potential + draw, self.floor, out=self.potential)
+        summed = self.potential + draw
+        if self.traced:
+            self._close_arrivals((summed < self.floor)[self.target])  # the floor bit: the weights are not in it (§6.7)
+        np.maximum(summed, self.floor, out=self.potential)
 
     def set_input(self, pattern, time: float | None = None) -> None:
         super().set_input(pattern, time)
@@ -405,6 +538,13 @@ class ArrayNetwork(Network):
         self.horizon = now + self.interval if until is None else float(until)
         return self._run(self.horizon)
 
+    def output_width(self) -> int:
+        return len(self.output_index)
+
+    def output_counts(self) -> list[int]:
+        """Each output neuron's spikes this epoch, as Network.output_counts."""
+        return (self.spikes[self.output_index] - self.spikes_at_reset[self.output_index]).tolist()
+
     def output_rates(self) -> list[float]:
         """Each output neuron's firing rate at the read, in Hz (see Network.output_rates)."""
         now, out = self.horizon, self.output_index
@@ -424,7 +564,13 @@ class ArrayNetwork(Network):
             return (fired_at > self.time + slack(self.time)).tolist()
         if self.read == "window" and self.read_window is not None:
             return (fired_at + slack_v(fired_at) >= self.horizon - self.read_window).tolist()
+        if self.read == "count":  # §4.3: the epoch's count as a rate, against TEACHER_THRESHOLD
+            return [hz >= self.teacher_threshold for hz in self.output_counts_hz()]
         return (self.fired_wave[self.output_index] >= 0).tolist()
+
+    def output_counts_hz(self) -> list[float]:
+        idx = self.output_index
+        return ((self.spikes[idx] - self.spikes_at_reset[idx]) * (1000.0 / self.interval)).tolist()
 
     # --- learning: dopamine ---------------------------------------------------------
 
@@ -533,8 +679,35 @@ class ArrayNetwork(Network):
     def reinforce(self, advantage: float, lr: float, sigma: float, eligibility: str, late: str,
                   leaky: bool = False) -> int:
         """The global-reward update, edge by edge, all at once. Returns connections changed."""
+        if eligibility == "hazard":
+            if not self.hazard:
+                raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
+            if late != "count" or leaky:
+                raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
+        if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):
+            raise ValueError(f"the {eligibility} eligibility carries its own trace of what each synapse delivered: late = count "
+                             "and no leaky trace (§6.7)")
+        if eligibility in ("hazard", "hebb"):
+            self.settle_scores()  # under the evidence accumulator the open arrivals' debit comes into the score first (§6.7)
         if not advantage:
             return 0
+        if eligibility == "count_hebb":  # §6.7's epoch form: what each synapse delivered times its target's count minus its expectation
+            counts = (self.spikes - self.spikes_at_reset).astype(float)
+            # a neuron with no expectation yet centres on itself: its first unforced epoch moves nothing, as the objects do
+            centred = counts - np.where(np.isnan(self.expected_count), counts, self.expected_count)
+            e = self.eligibility * centred[self.target]
+            mask = (e != 0.0) & ~self.forced[self.target]
+            low, high = self.weight_range
+            step = lr * advantage
+            self.weight[mask] = np.clip(self.weight[mask] + step * e[mask], low, high)
+            self._matrix_dirty = True
+            return int(mask.sum())
+        if eligibility in ("hazard", "hebb"):  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
+            mask = (self.score != 0.0) & ~self.forced[self.target]
+            low, high = self.weight_range
+            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * self.score[mask], low, high)
+            self._matrix_dirty = True
+            return int(mask.sum())
         fired_target = self.fired_wave[self.target]
         mask = (self.delivered_wave >= 0) & ~self.forced[self.target]  # delivered this epoch, and not into a forced neuron
         if eligibility == "perturb":
@@ -567,22 +740,26 @@ class ArrayNetwork(Network):
         unforced = ~self.forced
         fired = (self.fired_wave[unforced] >= 0).astype(float)
         self.rate[unforced] += RATE_MEMORY * (fired - self.rate[unforced])
+        # and the expected count the count_hebb eligibility centres on (§6.7): the first unforced epoch sets it, the rest move it
+        counts = (self.spikes - self.spikes_at_reset).astype(float)
+        unset = np.isnan(self.expected_count)
+        first, seen = unforced & unset, unforced & ~unset
+        self.expected_count[first] = counts[first]
+        self.expected_count[seen] += COUNT_MEMORY * (counts[seen] - self.expected_count[seen])
 
-    def homeostasis(self, rate: float, target: float, threshold_range: tuple[float, float]) -> int:
+    def homeostasis(self, rate: float, target: float) -> int:
         if rate <= 0:
             return 0
         unforced = ~self.forced
-        low, high = threshold_range
-        self.threshold_v[unforced] = np.clip(self.threshold_v[unforced] + rate * (self.rate[unforced] - target), low, high)
+        self.threshold_v[unforced] = self.threshold_v[unforced] + rate * (self.rate[unforced] - target)  # nothing clips it
         return int(unforced.sum())
 
-    def unstick_outputs(self, rate: float, target: float, threshold_range: tuple[float, float]) -> list[int]:
+    def unstick(self, rate: float, target: float) -> list[int]:
+        """learning.unstick as one vector operation: every stuck neuron not forced this epoch."""
         if rate <= 0:
             return []
-        idx = self.output_index
-        stuck = idx[(self.rate[idx] > STUCK_ABOVE) | (self.rate[idx] < STUCK_BELOW)]
-        low, high = threshold_range
-        self.threshold_v[stuck] = np.clip(self.threshold_v[stuck] + rate * (self.rate[stuck] - target), low, high)
+        stuck = np.flatnonzero(((self.rate > STUCK_ABOVE) | (self.rate < STUCK_BELOW)) & ~self.forced)
+        self.threshold_v[stuck] = self.threshold_v[stuck] + rate * (self.rate[stuck] - target)
         return stuck.tolist()
 
     def stuck(self) -> tuple[list[int], list[int]]:
@@ -598,6 +775,10 @@ class ArrayNetwork(Network):
             neuron.threshold = float(self.threshold_v[i])
             neuron.noise = float(self.noise[i])
             neuron.rate = float(self.rate[i])
+            neuron.expected_count = None if np.isnan(self.expected_count[i]) else float(self.expected_count[i])
+            neuron.expectation = None if np.isnan(self.expectation[i]) else float(self.expectation[i])
+            neuron.decisions = int(self.decisions[i])
+            neuron.expected = float(self.expected[i])
             neuron.has_fired = wave >= 0
             neuron.fired_in_wave = wave if wave >= 0 else None
             neuron.forced = bool(self.forced[i])
@@ -606,10 +787,15 @@ class ArrayNetwork(Network):
             neuron.previous_fired_at = None if self.previous_fired_at[i] == -np.inf else float(self.previous_fired_at[i])
             neuron.last_update = float(self.last_update[i])
             neuron.spikes = int(self.spikes[i])
+            neuron.spikes_at_reset = int(self.spikes_at_reset[i])
+            neuron.exposed_since = float(self.exposed_since[i])
         connections = self.mesh.connections
         for i, (weight, last) in enumerate(zip(self.weight.tolist(), self.last_signal.tolist()), start=1):
             connections[i].weight = weight
             connections[i].last_signal = None if last == -np.inf else last
+        for i, (trace, at, score, noted) in enumerate(zip(self.trace.tolist(), self.trace_at.tolist(), self.score.tolist(),
+                                                          self.noted.tolist()), start=1):
+            connections[i].trace, connections[i].trace_at, connections[i].score, connections[i].noted = trace, at, score, noted
         mesh = self.mesh
         mesh.epoch = self.epoch
         mesh.time, mesh.interval, mesh.input_time, mesh.horizon = self.time, self.interval, self.input_time, self.horizon
@@ -626,6 +812,7 @@ class ArrayNetwork(Network):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
         mesh.input_stream, mesh.input_at = self.input_stream, self.input_at
+        mesh.input_labels, mesh.input_label = self.input_labels, self.input_label
 
     def __repr__(self) -> str:
         return f"ArrayNetwork({self.mesh!r}, {len(self.neurons_list)} neurons, {len(self.weight)} connections)"

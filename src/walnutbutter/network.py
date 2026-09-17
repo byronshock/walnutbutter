@@ -10,15 +10,30 @@ build on this; the learning code works on either.
 
 from __future__ import annotations
 
+import math
+
 import random
 from typing import Iterable
 
 from .constants import (
-    EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, QUASH_K, QUASH_RATE,
-    RATE_ON, SYNAPSE_TAU,
+    ESCAPE_REFERENCE_COUNT, EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
+    QUASH_K, QUASH_RATE, RATE_ON, SYNAPSE_TAU, TEACHER_THRESHOLD, THRESHOLD_FAN_IN,
 )
+
+
+def escape_scale(count: int) -> float:
+    """sqrt(ESCAPE_REFERENCE_COUNT / count): what a network of `count` neurons multiplies every hazard by (AUTHORITY.md §5.2).
+
+    Byron, September 16, 2026: "scaling the network MUST reduce the probability
+    of escape noise at each neuron by sqrt(N)." The reference count is the goo
+    of 60 the width was set on, so at 60 the factor is exactly 1 and nothing
+    measured there moves; a network of 445 runs its hazards at 0.37 of what
+    the width alone gives. A count of 0 has nothing to scale and gets 1.
+    """
+    import math
+    return math.sqrt(ESCAPE_REFERENCE_COUNT / count) if count > 0 else 1.0
 from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
-from .exploration import gaussians
+from .exploration import gaussians, hazard_draws
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
 from .clock import before, slack
@@ -61,6 +76,8 @@ class Network:
         self.input_stream: list[list[bool]] | None = None  # raw-bit patterns to present in order, in place of fresh
         # draws (§4.5); None draws from the network's own stream, as it always did
         self.input_at = 0  # how far through that stream the run has got
+        self.input_labels: list[int] | None = None  # the label of each pattern of the stream, when a dataset gave one (§8, mnist)
+        self.input_label: int | None = None  # this epoch's label, when the stream carries labels
         self.epoch = 0  # how many inputs have been presented
         self.time = 0.0  # the clock, nominal milliseconds: the time of the last input
         self.interval = INTERVAL  # default spacing of inputs when no time is given
@@ -76,13 +93,24 @@ class Network:
         self.explore = EXPLORE  # when the exploration draw is taken (§6.1): every wave, or once per epoch
         self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
         self.explore_rng = None  # the stream it comes from
+        self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
+        self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N), the count's scaling of every hazard (§5.2), once set_delta ran
         self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
         # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
+        self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
+        # the x_ij of the count_hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
+        self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
+        # the single-spike rule). A Teacher with that eligibility switches it on, in whichever engine (centre)
         self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
         self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
+        self.output_coding = "population"  # how the output zone codes the classes (§8): a population a class, or "complement"
+        # -- fire-if-one populations then, in the same order, fire-if-zero ones (Byron, September 16, 2026; learning.OUTPUT_CODINGS)
+        self.temperature = TEMPERATURE  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
+        self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
+        # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
         self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
         self.input_rate = INPUT_RATE  # per ms: what a bit-1 neuron fires at under rate drive
@@ -94,6 +122,7 @@ class Network:
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
         self.rate_on = RATE_ON  # Hz: the rate a target-on output is driven to, and what output_levels divides by (§4.3)
+        self.teacher_threshold = TEACHER_THRESHOLD  # Hz: the count read's line between off and on (§4.3)
         self.ecc: str | None = None  # name of the error-correcting code applied before complement coding, if any
         self.input_data: list[bool] | None = None  # the raw data bits when ecc is on
 
@@ -103,6 +132,90 @@ class Network:
 
     def get_neuron_at(self, place: int, row: int) -> Neuron | None:  # pragma: no cover - overridden
         raise NotImplementedError
+
+    @property
+    def hazard(self) -> bool:
+        """True when the firing decision is a draw (AUTHORITY.md §5.2): set_delta gave this network a positive width."""
+        return self.escape_delta > 0.0
+
+    @property
+    def traced(self) -> bool:
+        """Whether each synapse keeps its trace of what it has in its target's potential (§6.7): escape noise, or the centred rule."""
+        return self.hazard or self.centred
+
+    def centre(self, on: bool) -> None:
+        """The hebb eligibility (§6.7, the single-spike rule): every neuron charges its decisions against its own expectation."""
+        self.centred = bool(on)
+        for neuron in self._everyone():
+            neuron.centred = self.centred
+            neuron.traced = self.centred or neuron.delta > 0.0
+
+    def settle_scores(self) -> None:
+        """Under the evidence accumulator (§5.1), bring every open arrival's debit into its synapse's score (§6.7).
+
+        The pay at the read calls it first, so the score holds what the epoch's
+        decisions charged; the arrivals stay open, their debit counting from
+        now. Under the leak the scores are charged per decision and there is
+        nothing to settle.
+        """
+        if Neuron.tau != math.inf or not self.traced:
+            return
+        for connection in self.connections.values():
+            if connection.trace != 0.0:
+                expected = connection.target.expected
+                connection.score -= connection.trace * expected - connection.noted
+                connection.noted = connection.trace * expected
+
+    def set_delta(self, delta: float) -> None:
+        """Escape noise (AUTHORITY.md §5.2): every neuron's decision is `delta` times its starting threshold wide; 0 turns it off.
+
+        Call it once the thresholds are what the container gave them -- after
+        fan-in scaling -- and before anything moves them: a neuron's width is
+        set from the threshold it starts at and stays put when homeostasis
+        later moves the threshold. The draws come from the exploration stream
+        (§6.1), so a run with a positive width needs one.
+        """
+        if delta < 0.0:
+            raise ValueError(f"ESCAPE_DELTA must not be negative, got {delta}")
+        self.escape_delta = float(delta)
+        everyone = self._everyone()
+        self.escape_scale = escape_scale(len(everyone))  # the count's scaling of every hazard (§5.2, September 16, 2026)
+        for neuron in everyone:
+            # a neuron whose starting threshold is not positive -- no incoming synapses under fan-in scaling (§5.2) --
+            # has a collapsed axis with no width to quote on it, and keeps the deterministic rule
+            neuron.delta = delta * neuron.threshold if neuron.threshold > 0.0 else 0.0
+            neuron.escape_scale = self.escape_scale
+            neuron.traced = neuron.delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
+
+    def scale_with_fan_in(
+        self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN
+    ) -> None:
+        """Rescale each neuron's potential axis by its in-degree (AUTHORITY.md §5.2).
+
+        THRESHOLD and MINIMUM_POTENTIAL are quoted at `reference` incoming
+        synapses -- an interior hex cell's two rings -- so a neuron wired like
+        that cell keeps 0.25 and -1 exactly and one with four times the fan-in
+        starts four times as far from zero in both directions.
+
+        The floor moves with the threshold because it is not a second
+        decision: the two are points on one axis and it is the axis being
+        rescaled. Scaling the threshold alone squeezes the usable negative
+        range from four times the threshold to 0.91 times it, so inhibition
+        hits its cap while excitation keeps piling up -- which is most of what
+        saturates goo (§3.4).
+
+        Call it after the wiring, because it reads the in-degree. These are
+        starting values only: homeostasis and un-sticking move a threshold
+        from here.
+        """
+        if reference <= 0:
+            raise ValueError(f"the reference fan-in must be positive, got {reference}")
+        for neuron in self.all_neurons():
+            # a neuron that hears nothing is left at the quoted threshold and floor (§5.2, September 16, 2026): there is
+            # nothing to scale by, and at 0 it was a pacemaker whatever its drive
+            scale = len(neuron.incoming) / reference if neuron.incoming else 1.0
+            neuron.threshold = threshold * scale
+            neuron.minimum_potential = minimum_potential * scale
 
     def clip_weight(self, weight: float) -> float:
         """Keep a weight inside the network's weight_range."""
@@ -126,11 +239,19 @@ class Network:
         self.input_cells = cells
         self.permutation = list(range(len(cells)))
 
+    def output_width(self) -> int:
+        """How many neurons are read as the output: the count across, unless a container's output zone is another width (goo, §3.4)."""
+        return self.across
+
     def output_row(self) -> list[Neuron]:
         """The network's output, left to right: the top row, or the input row when the inputs are the outputs."""
         if self.readout == "input":
             return self.input_row()
-        return [self.get_neuron_at(place, 0) for place in range(self.across)]
+        return [self.get_neuron_at(place, 0) for place in range(self.output_width())]
+
+    def output_counts(self) -> list[int]:
+        """Each output neuron's spikes this epoch: what the count read (§4.3) and the class critic (§8) work from."""
+        return [neuron.epoch_spikes for neuron in self.output_row()]
 
     def output_fired(self) -> list[bool]:
         """Whether each output neuron is on at the read: see `read`."""
@@ -142,7 +263,14 @@ class Network:
         if self.read == "window" and self.read_window is not None:
             since = self.horizon - self.read_window
             return [neuron.fired_at is not None and neuron.fired_at + slack(neuron.fired_at) >= since for neuron in self.output_row()]
+        if self.read == "count":  # §4.3: count the epoch's spikes, estimate the rate, and threshold it
+            return [level >= self.teacher_threshold for level in self.output_counts_hz()]
         return [neuron.has_fired for neuron in self.output_row()]
+
+    def output_counts_hz(self) -> list[float]:
+        """Each output neuron's firing rate estimated from its count this epoch, in Hz: count over the epoch's length (§4.3)."""
+        per_ms = 1000.0 / self.interval
+        return [neuron.epoch_spikes * per_ms for neuron in self.output_row()]
 
     def output_rates(self) -> list[float]:
         """Each output neuron's firing rate at the read, in Hz (AUTHORITY.md §4.3): the exponential window of Neuron.firing_rate."""
@@ -195,8 +323,12 @@ class Network:
         return CODES[self.ecc] if self.ecc else None
 
     def raw_bit_count(self) -> int:
-        """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits."""
-        width = self.input_width()
+        """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits.
+
+        Clock neurons (§4.3) are input neurons too, but their bit is always 1
+        and no raw bit reaches them: they come off the width first.
+        """
+        width = self.input_width() - self.clock
         if self.coding in ("raw", "population", "population-complement"):
             if self.code:
                 raise ValueError(f"an error-correcting code needs complement coding, not {self.coding}")
@@ -254,6 +386,7 @@ class Network:
             coded = complement_code([bit for bit in word for _ in range(self.population)])
         else:
             coded = complement_code(word)
+        coded = [True] * self.clock + coded  # the clock neurons lead the input zone, always on (§4.3)
         self.set_input([coded[i] for i in self.permutation], time)
         self.input_data = bits if self.code else None
         self.input_bits = word  # the bits that were complement-coded: the codeword with ecc, the raw bits without
@@ -270,29 +403,40 @@ class Network:
         see the same inputs (§4.5). A run longer than the stream cycles it.
         """
         if self.input_stream:
-            bits = self.input_stream[self.input_at % len(self.input_stream)]
+            k = self.input_at % len(self.input_stream)
+            bits = self.input_stream[k]
+            self.input_label = self.input_labels[k] if self.input_labels is not None else None
             self.input_at += 1
         else:
             bits = [self._rng.random() < 0.5 for _ in range(self.raw_bit_count())]
+            self.input_label = None
         self.set_input_bits(bits, time)
         return list(bits)
 
-    def use_input_stream(self, patterns) -> None:
+    def use_input_stream(self, patterns, labels=None) -> None:
         """Present these raw-bit patterns in order, instead of drawing fresh ones (AUTHORITY.md §4.5).
 
         Each pattern is one epoch's raw bits, `raw_bit_count()` of them. Pass
-        None to go back to drawing. The stream is checked here rather than at
-        the epoch that trips over it.
+        None to go back to drawing. A list of lists is checked pattern by
+        pattern here rather than at the epoch that trips over it; anything
+        else indexable (a dataset's `mnist.Patterns`, say) is checked at its
+        two ends. `labels`, one per pattern, ride with a dataset's images
+        (§8): `new_random_input` sets `input_label` from them each epoch.
         """
         if patterns is None:
-            self.input_stream, self.input_at = None, 0
+            self.input_stream, self.input_labels, self.input_at = None, None, 0
             return
         wanted = self.raw_bit_count()
-        patterns = [[bool(b) for b in pattern] for pattern in patterns]
-        wrong = next((k for k, pattern in enumerate(patterns) if len(pattern) != wanted), None)
-        if wrong is not None:
-            raise ValueError(f"input stream pattern {wrong} has {len(patterns[wrong])} bits, expected {wanted}")
-        self.input_stream, self.input_at = patterns, 0
+        if isinstance(patterns, list):
+            patterns = [[bool(b) for b in pattern] for pattern in patterns]
+            wrong = next((k for k, pattern in enumerate(patterns) if len(pattern) != wanted), None)
+            if wrong is not None:
+                raise ValueError(f"input stream pattern {wrong} has {len(patterns[wrong])} bits, expected {wanted}")
+        elif len(patterns) and (len(patterns[0]) != wanted or len(patterns[-1]) != wanted):
+            raise ValueError(f"input stream patterns have {len(patterns[0])} bits, expected {wanted}")
+        if labels is not None and len(labels) != len(patterns):
+            raise ValueError(f"{len(labels)} labels for {len(patterns)} patterns")
+        self.input_stream, self.input_labels, self.input_at = patterns, None if labels is None else list(labels), 0
 
     def input_neurons(self) -> list[Neuron]:
         """The bottom-row neurons whose input bit is 1 (empty if no pattern is set)."""
@@ -360,7 +504,7 @@ class Network:
             self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                  trace=self.rule == "adaline", explore=self.explorer())
+                                  trace=self.rule == "adaline" or self.tally, explore=self.explorer())
         self.forget()
         return waves
 
@@ -416,7 +560,7 @@ class Network:
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                 trace=self.rule == "adaline", explore=self.explorer())
+                                 trace=self.rule == "adaline" or self.tally, explore=self.explorer())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -426,9 +570,15 @@ class Network:
         """
         for neuron in self.all_neurons():
             neuron.reset(discharge)
-        if self.rule in ("teacher", "adaline"):
+        if self.rule in ("teacher", "adaline") or self.tally:
             for connection in self.connections.values():
-                connection.eligibility = 0.0  # a new epoch earns its own credit
+                connection.eligibility = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
+        if self.traced:
+            accumulating = Neuron.tau == math.inf
+            for connection in self.connections.values():
+                connection.score = 0.0  # the score is the epoch's (§6.7); the trace is the potential's and stays
+                if accumulating:
+                    connection.noted = connection.trace * connection.target.expected  # an open arrival's debit counts from here
         self.waves = []
 
     def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
@@ -451,15 +601,28 @@ class Network:
                 neuron.leak(now)
             if not (hold_fired and neuron.has_fired):
                 neuron.noise = draw
-            neuron.potential = max(neuron.minimum_potential, neuron.potential + draw)
+            summed = neuron.potential + draw
+            if summed < neuron.minimum_potential:
+                summed = neuron.minimum_potential
+                if neuron.traced:
+                    neuron.clear_arrivals()  # the floor bit: the potential is the floor whatever the weights (§6.7)
+            neuron.potential = summed
 
     def _explore(self, time: float) -> None:
-        """The per-wave exploration draw (§6.1), called before each wave's firing decision."""
-        self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
+        """Before each wave's firing decision: the additive draw of §6.1, then the hazard's uniforms (§5.2), in that order."""
+        if self.explore == "wave" and self.sigma > 0.0:
+            self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
+        if self.hazard:
+            neurons = self._everyone()
+            for neuron, draw in zip(neurons, hazard_draws(self.explore_rng, len(neurons))):
+                neuron.draw = draw
 
     def explorer(self):
         """The hook Schedule.run calls before each wave fires, or None when nothing is exploring."""
-        return self._explore if (self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None) else None
+        additive = self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None
+        if self.hazard and self.explore_rng is None:
+            raise ValueError("escape noise needs a stream for its draws (§5.2): run the epoch with an rng, as run_epoch does")
+        return self._explore if (additive or self.hazard) else None
 
     def fired_neurons(self) -> list[Neuron]:
         """Return the neurons that have fired since the last reset."""

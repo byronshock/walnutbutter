@@ -7,3 +7,9 @@ build/
 dist/
 run*.json
 runs/
+mnist/*.gz
+mnist/*-ubyte
+
+# the papers of BIBLIOGRAPHY.md, fetched locally (references/README.md says from where); not redistributed
+references/*
+!references/README.md

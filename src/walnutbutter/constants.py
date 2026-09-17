@@ -23,17 +23,65 @@ WEIGHT_RANGE = (-1.0, 1.0)  # random weights are drawn from this range, and lear
 WEIGHT_EPSILON = 0.001  # --epsilon: the smallest weight allowed under --positive-weights, range (epsilon, 1)
 
 # --- the neuron: activation and the clock (nominal milliseconds) ----------------
-THRESHOLD = 0.25  # total weighted input a neuron needs before it fires
+THRESHOLD = 0.25  # total weighted input a neuron needs before it fires, quoted at THRESHOLD_FAN_IN incoming synapses
+THRESHOLD_FAN_IN = 18.0  # the in-degree THRESHOLD is quoted at: an interior hex cell's two rings at REACH 2 (AUTHORITY.md
+# §5.2, Byron, September 14, 2026). A container that scales starts neuron j at THRESHOLD * d_j / THRESHOLD_FAN_IN, so a
+# neuron wired like that cell keeps 0.25 exactly and goo's 79 incoming synapses ask proportionally more. Goo scales;
+# nothing else does yet, because turning it on for the grid would move every threshold every result was measured at.
 MINIMUM_POTENTIAL = -1.0  # floor on a potential: inhibition and carried-over charge can go no lower
+
+# --- goo, the working network (AUTHORITY.md §3.4; Byron, September 14, 2026: "We will speed everything up by
+# selecting 60 units of goo, with THRESHOLD=1") -----------------------------------------------------------------
+GOO_COUNT = 60  # neurons in goo when --goo is given no number: 3,540 connections against 80's 6,320, about twice the speed
+GOO_THRESHOLD = 0.2  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN like the grid's and scaled by goo's fan-in (§5.2): a goo
+# of 60 starts at 0.2 * 59/18 = 0.66. Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every
+# neuron un-sticking, 0.15-0.40 is a plateau and 0.20 the one level where every seed learned. It was 1 -- theta 3.28,
+# chosen to sit past the saturation edge -- which turned out to be off the plateau: a dead interior on the no-direct
+# copy. The grid keeps 0.25 -- the threshold belongs to the container, the third reading §3.4 named, adopted for goo
+GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the floor follows at the grid's ratio of -4, as
+# every goo sweep ran it (§5.2, one axis, two points)
+GOO_SCALING_FACTOR = 0.05  # goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026: "P(i projects
+# onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij necessary to give j an average of N * scaling_factor
+# inputs. Please default scaling_factor to 0.05"). Every neuron hears N times this many synapses in expectation -- 32.2 on
+# the mnist goo of 644, 3 on goo 60 -- at the probability that fan-in makes over the sources it may hear, stopped at 1: the
+# hidden neurons for an input, the inputs and hidden neurons for an output, everyone else for a hidden neuron, since the
+# outputs were kept apart the same night ("With hidden=0 we have no cycles ... a two-layer feedforward network"). "I
+# realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an
+# oversaturated or dull network"
+GOO_PROJECTION = 0.2  # the probability of the three earlier wirings (--wiring zones-equal, zones, uniform), superseded as
+# the wiring's knob by GOO_SCALING_FACTOR on September 16, 2026 (§3.4). Under the zone rule: P(neuron i projects onto
+# neuron j) for a pair with an interior end (Byron, September 14, 2026: "P(i connects to j) = 0 if i == j; 0 if i in
+# inputs or outputs AND j in inputs or outputs; P_connection otherwise" -- and, correcting the verb, "I should have said
+# projects. The connections are all one-way"). Pairs with both ends in a zone never project, and an interior-to-zone
+# projection is scaled up so every neuron hears the same number in expectation; below 1 the seed decides the wiring.
+# Set from Byron's two sweeps of September 14-15 (§3.4): the plateau in P runs 0.15 to 0.5 with cliffs at 0.1 and from
+# 0.6 up, and 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and the fastest goo
+# that learns -- about 650 projections at sixty neurons, four times the speed of the fully connected goo, which was 1
 TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
-REFRACTORY_HOPS = 3.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11, 2026)
+REFRACTORY_HOPS = 2.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
+# 2026). 3 until September 17, 2026 (Byron: "Please set hops=2 by default"): a hop of 2.5 ms, not 1.67
 INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
 # shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms
 # the problems had inherited and never chosen (Byron, same day, defaulting it here and removing every override)
 BORED_AFTER = 0.0  # off (Byron, September 14, 2026). When positive it is the ms of silence after which a neuron's
 # threshold has fallen to zero and it fires on its own (§5.4, Byron, September 12, 2026). Swept below the epoch it
 # floods: at 10 ms the output row fires 96.5% of the time whatever the input, and copy falls from 0.838 to 0.542.
+# Superseded by ESCAPE_DELTA (Byron, September 15, 2026: "The hazard is buying us what the bored clock was supposed to
+# buy us, and much much more cleanly"): not run on top of the hazard; the mechanism stays, the configuration does not.
+ESCAPE_REFERENCE_COUNT = 60  # the count ESCAPE_DELTA is quoted at (AUTHORITY.md §5.2; Byron, September 16, 2026: "scaling
+# the network MUST reduce the probability of escape noise at each neuron by sqrt(N)"): a network of N neurons runs every
+# hazard at sqrt(this / N) times what the width alone gives, so the goo of 60 the width was set on keeps its regime and a
+# larger network is quieter as the square root of its size. The unit the width is quoted in, as THRESHOLD_FAN_IN is the
+# unit the threshold is quoted in; not a knob.
+ESCAPE_DELTA = 0.455  # the firing decision is a draw (AUTHORITY.md §5.2, escape noise; Byron, September 15, 2026:
+# "Make the boredom stochastic and it is Williams's unit outright"): a neuron that is not refractory fires at a wave
+# with probability 1 - exp(-m), m = (dt / hop) * exp(s / delta_j), s its margin p - theta(t) and delta_j this constant
+# times its starting threshold -- one expected spike per hop at threshold, e times more per delta_j above it. 0 is the
+# deterministic threshold. The value is Byron's word (September 15, 2026, after the Delta x LR grid of §3.4): inside the
+# plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up. Applied by the command line and the sweep
+# driver (--delta); a network built in the library is deterministic until Network.set_delta, as it has no noise until a
+# Teacher gives it sigma. The hazard eligibility (§6.7) needs it.
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own
@@ -78,6 +126,13 @@ RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate ov
 RATE_ON = 200.0  # Hz: the rate an output the target says should be on is driven to. 200 Hz is 1/REFRACTORY, the fastest
 # the absolute refractory period allows: FOR NOW the teacher aims at saturation, not at a middling set point (§6.9).
 RATE_OFF = 0.0  # Hz: and one that should be off is driven to silence.
+TEACHER_THRESHOLD = 14.3  # Hz: the "count" read (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
+# times each neuron fired in the epoch. ESTIMATE the firing rate based on the count. If the firing rate estimate exceeds
+# TEACHER_THRESHOLD, the output neuron is 1. Otherwise it is zero"). The rate is the epoch's count over its length, so
+# at 35 ms one spike is 28.6 Hz: 14.3 is the middle of the one-spike band, halfway between no spike and one, so an
+# output is on if it fired at all this epoch and the line sits as far from both edges as it can (Byron, the same day,
+# setting it to mean one spike -- not for the score it yields; the sweep of §4.3 is a measurement of one synapse). It
+# was 40, two spikes, from the read's first hour.
 READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only counting spikes this recently before the
 # epoch's end (Byron, September 14, 2026, going forward with bit reading and a five-millisecond window)
 
@@ -126,14 +181,44 @@ WEIGHT_DECAY = 1e-4  # every weight moves toward 0 by this fraction each epoch: 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the top row should show, derived from the input row (learning.TARGETS)
 CRITIC = "row"  # how the reward is judged (learning.CRITICS)
-ELIGIBILITY = "perturb"  # what the global reward acts on (learning.ELIGIBILITIES)
+TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron, September 16, 2026: "the spikes are EVIDENCE"):
+# the class sums are read as log-odds at this scale, q_k = exp(n_k / T) / sum_j exp(n_j / T), and the reward is ln q_y; a lead of
+# T spikes makes a class e times as likely. 0 would be the class critic, infinity a flat ln 0.1. Set at the middle of the first
+# sweep, {1, 2, 4}; "We will have to sweep for temperature eventually"
+ELIGIBILITY = "perturb"  # what the global reward acts on when the threshold decides (learning.ELIGIBILITIES): the
+# pre-alpha's. The others: wrong_hebb, the +-1 by whether the target fired (the rule called hebb until September 16, 2026,
+# renamed because it is uncentred and points nowhere); hebb, the centred Hebbian term charged at every decision of the
+# target -- its spike or silence minus its own per-decision expectation of it (DECISION_MEMORY), times what the synapse has
+# in its potential -- the single-spike rule of September 17, 2026 (§6.7); count_hebb, the epoch form hebb was until that
+# day -- what each synapse delivered this epoch times the epoch's count minus its expectation (COUNT_MEMORY); and hazard. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA
+# > 0, §5.2) unless told otherwise -- the eligibility every measurement at 0.455 was made with; additive noise on top of
+# the hazard was never measured (Claude's reading of the default Byron set, September 15, 2026)
 LATE = "count"  # what a signal arriving after its target fired earns (learning.LATE_RULES)
 BASELINE_RATE = 0.05  # per-epoch update of the running reward baseline the advantage is measured against
 WINDOW = 200  # epochs the Teacher's moving-average accuracy spans
 HOMEOSTASIS = 1e-6  # per-epoch rate at which a threshold moves toward the target firing rate; 0 = off
 TARGET_RATE = 0.5  # firing rate homeostasis aims for, 0 to 1
-UNSTICK = 1e-3  # per-epoch rate at which a stuck output neuron's threshold moves toward UNSTICK_TARGET; 0 = off
-UNSTICK_TARGET = 0.5  # firing rate the output un-sticking aims for
-THRESHOLD_RANGE = (-5.0, 5.0)  # limits on what homeostasis may move a threshold to
+UNSTICK = 1e-3  # per-epoch rate at which a stuck neuron's threshold moves toward UNSTICK_TARGET; 0 = off. Every neuron,
+# not the output row only, since September 14, 2026 (AUTHORITY.md §6.7): the interior of a goo with no direct
+# projection was dead for want of it, and 'all neurons are first-class citizens' (Byron)
+UNSTICK_TARGET = 0.5  # firing rate the un-sticking aims for
+# THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
+# (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.
 RATE_MEMORY = 0.01  # per-epoch update of a neuron's running firing rate (about the last 100 epochs)
+COUNT_MEMORY = 0.01  # per-epoch update of a neuron's expected spike count, n_bar_j, which the count_hebb eligibility centres
+# on -- the epoch form hebb was until September 17, 2026 (AUTHORITY.md §6.7): the rate memory's window, about the last 100
+# epochs. It starts at the first count observed in an unforced epoch, so a neuron's first epoch moves nothing rather than
+# everything.
+DECISION_MEMORY = 1e-4  # per-decision update of a neuron's expectation of its own spike, p_hat_j, which the hebb eligibility
+# charges at every decision (AUTHORITY.md §6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed
+# per decision in this architecture"): about the last 10,000 decisions. Every neuron decides at every wave and every
+# Poisson arrival of the drive is a wave, so on the mnist feedforward goo at 100 ms a neuron makes about 3,300 decisions
+# an epoch (measured September 17, 2026): the window is about three epochs, not the 170 a wave a hop would give. Until
+# that many decisions have been seen the estimate is their plain mean (a rate of 1/n at the n-th), and the first decision
+# sets it and charges nothing. A starting value, to be swept.
+TARGET_ISI = 5.1  # ms: the interspike interval the ISI factor pays most for (AUTHORITY.md §0.2; Byron, September 17, 2026:
+# "The desired ISI is 5.1 ms (hardcode for now)"). Not known: 0.1 ms past REFRACTORY for now
+ISI_FACTOR = True  # weigh every charge of the single-spike rule (hebb and hazard, §6.7) by f(t - TARGET_ISI), t the time
+# since the neuron's own last spike, f = (3x - 1) / (1 + x^3) at x = t / TARGET_ISI (§0.2); on by default (Byron, September
+# 17, 2026), and a resumed network keeps the setting it was saved under
 STUCK_BELOW, STUCK_ABOVE = 0.01, 0.99  # a neuron firing less or more often than this is "stuck"

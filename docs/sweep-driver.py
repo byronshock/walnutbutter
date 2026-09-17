@@ -77,7 +77,7 @@ def parse() -> argparse.Namespace:
                             ("drive", "how a bit becomes spikes: forced or rate"),
                             ("read", "what the teacher reads: fired, again, window or rate"),
                             ("explore", "when the exploration draw is taken: wave or epoch"), ("rule", "which rule pays at the read"),
-                            ("eligibility", "perturb or hebb, for the reinforce rule"),
+                            ("eligibility", "perturb, wrong_hebb, hebb or hazard, for the reinforce rule"),
                             ("critic", "how the reward is judged: row, population, sustained, decoded")):
         parser.add_argument(f"--{flag}", default=None, help=f"{help_text} (fixed for the sweep)")
     parser.add_argument("--leaky", action="store_true", help="pass --leaky to every arm")
@@ -293,7 +293,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     swept, arms = grid(args)
     if not args.summary:
-        workers = min(len(arms), max(1, os.cpu_count() - 1))
+        workers = min(len(arms), max(1, os.cpu_count() - 2))  # one core for the driver, one kept free (September 16, 2026)
         print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept} -> {out}", flush=True)
         started = time.perf_counter()
         with Pool(workers) as pool:

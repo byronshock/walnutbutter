@@ -138,6 +138,7 @@ def test_connection_between_returns_the_registered_object(grid):
 
 
 def test_activate_origin_reaches_every_neuron_exactly_once(grid, capsys, monkeypatch):
+    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
     monkeypatch.setattr(Neuron, "verbose", True)
     grid.activate_origin()
     assert len(grid.fired_neurons()) == len(grid.neurons)
@@ -357,7 +358,8 @@ def test_input_neurons_is_empty_without_a_pattern(grid):
     assert grid.input_pattern is None and grid.input_neurons() == []
 
 
-def test_fire_input_forces_exactly_the_pattern_in_wave_zero(grid, capsys):
+def test_fire_input_forces_exactly_the_pattern_in_wave_zero(grid, capsys, monkeypatch):
+    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
     grid.set_input([True, False, True, False, True, False, True])
     waves = grid.fire_input()
     assert waves[0].fired == grid.input_neurons()

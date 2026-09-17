@@ -4,7 +4,20 @@ import math
 
 from .clock import slack
 from .connection import Connection
-from .constants import BORED_AFTER, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS, TAU, THRESHOLD
+from .constants import (BORED_AFTER, DECISION_MEMORY, ISI_FACTOR, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS,
+                        TARGET_ISI, TAU, THRESHOLD)
+
+
+def isi_factor(now: float, fired_at: float | None, target: float) -> float:
+    """The ISI factor of AUTHORITY.md §0.2: f(t - I) = (3x - 1) / (1 + x^3), x = t / I, t the time since the last spike.
+
+    -1 at t = 0, 0 at t = I/3, 1 at t = I and nowhere higher, falling as 3(I/t)^2 after; 0 for a neuron that has
+    never fired, which is at t = infinity. Every engine computes it in this order, so the three agree to the bit.
+    """
+    if fired_at is None:
+        return 0.0
+    x = (now - fired_at) / target
+    return (3.0 * x - 1.0) / (1.0 + x * x * x)
 
 
 class Neuron:
@@ -28,6 +41,8 @@ class Neuron:
     refractory = REFRACTORY  # absolute refractory period, nominal milliseconds (see constants.py)
     refractory_hops = REFRACTORY_HOPS  # refractory period / hop time (see constants.py)
     rate_tau = RATE_TAU  # ms: the exponential window the read estimates a firing rate over (see constants.py, §4.3)
+    isi_factor = ISI_FACTOR  # weigh every charge of the single-spike rule by the ISI factor (AUTHORITY.md §0.2)
+    target_isi = TARGET_ISI  # ms: the interval that factor pays most for (§0.2)
     bored_after = BORED_AFTER  # ms of silence after which the threshold has fallen to zero (see constants.py); 0 = off
 
     @classmethod
@@ -44,8 +59,25 @@ class Neuron:
         self.minimum_potential = float(minimum_potential)  # inhibition can push the potential no lower than this
         self.potential = 0.0  # weighted input received since the last spike
         self.noise = 0.0  # exploration noise added at the last input (see learning.py)
+        self.delta = 0.0  # the width of this neuron's firing decision, in potential units (AUTHORITY.md §5.2, escape
+        # noise): ESCAPE_DELTA times its starting threshold, set by Network.set_delta; 0 is the deterministic threshold
+        self.exposed_since = 0.0  # clock time the hazard has run from: the previous decision, or the refractory period's end
+        self.draw = 1.0  # this wave's uniform for the decision, set by the network's explorer hook; 1 never fires
+        self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N): the network's count scales every hazard down as its
+        # square root (AUTHORITY.md §5.2, September 16, 2026); Network.set_delta sets it, and a restore recomputes it
+        self.traced = False  # keep the trace of what each incoming synapse has in the potential (§6.7): under escape
+        # noise, or under the centred rule; Network.set_delta and Network.centre set it
+        self.centred = False  # the hebb eligibility charges this neuron's decisions (§6.7, the single-spike rule)
+        self.expectation: float | None = None  # p_hat_j: the neuron's per-decision expectation of its own spike, which
+        # the hebb eligibility charges (§6.7); None until its first decision, which sets it
+        self.decisions = 0  # decisions to date, for the expectation's warm start (DECISION_MEMORY)
+        self.expected = 0.0  # E_j: the spikes expected of this neuron over its decisions since its last spike -- the
+        # hazard's m or the centred rule's p_hat, summed -- so the accumulator's debit settles per arrival (§6.7)
+        self.credit = 0.0  # what the decision that fired credits each open arrival with, for fire() to settle (§6.7)
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
+        self.expected_count: float | None = None  # n_bar_j: the running expectation of this neuron's spikes an epoch, which
+        # the count_hebb eligibility (the epoch form) centres on (AUTHORITY.md §6.7); None until its first unforced epoch
         self.has_fired = False  # fired in the current epoch
         self.fired_in_wave: int | None = None  # the wave of the current epoch it (last) fired in; None until it fires
         self.forced = False  # forced to fire by the stimulus in the current epoch
@@ -56,6 +88,7 @@ class Neuron:
         self.previous_fired_at: float | None = None  # clock time of the spike before that
         self.last_update = 0.0  # clock time the potential was last brought up to date (the lazy leak)
         self.spikes = 0  # how many times this neuron has ever fired
+        self.spikes_at_reset = 0  # and how many it had when the epoch began: the difference is the count read (§4.3)
 
     def connect(
         self, target: Neuron, connection_id: int = 0, weight: float = 1.0, kind: str = "local"
@@ -146,6 +179,36 @@ class Neuron:
         """
         if self.potential < self.minimum_potential:
             self.potential = self.minimum_potential
+            if self.traced:
+                self.clear_arrivals()  # at the floor the potential is the floor whatever the weights (§6.7)
+
+    def settle_arrivals(self, credit: float = 0.0) -> None:
+        """Under the evidence accumulator (§5.1), close every open arrival on this neuron's incoming synapses (§6.7).
+
+        Each synapse's score takes the credit for its count and the debit
+        accrued since each arrival -- the spikes expected of this neuron from
+        then until now -- and its count and its note are cleared. A spike
+        settles with its decision's credit; the floor, a forced spike and a
+        discharge with none.
+        """
+        expected = self.expected
+        for connection in self.incoming:
+            if connection.trace != 0.0:
+                connection.score += credit * connection.trace - (connection.trace * expected - connection.noted)
+                connection.trace = 0.0
+                connection.noted = 0.0
+
+    def clear_arrivals(self) -> None:
+        """Nothing any synapse delivered is in the potential: the floor bit, or it was discharged (§6.7).
+
+        Under the evidence accumulator the open arrivals are closed without
+        credit, their debit so far settled; under the leak the traces are zeroed.
+        """
+        if Neuron.tau == math.inf:
+            self.settle_arrivals(0.0)
+        else:
+            for connection in self.incoming:
+                connection.trace = 0.0
 
     @property
     def ready(self) -> bool:
@@ -174,6 +237,75 @@ class Neuron:
             return False
         return self.potential_at(now) >= self.threshold_at(now)
 
+    def expected_spikes(self, now: float) -> float:
+        """m_j(now): the spikes the hazard expects of this neuron since its exposure began (AUTHORITY.md §5.2).
+
+        (dt / hop) * sqrt(N0 / N) * exp(s / delta), with s the margin the
+        decision is made on, dt the time since the previous decision or the
+        refractory period's end, and sqrt(N0 / N) the count's scaling of the
+        hazard (`escape_scale`, §5.2); capped at 1e3, beyond which the chance
+        of a spike is already 1 to the last bit. Needs delta > 0.
+        """
+        s = self.potential_at(now) - self.threshold_at(now)
+        elapsed = now - self.exposed_since
+        if elapsed < 0.0:
+            elapsed = 0.0
+        return min(elapsed / Neuron.hop() * self.escape_scale * math.exp(s / self.delta), 1e3)
+
+    def decide(self, now: float) -> bool:
+        """The firing decision at `now`: can_fire when delta is 0, else the escape-noise draw (AUTHORITY.md §5.2).
+
+        The decision also charges the eligibility of every incoming synapse
+        (§6.7, the single-spike rule): each score moves by (c - q) * trace, the
+        credit c and the expectation q of the decision. Under the hazard
+        eligibility c = m e^-m / (1 - e^-m) and q = 0 when the neuron fires,
+        c = 0 and q = m when it does not; under the centred rule (hebb) c is
+        the outcome, 1 or 0, and q the neuron's own expectation of it, moved
+        after the charge. Under the evidence accumulator (§5.1) the charge is
+        lazy: q is added to the neuron's expected count and a spike's credit is
+        left for fire() to settle per arrival. The schedule calls it exactly
+        once per neuron per wave.
+        """
+        if self.refractory_at(now):
+            return False
+        if self.delta <= 0.0:
+            fired = self.can_fire(now)
+            m = 0.0
+        else:
+            m = self.expected_spikes(now)
+            fired = self.draw < -math.expm1(-m)
+            self.exposed_since = now
+        if self.centred:
+            y = 1.0 if fired else 0.0
+            p = self.expectation
+            self.decisions += 1
+            if p is None:
+                self.expectation = y  # the first decision sets the expectation and charges nothing
+                return fired
+            credit, q = y, p
+            self.expectation = p + max(DECISION_MEMORY, 1.0 / self.decisions) * (y - p)  # moved after the charge
+        elif m > 0.0:
+            if fired:
+                credit, q = m * math.exp(-m) / -math.expm1(-m), 0.0  # m e^-m / (1 - e^-m): finite at any m
+            else:
+                credit, q = 0.0, m
+        else:
+            return fired
+        if Neuron.isi_factor:  # §0.2: the charge weighed by how near the time since the last spike is to the target
+            w = isi_factor(now, self.fired_at, Neuron.target_isi)
+            credit, q = w * credit, w * q
+        tau = Neuron.tau
+        if tau == math.inf:  # the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike
+            self.expected += q
+            if fired:
+                self.credit = credit
+        else:
+            e = credit - q
+            for connection in self.incoming:
+                if connection.trace != 0.0:
+                    connection.score += e * connection.trace * math.exp(-(now - connection.trace_at) / tau)
+        return fired
+
     def fire(self, wave: int = 0, now: float | None = None) -> list[Connection]:
         """Spike: mark this neuron as fired in `wave` at time `now` and return the connections to signal along.
 
@@ -192,6 +324,15 @@ class Neuron:
             self.last_update = now
             self.rate_level = self.firing_rate(now) + 1000.0 / Neuron.rate_tau  # Hz: one spike's worth (§4.3)
             self.rate_at = now
+            self.exposed_since = now + Neuron.refractory  # the hazard resumes when the refractory period ends (§5.2)
+        if self.traced:
+            if Neuron.tau == math.inf:
+                self.settle_arrivals(self.credit)  # the evidence accumulator: the spike credits and closes every open arrival (§6.7)
+            else:
+                for connection in self.incoming:
+                    connection.trace = 0.0  # the spike reset the potential: nothing any synapse delivered is still in it (§6.7)
+            self.expected = 0.0
+            self.credit = 0.0
         if Neuron.verbose:
             print(f"{self.name} fired in wave {wave}.")
         return [connection for connection in self.outgoing if connection.is_active]
@@ -207,10 +348,18 @@ class Neuron:
         """
         if discharge:
             self.potential = 0.0
+            if self.traced:
+                self.clear_arrivals()  # nothing is left in a zeroed potential (§6.7)
         self.has_fired = False
         self.fired_in_wave = None
         self.forced = False
         self.noise = 0.0
+        self.spikes_at_reset = self.spikes
+
+    @property
+    def epoch_spikes(self) -> int:
+        """How many times this neuron has fired since the epoch began: what the count read thresholds (§4.3)."""
+        return self.spikes - self.spikes_at_reset
 
     def list_connections(self) -> None:
         print(f"I am {self.name}, and I send signals to:")

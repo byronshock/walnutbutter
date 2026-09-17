@@ -183,7 +183,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     if "--summary" not in sys.argv:
         arms = list(itertools.product(ALPHAS, THETAS))
-        workers = min(len(arms), max(1, os.cpu_count() - 1))
+        workers = min(len(arms), max(1, os.cpu_count() - 2))  # one core for the driver, one kept free (September 16, 2026)
         print(f"{len(arms)} arms on {workers} workers, {EPOCHS:,} epochs each -> {OUT}", flush=True)
         started = time.perf_counter()
         with Pool(workers) as pool:

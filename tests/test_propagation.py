@@ -37,6 +37,7 @@ def test_waves_record_the_signals_delivered(capsys):
 
 
 def test_two_way_pair_fires_once_each(capsys, monkeypatch):
+    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
     monkeypatch.setattr(Neuron, "verbose", True)
     a, b = Neuron("a"), Neuron("b")
     a.connect(b)
@@ -45,6 +46,19 @@ def test_two_way_pair_fires_once_each(capsys, monkeypatch):
     assert (a.fired_in_wave, b.fired_in_wave) == (0, 1)
     assert capsys.readouterr().out.count("fired") == 2
     assert len(waves) == 3  # wave 2 delivers b's signal back to a, which ignores it
+
+
+def test_at_two_hops_a_two_way_pair_reverberates(capsys):
+    """REFRACTORY_HOPS = 2 (§1.2, September 17, 2026): a spike sent around a two-way pair comes back after two hops, the
+    moment the refractory period ends, so the pair refires every hop in turn until the clock stops it -- where at three
+    hops each fired once. Every reciprocal pair strong enough to fire its partner is now a two-hop oscillator."""
+    assert Neuron.refractory_hops == 2.0 and Neuron.hop() == 2.5
+    a, b = Neuron("a"), Neuron("b")
+    a.connect(b)
+    b.connect(a)
+    waves = propagate(fire=[a], until=20.0)
+    assert [w.time for w in waves if w.fired] == [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5]
+    assert [w.fired for w in waves if w.fired] == [[a], [b]] * 4
 
 
 def test_all_signals_in_a_wave_are_delivered_before_anyone_fires(capsys):
@@ -133,7 +147,8 @@ def test_grid_reset_clears_waves(capsys):
     assert grid.waves == [] and grid.fired_neurons() == []
 
 
-def test_large_grid_has_no_recursion_limit(capsys):
+def test_large_grid_has_no_recursion_limit(capsys, monkeypatch):
+    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
     grid = GridOfNeurons(across=80, rows=60, omega=0)  # 4800 neurons; recursion died near 1000
     grid.activate_origin(until=60.0)  # the corners are twenty-odd hops out: several intervals
     assert len(grid.fired_neurons()) == len(grid.neurons)
