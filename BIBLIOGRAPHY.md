@@ -191,3 +191,10 @@ AUTHORITY.md.
   population and cost of q_k/T on every other; and the softmax as a smooth
   winner-take-all, the class critic being its T -> 0 limit.
   A book, not freely available; not in `references/`.
+- Bishop, C. M. (2006). *Pattern Recognition and Machine Learning*.
+  Springer. The later, freely available book: §4.3.4, multiclass logistic
+  regression, derives the softmax's derivative, ∂y_k/∂a_j = y_k(I_kj − y_j),
+  and the cross-entropy whose gradient with respect to a class's weights is
+  the output minus the target times the input -- the evidence critic of §8
+  in the 2006 notation, beside the 1995 book's §6.9. Added at Byron's request.
+  In `references/`: `Bishop06.pdf`, the author's copy from Microsoft Research.
