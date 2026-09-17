@@ -5,7 +5,11 @@ disagree, this file is right and the code has a bug. A change to the system
 is made here first, then carried into the code and its tests.
 
 Byron and Cedric own the substance of it. Claude keeps it and the code in
-step. §0 is **non-negotiable**. Every other section says whether it is
+step. This file is copyright (C) 2026 Byron Shock and Cedric Shock and
+licensed CC BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0.txt`); the code it specifies
+is under the AGPL, version 3 or later (`LICENSE`).
+
+§0 is **non-negotiable**. Every other section says whether it is
 **kept** (the connectivity and signalling scaffolding, agreed on
 September 10, 2026, refactored lightly as needed) or **open** (to be
 respecified: the constants, the activation rule, the learning rule). An

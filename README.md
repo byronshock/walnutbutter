@@ -760,3 +760,24 @@ src/walnutbutter/
 tests/         pytest tests for the neuron, the grid, and the command line
 pyproject.toml project metadata, dependencies, and the command definition
 ```
+
+## What we mean it for
+
+`VALUES.md` is a statement of values from Byron and Cedric Shock: run it on
+non-fission renewable energy, and if it ends up in a robot, that robot
+follows the three laws of robotics. It is not a licence term and restricts
+nothing the licence grants.
+
+## Licence
+
+Copyright (C) 2026 Byron Shock and Cedric Shock.
+
+The code is free software under the **GNU Affero General Public License,
+version 3 or (at your option) any later version** -- `LICENSE`. It comes with
+no warranty. The Affero clause is the point: anyone who lets others use a
+modified walnutbutter over a network must offer them its source.
+
+`AUTHORITY.md`, the specification, is licensed **Creative Commons
+Attribution-ShareAlike 4.0 International** (CC BY-SA 4.0) --
+`LICENSE-CC-BY-SA-4.0.txt`. Share it, change it, build on it; keep the
+attribution and pass it on under the same terms.
