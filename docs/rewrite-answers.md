@@ -64,3 +64,44 @@ so the spike train is a renewal process with dead time; specified by its
 coefficient of variation, INPUT_CV 0.6, from which λ = 0.133/ms follows, 80
 Hz, 2.8 spikes across a 35 ms epoch. The deterministic spike every TARGET_ISI
 is a later change, not the rewrite's starting point.
+
+## 4. What the specification drops, and what it keeps
+
+**Answered September 17, 2026, 15:02 MDT**, item by item against the list in
+`rewrite-outline.md`. In his words where they decide something:
+
+**Kept.**
+- **The quash (§6.11), as a non-default.** It is the only rule that ever
+  closed a short loop, and the record has it as the difference between 0.978
+  and chance on a two-hop copy; it is off for a feedforward network and
+  matters again when recurrence returns.
+- **The array engine, with tolerances, as a foundational rule** — *"keep,
+  with tolerances, as a foundational rule; all platforms are built from one
+  clear authority."* So the specification states, as a rule about the
+  system rather than about any engine, that every platform is built from
+  this file alone, and names the tolerance where floating-point
+  associativity forbids bit agreement (the arrays sum a wave in matrix
+  order and use numpy's exponentials; spikes agree exactly, continuous
+  quantities to a part in a billion).
+- **The critics** other than evidence: row, class, graded, population,
+  sustained and the decoded critics.
+- **Homeostasis and un-sticking, as non-defaults.**
+
+**Dropped from the specification, kept in the record.** The dopamine rule
+and its eight constants; the external teacher of §6.9 with RATE_ON/RATE_OFF
+and TEACHER_CREDIT; ADALINE; leaky Hebb with HEBB_RATE and SYNAPSE_TAU; the
+bored clock and BORED_AFTER; the reads fired, again, window and rate; the
+perturb, wrong_hebb and count_hebb eligibilities with SIGMA, EXPLORE and
+COUNT_MEMORY; every problem but mnist; the codings and the error-correcting
+codes and the input flips, keeping complement coding and the clock neurons
+that mnist uses; the weight decay and the bit-0 punishment; the visualizer;
+the goo wirings zones, zones-equal, uniform and scaled-open and the direct
+projection; and the input permutation.
+
+**Dropped as code, kept as a direction.** *"(1) drop but keep the idea of
+dopamine reinforcement around. It's a very important direction for Cedric's
+work, but the implementation was mine and I lacked understanding."* So
+dopamine leaves the specification as a mechanism and stays in it as an
+intention: a reward produced locally at a spike and consumed globally,
+Cedric's to take up, with the record's §6.2-§6.6 as the first attempt and
+its own account of why it did not learn.
