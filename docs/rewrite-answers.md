@@ -116,3 +116,15 @@ which is what archived means here — nothing is deleted, and the rebuild does
 not carry them. Small-world shortcuts are named as an intention to return,
 not as a clause: they were the only thing that shortened a trip across the
 grid, and goo has no far.
+
+**The critics, answered 15:09 MDT:** *"evidence, row, graded"*. Three
+critics survive: evidence (the class sums read as log-odds at TEMPERATURE,
+mnist's), row (the fraction of outputs matching a target pattern) and graded
+(the fraction of the other classes the label's class out-spikes). The
+sustained, population and decoded critics go with the problems they scored.
+
+*One consequence to settle:* the fraction right that every mnist run reports
+-- 0.217 on the last sweep, the number the project is judged by -- is the
+class critic's, computed beside the evidence reward. With the class critic
+dropped, that reading has to be kept as a **reported measure** rather than a
+critic, or the runs stop reporting the thing they are read by.
