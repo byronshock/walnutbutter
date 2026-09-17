@@ -146,6 +146,16 @@ AUTHORITY.md.
     neuron's reader. Added at Byron's request.
     In `references/`: `BialekZee90.pdf`, the first author's copy (a scan).
 
+## The values
+
+- Asimov, I. (1985). *Robots and Empire*. Doubleday. The novel in which the
+  Zeroth Law is first stated and named -- "A robot may not harm humanity, or,
+  by inaction, allow humanity to come to harm" -- and placed above the three
+  laws of *Runaround* (1942), collected in *I, Robot* (1950). `VALUES.md`
+  asks that any robot this work is incorporated in follow all four, the
+  Zeroth first: a foundational value of the project, not a licence term.
+  Not in `references/`: a novel in copyright, with no free copy to fetch.
+
 ## Not yet mentioned in our conversations, but the roots of the above
 
 - Markram, H., Lübke, J., Frotscher, M., & Sakmann, B. (1997). Regulation
