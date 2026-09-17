@@ -105,3 +105,14 @@ dopamine leaves the specification as a mechanism and stays in it as an
 intention: a reward produced locally at a spike and consumed globally,
 Cedric's to take up, with the record's §6.2-§6.6 as the first attempt and
 its own account of why it did not learn.
+
+**The containers, answered 15:08 MDT:** *"archive the hex containers,
+lattice, spread, the whole shebang. We'll bring back small world shortcuts
+later."* So the specification carries goo alone. The hex grid, the hexagonal
+columns and the lattice or spread leave it, with the hex metric, the
+guaranteed neighbourhood, the positions and OMEGA, REACH and ROWS; they stay
+in `RECORD.md` §2-§3 and in the code at the tag `lab-notebook-2026-09-17`,
+which is what archived means here — nothing is deleted, and the rebuild does
+not carry them. Small-world shortcuts are named as an intention to return,
+not as a clause: they were the only thing that shortened a trip across the
+grid, and goo has no far.
