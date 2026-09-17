@@ -777,6 +777,12 @@ version 3 or (at your option) any later version** -- `LICENSE`. It comes with
 no warranty. The Affero clause is the point: anyone who lets others use a
 modified walnutbutter over a network must offer them its source.
 
+Four additional terms, permitted by section 7 of that licence, are appended
+to `LICENSE`: preserve the attributions and notices; mark a modified version
+as changed; do not use our names to promote your version; and indemnify us
+for warranties or support you promise. They add no restriction beyond what
+section 7 allows and take nothing away from what the licence grants.
+
 `AUTHORITY.md`, the specification, is licensed **Creative Commons
 Attribution-ShareAlike 4.0 International** (CC BY-SA 4.0) --
 `LICENSE-CC-BY-SA-4.0.txt`. Share it, change it, build on it; keep the
