@@ -1,8 +1,9 @@
-# References: the papers of BIBLIOGRAPHY.md, where a free identical copy exists
+# References: the papers of BIBLIOGRAPHY.md, and every paper cited since, where a free identical copy exists
 
 Byron, September 16, 2026: "IF you can find an identical freely available version online (for example at a
 contributing scholar's university), can you please download it and place it in the references folder?"
-Fetched from the sources named, checked to be PDFs, and hashed; nothing from a publisher's paywall or a
+And, September 17, 2026: "Please do this automatically whenever you call up a reference. I can decide later if it's
+worth the bibliography mention" -- so a paper here need not be in BIBLIOGRAPHY.md. Fetched from the sources named, checked to be PDFs, and hashed; nothing from a publisher's paywall or a
 pirate mirror. A preprint is marked as one.
 
 The PDFs are not tracked in git (Byron, September 16, 2026: "please untrack the references
@@ -25,6 +26,7 @@ folder"): only this list is. A fresh clone fetches them from the sources below.
 | `LaughlinDeRuyterVanSteveninckAnderson98.pdf` | Laughlin, de Ruyter van Steveninck & Anderson (1998), Nature Neuroscience 1(1), 36-41 | https://www.princeton.edu/~wbialek/our_papers/laughlin+al_98.pdf | the published typesetting, on the Princeton papers page of the Bialek and de Ruyter van Steveninck collaboration, which the second author co-signs -- a collaborator's page rather than strictly an author's own, for Byron to confirm | September 17, 2026 | `df7c2e2476daf60d…` |
 | `BeniaguevSegevLondon21-biorxiv.pdf` | Beniaguev, Segev & London (2021), Neuron 109(17), 2727-2739.e3 | https://www.biorxiv.org/content/10.1101/613141v2.full.pdf | the bioRxiv preprint (613141 v2, March 19, 2020), CC BY-NC-ND 4.0, not the Neuron text: its abstract needs seven layers where the published one says five to eight; bioRxiv stamps each download, so a fresh copy hashes differently | September 17, 2026 | `9d5bacceda6a9e25…` |
 | `PoiraziBrannonMel03.pdf` | Poirazi, Brannon & Mel (2003), Neuron 37(6), 989-999 | https://www.cell.com/neuron/fulltext/S0896-6273(03)00149-1 | the published Cell Press typesetting, free in Elsevier's open archive; the site refuses a scripted download, so Byron saved it from a browser | September 17, 2026 | `951f30338c038521…` |
+| `Seung03.pdf` | Seung (2003), Neuron 40(6), 1063-1073 -- cited in AUTHORITY.md §0.3; not in BIBLIOGRAPHY.md | https://web.archive.org/web/20040117094709id_/http://hebb.mit.edu:80/people/seung/papers/Neuron18Dec03.pdf | the published Cell Press typesetting (11 pages) as the author's MIT lab served it from its papers page; that site is gone, so this is the Internet Archive's capture of January 17, 2004, byte for byte by the archive's SHA-1 -- a source for Byron to confirm, like Deneve08.pdf. The publisher's open archive also serves it free to a browser: https://doi.org/10.1016/S0896-6273(03)00761-X | September 17, 2026 | `455d8063dfd9d6be…` |
 
 Full SHA-256 sums: `sha256sum references/*.pdf`; the first sixteen hex digits are above.
 
