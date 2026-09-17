@@ -210,8 +210,14 @@ COUNT_MEMORY = 0.01  # per-epoch update of a neuron's expected spike count, n_ba
 # everything.
 DECISION_MEMORY = 1e-4  # per-decision update of a neuron's expectation of its own spike, p_hat_j, which the hebb eligibility
 # charges at every decision (AUTHORITY.md §6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed
-# per decision in this architecture"): about the last 10,000 decisions -- at a wave a hop, some 170 epochs of 100 ms, the
-# count memory's window and a little more -- so it is the neuron's label-blind expectation of itself. Until that many
-# decisions have been seen the estimate is their plain mean (a rate of 1/n at the n-th), and the first decision sets it and
-# charges nothing. A starting value, to be swept.
+# per decision in this architecture"): about the last 10,000 decisions. Every neuron decides at every wave and every
+# Poisson arrival of the drive is a wave, so on the mnist feedforward goo at 100 ms a neuron makes about 3,300 decisions
+# an epoch (measured September 17, 2026): the window is about three epochs, not the 170 a wave a hop would give. Until
+# that many decisions have been seen the estimate is their plain mean (a rate of 1/n at the n-th), and the first decision
+# sets it and charges nothing. A starting value, to be swept.
+TARGET_ISI = 5.1  # ms: the interspike interval the ISI factor pays most for (AUTHORITY.md §0.2; Byron, September 17, 2026:
+# "The desired ISI is 5.1 ms (hardcode for now)"). Not known: 0.1 ms past REFRACTORY for now
+ISI_FACTOR = True  # weigh every charge of the single-spike rule (hebb and hazard, §6.7) by f(t - TARGET_ISI), t the time
+# since the neuron's own last spike, f = (3x - 1) / (1 + x^3) at x = t / TARGET_ISI (§0.2); on by default (Byron, September
+# 17, 2026), and a resumed network keeps the setting it was saved under
 STUCK_BELOW, STUCK_ABOVE = 0.01, 0.99  # a neuron firing less or more often than this is "stuck"

@@ -101,6 +101,73 @@ learning on mnist any instrument has shown. Its consequences:
    buys quiet, not learning. The centred Hebbian rule of §6.7, swept the
    same morning, aligns several times faster and then stalls (§8).
 
+## 0.2 The ISI factor — decided, its constants not known (Byron, September 17, 2026)
+
+*Placed here at Byron's instruction: "Please make the factor authority near
+the very top."*
+
+**Byron, 04:31 MDT:** *"Now to teach it. With absolute refractory period
+ABS, we would like to be able to recognize spikes coming back after
+multiple hops. The desired ISI is 5.1 ms (hardcode for now). The teacher's
+existing reinforcement is MULTIPLIED by f(t-ISI) where f(0) = 1,
+f(infinity)=0, f(-ISI)= -1."* And, later the same morning: *"Please make implement the ISI
+mechanism I suggested, despite your reservations, in authority. Only the
+constants are not known."*
+
+**The factor.** With $I$ = TARGET_ISI (§1.3) and $x = t/I$, the form Fable
+derived before leaving — "a cubic rational f = (3x − 1)/(1 + x³) in x =
+t/ISI, peaking at the target interval":
+
+$$f(t - I) = \frac{3x - 1}{1 + x^3}, \qquad x = \frac{t}{I}.$$
+
+It is $-1$ at $t = 0$, zero at $t = I/3$, $1$ at $t = I$ and nowhere
+higher, and falls as $3(I/t)^2$ after. Among the forms $(ax - 1)/(1 + b\,x^n)$,
+which all give $-1$ at $t = 0$, a value of $1$ and a peak at $t = I$ force
+$b = 2/(n - 1)$ and $a = 2 + b$; $n = 3$ is the lowest power whose tail has
+a finite integral ($n = 2$ falls as $2I/t$).
+
+**The mechanism** — *Claude's reading of "the teacher's existing
+reinforcement" and of $t$, to be corrected in a word.* $t$ is the time since
+the neuron's own last spike, and the factor weighs every charge of the
+single-spike rule (§6.7), hebb and hazard alike, at the decision it is made:
+
+$$e_{ij} \mathrel{+}= f\big(t' - t^{\text{fired}}_j - I\big)\,\big(c_j(t') - q_j(t')\big)\,x_{ij}(t'),$$
+
+so a spike is credited by how near its interspike interval came to $I$, a
+silence is debited by the same weight at its moment, and the read pays
+$\text{LR} \cdot A \cdot e_{ij}$ as before. Under the evidence accumulator
+the bookkeeping of §6.7 stands with $f c_j$ and $f q_j$ in place of $c_j$
+and $q_j$: a decision adds $f q_j$ to $E_j$, and the spike settles
+$f c_j\,x_{ij} - (x_{ij} E_j - B_{ij})$. A neuron that has never fired is at
+$t = \infty$, where $f = 0$: nothing is charged before its first spike.
+count_hebb, wrong_hebb and perturb have no per-decision charge to weigh and
+run as before. **On by default** (Byron, the same morning, choosing between
+on and off: "On by default"), and `--no-isi-factor` runs without it, as every
+run and sweep before this day did. *Claude's reading, for the sweeps
+running when it landed:* a checkpoint records whether its network ran with
+the factor, and a resumed network keeps that setting — off for one saved
+before the factor existed — unless the resuming run says otherwise
+(`docs/rust-sweep.py` and `docs/mnist-watch.py`, `--isi-factor on|off`), so an
+arm continues under the rule it started with; each arm's record says which
+it ran.
+
+*What the constants do.* No interval is shorter than REFRACTORY, so at
+$I = 5.1$ ms the factor runs from 0.9994 at the refractory edge down — 0.90
+for a spike back after four hops (6.7 ms), 0.73 after five, 0.57 after six
+(10 ms), 0.30 after nine (15 ms), 0.18 after twelve — and its negative lobe
+is out of reach. The lobe comes into reach once $I$ exceeds
+$3 \times \text{REFRACTORY} = 15$ ms, and then a refire sooner than $I/3$ is
+punished and a silence at that moment is paid.
+
+*Built the same morning, in every engine* — `neuron.isi_factor`, the array
+engine's `_isi_factor`, the Rust loop's `isi_factor` with `set_isi_factor` —
+each computing $x = (t' - t^{\text{fired}}_j)/I$ and $(3x - 1)/(1 + x \cdot x
+\cdot x)$ in that order and multiplying the credit and the expectation of
+the decision by it, so the objects and Rust agree to the bit and the arrays
+to a part in $10^9$ (`tests/test_hazard.py`, factor on and off). With the
+factor off every engine is the committed rule to the bit. *Not measured
+yet.*
+
 ## 1. Global constants — open
 
 One value each, for the whole network. `constants.py` is their only home in
@@ -195,6 +262,8 @@ The reinforce rule, factored out behind RULE = reinforce, keeps its own:
 | RATE_MEMORY | 0.01 | per-epoch update of $r_j$: about the last 100 epochs |
 | COUNT_MEMORY | 0.01 | per-epoch update of $\bar n_j$, the expected spike count the count_hebb eligibility centres on — the epoch form hebb was until September 17, 2026 (§6.7): the rate memory's window, about the last 100 epochs. It starts at the first count seen in an unforced epoch, so a neuron's first epoch moves nothing rather than everything; a starting value, to be swept |
 | DECISION_MEMORY | 10⁻⁴ | per-decision update of $\hat p_j$, the neuron's expectation of its own spike, which the hebb eligibility charges at every decision (§6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed per decision in this architecture"): about the last 10,000 decisions. *Measured, September 17, 2026:* every neuron that is not refractory decides at every wave, and every Poisson arrival of the drive is a wave, so on the mnist feedforward goo at 100 ms a neuron makes about 3,300 decisions an epoch (3,266 to 3,398 over two seeds, the scaled and ff2-partial wirings, TAU 2 and $\infty$) — not the sixty of a wave a hop this row first assumed. The window is therefore about three epochs, short enough to follow the last few digits rather than be the neuron's label-blind expectation of itself; some 170 epochs there would be DECISION_MEMORY near $2 \times 10^{-6}$. Until that many decisions have been seen the estimate is their plain mean, a rate of $1/n$ at the $n$-th, and the first decision sets it and charges nothing; a starting value, to be swept |
+| TARGET_ISI | 5.1 ms | the interspike interval the ISI factor of §0.2 pays most for, $f = 1$ there; *not known* — hardcoded for now (Byron, September 17, 2026: "The desired ISI is 5.1 ms (hardcode for now)"), 0.1 ms past REFRACTORY |
+| ISI_FACTOR | on | weigh every charge of the single-spike rule by the ISI factor of §0.2 (Byron, September 17, 2026: "On by default"); `--no-isi-factor` is the rule as it ran before that day, and a resumed network keeps the setting it was saved under |
 | STUCK_BELOW, STUCK_ABOVE | 0.01, 0.99 | a neuron with $r_j$ outside this band is stuck |
 | WINDOW | 200 | epochs the reported moving-average accuracy spans (reporting only) |
 
@@ -2793,7 +2862,8 @@ Under the leak the same rule is charged per decision with the leaked
 trace, as the hazard was — the regrouping needs factors of $e^{t/\tau}$
 that overflow within a second of run. The result is not bit-identical to
 the per-decision sum, only equal to a part in $10^{15}$; the three engines
-are bit-identical to each other (§6.15). Built in every engine,
+are bit-identical to each other (§6.15). Every charge may be weighed by
+the ISI factor of §0.2, when a run selects it. Built in every engine,
 checkpointed ($\hat p_j$, the decisions to date, $E_j$, $B_{ij}$), and
 `--eligibility count_hebb` runs the epoch form as recorded. *Not measured
 yet.*
@@ -3414,7 +3484,8 @@ worth more than the rewrite.
   seed and settings and reloads its weights, thresholds, clock, spike
   times, synapse stamps, signals in flight and dopamine — and, since
   September 17, 2026, each neuron's per-decision expectation and expected
-  count and each synapse's note (§6.7) — in either engine.
+  count and each synapse's note (§6.7), and whether the ISI factor of §0.2
+  was on — in either engine.
 - **The network keeps living.** There is no training run and no evaluation
   run, only one run that keeps going; a rule may not assume an end.
 

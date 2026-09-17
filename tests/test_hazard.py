@@ -321,32 +321,71 @@ def test_the_evidence_accumulator_is_the_neuron_at_tau_infinity_in_every_engine(
         Neuron.tau = was
 
 
+@pytest.mark.parametrize("isi_factor", [True, False])
 @pytest.mark.parametrize("eligibility", ["hazard", "hebb"])
-def test_the_single_spike_rule_settles_per_arrival_what_the_decisions_charge(eligibility):
+def test_the_single_spike_rule_settles_per_arrival_what_the_decisions_charge(eligibility, isi_factor):
     """§6.7 (Byron, September 17, 2026): under the evidence accumulator every synapse's score equals the per-decision
-    charge (c - q) x summed over its target's decisions -- kept here independently, decision by decision, from the
-    engine's traces and the rule's own (c, q) -- and the engine settles it lazily per arrival, at the spike, the floor
-    and the read, with no loop over a fan-in at a decision. The arrivals stay open across reads ("Let them run!"), each
-    read paying what was charged since the last; under hebb the neuron's expectation is followed alongside."""
-    was = Neuron.tau
-    Neuron.tau = math.inf
+    charge f (c - q) x summed over its target's decisions -- kept here independently, decision by decision, with the
+    rule's own (c, q), the ISI factor f of §0.2 computed here from the neuron's last spike (1 when the factor is off),
+    and x counted here too: every signal the target integrated along the synapse, cleared when the target spikes and
+    when the floor bites, and held against the engine's trace at every decision -- so a floor or a spike that failed to
+    close the arrivals parts the two. The engine settles lazily per arrival, at the spike, the floor and the read, with
+    no loop over a fan-in at a decision. The arrivals stay open across reads ("Let them run!"), each read paying what
+    was charged since the last; under hebb the neuron's expectation is followed alongside."""
+    from walnutbutter.connection import Connection
+    was, was_factor = Neuron.tau, Neuron.isi_factor
+    Neuron.tau, Neuron.isi_factor = math.inf, isi_factor
     try:
         g = goo()
         g.set_delta(0.7)
         if eligibility == "hebb":
             g.centre(True)
         direct = {c: 0.0 for c in g.connections.values()}
+        arrivals = {c: 0 for c in g.connections.values()}  # x_ij, counted here and not read from the engine
         mirror = {n: None for n in g.all_neurons()}
         count = {n: 0 for n in g.all_neurons()}
-        charged, open_at_a_read = [0], [False]
-        original = Neuron.decide
+        charged, open_at_a_read, floored, weighed = [0], [False], [0], [False]
+        original_decide, original_settle, original_fire = Neuron.decide, Neuron.settle, Neuron.fire
+
+        def factor(now, fired_at):
+            if not isi_factor:
+                return 1.0
+            if fired_at is None:
+                return 0.0
+            x = (now - fired_at) / 5.1
+            return (3 * x - 1) / (1 + x ** 3)
+
+        def integrated(self):
+            return self.__dict__.get("last_signal")
+
+        def integrate(self, value):
+            self.__dict__["last_signal"] = value
+            if value is not None and self in arrivals:
+                arrivals[self] += 1  # the propagation stamps a synapse exactly when its target integrates a signal
+
+        def settle(self):
+            bites = self.potential < self.minimum_potential
+            original_settle(self)
+            if bites:
+                floored[0] += 1
+                for c in self.incoming:
+                    arrivals[c] = 0
+
+        def fire(self, wave=0, now=None):
+            out = original_fire(self, wave, now)
+            for c in self.incoming:
+                arrivals[c] = 0
+            return out
 
         def decide(self, now):
             if self.refractory_at(now):
-                return original(self, now)
-            traces = [(c, c.trace) for c in self.incoming if c.trace != 0.0]  # x_ij(t') as the decision sees it
+                return original_decide(self, now)
+            for c in self.incoming:
+                assert c.trace == arrivals[c]  # the engine's open arrivals are the ones counted here
+            traces = [(c, arrivals[c]) for c in self.incoming if arrivals[c]]
             m = self.expected_spikes(now) if self.delta > 0.0 else 0.0
-            fired = original(self, now)
+            w = factor(now, self.fired_at)
+            fired = original_decide(self, now)
             if eligibility == "hebb":
                 y = 1.0 if fired else 0.0
                 count[self] += 1
@@ -362,12 +401,14 @@ def test_the_single_spike_rule_settles_per_arrival_what_the_decisions_charge(eli
                 c_, q = (m * math.exp(-m) / -math.expm1(-m), 0.0) if fired else (0.0, m)
             else:
                 return fired
+            weighed[0] |= w not in (0.0, 1.0)
             for c, x in traces:
-                direct[c] += (c_ - q) * x
+                direct[c] += w * (c_ - q) * x
                 charged[0] += 1
             return fired
 
-        Neuron.decide = decide
+        Neuron.decide, Neuron.settle, Neuron.fire = decide, settle, fire
+        Connection.last_signal = property(integrated, integrate)
         try:
             rng = random.Random(5)
             for _ in range(30):
@@ -379,12 +420,61 @@ def test_the_single_spike_rule_settles_per_arrival_what_the_decisions_charge(eli
                     assert c.score == pytest.approx(direct[c], rel=1e-9, abs=1e-12)
                 open_at_a_read[0] |= any(c.trace != 0.0 for c in g.connections.values())
         finally:
-            Neuron.decide = original
-        assert charged[0] > 1000 and open_at_a_read[0]  # arrivals stay open across a read: "Let them run!"
+            Neuron.decide, Neuron.settle, Neuron.fire = original_decide, original_settle, original_fire
+            del Connection.last_signal
+        assert charged[0] > 1000 and open_at_a_read[0] and floored[0] > 100  # "Let them run!", and the floor did bite
+        assert weighed[0] == isi_factor  # the factor took values other than 0 and 1 exactly when it was on
         if eligibility == "hebb":
             assert all(n.expectation is not None for n in g.all_neurons())
     finally:
-        Neuron.tau = was
+        Neuron.tau, Neuron.isi_factor = was, was_factor
+
+
+def test_the_isi_factor_has_the_shape_byron_asked_for():
+    """§0.2 (Byron, September 17, 2026): f(t - ISI) with f(0) = 1, f(infinity) = 0 and f(-ISI) = -1 -- Fable's cubic
+    rational, (3x - 1) / (1 + x^3) at x = t / ISI -- zero at a third of the target, largest at it, falling as 3 (ISI/t)^2;
+    0 for a neuron that has never fired; on by default at 5.1 ms, and --no-isi-factor switches it off."""
+    from walnutbutter import constants as C
+    from walnutbutter.cli import build_parser
+    from walnutbutter.neuron import isi_factor
+    assert C.TARGET_ISI == 5.1 and C.ISI_FACTOR is True and Neuron.target_isi == C.TARGET_ISI
+    assert build_parser().parse_args([]).isi_factor is True and build_parser().parse_args(["--no-isi-factor"]).isi_factor is False
+    at = lambda t: isi_factor(100.0 + t, 100.0, 5.1)  # t ms after a spike at 100 ms
+    assert at(0.0) == -1.0 and at(5.1) == 1.0 and abs(at(5.1 / 3)) < 1e-12
+    assert at(5.0) < 1.0 and at(5.2) < 1.0 and at(5.0) == pytest.approx(0.99941, abs=1e-5)  # the peak is the target
+    assert at(10.0) == pytest.approx(0.5718, abs=1e-4) and at(15.0) == pytest.approx(0.2959, abs=1e-4)
+    assert at(5.1e4) == pytest.approx(3 * (5.1 / 5.1e4) ** 2, rel=1e-3) and at(1e300) == 0.0
+    assert isi_factor(12.0, None, 5.1) == 0.0  # a neuron that has never fired is at t = infinity
+
+
+@pytest.mark.parametrize("eligibility", ["hazard", "hebb"])
+def test_the_three_engines_agree_with_the_isi_factor_off(eligibility):
+    """§0.2's --no-isi-factor: the single-spike rule unweighed, as it ran before September 17, 2026, in every engine."""
+    np = pytest.importorskip("numpy")
+    from walnutbutter.arrays import ArrayNetwork
+    was, was_factor = Neuron.tau, Neuron.isi_factor
+    Neuron.tau, Neuron.isi_factor = math.inf, False
+    try:
+        mesh, twin = goo(), goo()
+        mesh.set_delta(0.7)
+        twin.set_delta(0.7)
+        net = ArrayNetwork(twin)
+        teachers = [Teacher(x, seed=7, rule="reinforce", eligibility=eligibility, target="copy", homeostasis=0.01, unstick=0.1)
+                    for x in (mesh, net)]
+        ids = range(1, len(mesh.connections) + 1)
+        for _ in range(30):
+            for t in teachers:
+                t.epoch(verbose=False)
+            assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
+            assert np.allclose([mesh.connections[i].weight for i in ids], net.weight, rtol=1e-9, atol=0.0)
+        if fast.available():
+            g = goo()
+            g.set_delta(0.7)
+            parted = fast.compare(g, epochs=30, teacher=Teacher(g, seed=7, rule="reinforce", eligibility=eligibility, target="copy",
+                                                                 homeostasis=0.01, unstick=0.1))
+            assert parted == [], parted
+    finally:
+        Neuron.tau, Neuron.isi_factor = was, was_factor
 
 
 @pytest.mark.parametrize("tau", [2.0, math.inf])

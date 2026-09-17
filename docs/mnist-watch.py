@@ -52,6 +52,8 @@ def main() -> int:
                         help="goo's wiring (§3.4): the command line's default, scaled, unless given; ff2 is fully connected feedforward")
     parser.add_argument("--projection", type=float, default=None, help="P for --wiring ff2-partial (and the three older wirings)")
     parser.add_argument("--resume", default=None, metavar="NETWORK.json", help="continue from a sweep's saved network (see above)")
+    parser.add_argument("--isi-factor", choices=("on", "off"), default=None,
+                        help="the ISI factor of §0.2: on for a fresh run; a resumed network keeps its checkpoint's setting unless given")
     parser.add_argument("--every", type=int, default=1000, help="epochs between lines")
     parser.add_argument("--checkpoint-every", type=int, default=5000, help="epochs between checkpoints; 0 for none")
     parser.add_argument("--epochs", type=int, default=10 ** 9, help="stop after this many more; the default is until Ctrl-C")
@@ -60,6 +62,7 @@ def main() -> int:
     spec = importlib.util.spec_from_file_location("rs", ROOT / "docs" / "rust-sweep.py")
     rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
     from walnutbutter import fast, mnist
+    from walnutbutter.neuron import Neuron
     from walnutbutter.learning import class_evidence
     from walnutbutter.problems import dataset_stream
 
@@ -72,11 +75,13 @@ def main() -> int:
     for flag in ("output_coding", "population", "outputs"):
         if getattr(args, flag) is not None:
             fixed += [f"--{flag.replace('_', '-')}", str(getattr(args, flag))]
+    if args.isi_factor == "off":
+        fixed.append("--no-isi-factor")
     grid, cli = rs.grid_of("mnist", arm, args.eligibility, True, args.floor_ratio, args.wiring, tuple(fixed))
     patterns, labels = dataset_stream("mnist", args.seed)
     offset, reference, explore_seed = 0, None, args.seed
     if args.resume:
-        grid, offset, reference = rs.resume_grid(grid, Path(args.resume))
+        grid, offset, reference = rs.resume_grid(grid, Path(args.resume), None if args.isi_factor is None else args.isi_factor == "on")
         grid.use_input_stream(patterns, labels)
         grid.input_at = offset
         patterns = labels = None
@@ -90,6 +95,7 @@ def main() -> int:
     out_dir = ROOT / "runs" / "watch"
     print(f"{grid!r}; {args.eligibility} eligibility, LR {cli.lr:g}, T {args.temperature:g}, threshold {args.threshold:g}, "
           f"floor {cli.minimum_potential:g}, delta {cli.delta:g} (hazard x {grid.escape_scale:.3f}), tau {cli.tau:g} ms, epoch {grid.interval:g} ms, "
+          f"ISI factor {'on at ' + format(Neuron.target_isi, 'g') + ' ms' if Neuron.isi_factor else 'off'}, "
           f"{grid.output_coding} outputs, seed {args.seed}; {int(mask.sum())} input-to-output synapses"
           f"{f'; resumed at epoch {offset:,} from {args.resume}' if args.resume else ''}; a line every {args.every:,} epochs, Ctrl-C to stop",
           flush=True)
@@ -103,7 +109,9 @@ def main() -> int:
             return
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{args.eligibility}-seed{args.seed}-epoch{offset + epoch}-network.json"
-        rs._save_network(engine, grid, {"thresholds": book.thresholds, "expected_counts": book.expected, "rates": book.rates}, path)
+        rs._save_network(engine, grid, {"thresholds": book.thresholds, "expected_counts": book.expected, "rates": book.rates,
+                                        "expectations": [None if e != e else e for e in engine.expectations()],  # p_hat_j (§6.7)
+                                        "decisions": list(engine.decision_counts())}, path)
         print(f"checkpoint {path.relative_to(ROOT)} (the network whole; --resume takes it, not to the bit)", flush=True)
 
     def probe(epoch, engine, grid, out, book):

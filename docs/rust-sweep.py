@@ -17,10 +17,11 @@ The Teacher's homeostasis and un-sticking run at the constants the command line 
 here is the run `walnutbutter --seeds` would do.
 
 The reinforce rule with the row critic and late = count. `--eligibility hazard` (the default
-under escape noise), `hebb` (the default when the threshold decides, sigma 0: the centred
-Hebbian rule of §6.7, what each synapse delivered times its target's count minus the
-target's own expectation), `wrong_hebb` (the ±1 rule hebb replaced on September 16, 2026)
-or `perturb`, which draws its noise per wave (§6.1) from the arm's seed -- the same stream
+under escape noise), `hebb` (the default when the threshold decides, sigma 0: the
+single-spike rule of §6.7, charged at every decision against the neuron's own expectation of
+its spike), `count_hebb` (its epoch form: what each synapse delivered times its target's count
+minus the target's own expectation, hebb until September 17, 2026), `wrong_hebb` (the ±1 rule
+hebb replaced on September 16, 2026) or `perturb`, which draws its noise per wave (§6.1) from the arm's seed -- the same stream
 a Teacher with that seed would use -- and `--sigma` is then a knob like any other.
 
 Each arm's inputs are drawn up front from the input stream of §4.5, keyed to the arm's
@@ -35,6 +36,11 @@ start's weights, and the trace and record continued from the earlier ones. Not a
 the bit: the exploration stream starts afresh (seed + 1,000,000) and the reward baseline
 from the first resumed epoch. `--population`, `--outputs` and `--output-coding`, fixed for the
 sweep, rebuild an arm under a layout the problem no longer defaults to.
+
+The ISI factor of §0.2 weighs every charge of hebb and hazard, on by default; `--isi-factor off`
+runs without it, as every sweep before September 17, 2026 did. A resumed arm keeps the setting
+its checkpoint was saved under -- off for one saved before the factor existed -- unless
+`--isi-factor` says otherwise, and each arm's record says which it ran.
 """
 
 from __future__ import annotations
@@ -100,6 +106,9 @@ def parse() -> argparse.Namespace:
                              "escape-noise decision on each synapse's trace (hazard; needs --delta). More than one value "
                              "sweeps it, an arm per value")
     parser.add_argument("--epochs", type=int, default=1_000_000)
+    parser.add_argument("--isi-factor", choices=("on", "off"), default=None,
+                        help="weigh hebb's and hazard's charges by the ISI factor (§0.2): on for a fresh arm, and a resumed arm "
+                             "keeps its checkpoint's setting, unless given")
     parser.add_argument("--resume-from", default=None, metavar="NAME",
                         help="continue every arm from runs/NAME/<arm>-network.json for --epochs more epochs (see above)")
     parser.add_argument("--population", type=int, default=None, help="neurons per population, fixed for the sweep (the problem's unless given)")
@@ -156,6 +165,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     apply_problem(args)
     Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
+    Neuron.isi_factor = args.isi_factor  # §0.2: on unless --no-isi-factor is among the fixed words
     if on_goo:  # apply_problem sized the goo: --goo, or the problem's hidden count and zones
         grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]),
                    permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
@@ -208,7 +218,7 @@ RESUMED_SETTINGS = ("readout", "read", "read_window", "teacher_threshold", "inte
                     "synapse_tau", "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
 
 
-def resume_grid(fresh, source):
+def resume_grid(fresh, source, isi_factor: bool | None = None):
     """The arm's network as `runs/<other>/<arm>-network.json` left it, ready to run on: (grid, epochs already run, first-start weights).
 
     `fresh` is the arm's network as grid_of builds it from the seed -- the same
@@ -216,8 +226,11 @@ def resume_grid(fresh, source):
     keeps measuring from. The checkpoint's state is taken whole (weights,
     thresholds, rate memories, expectations, the clock, the widths, the signals
     in flight); the arm's settings are applied over it, and the caller advances
-    the input stream to the epoch reached.
+    the input stream to the epoch reached. The ISI factor of §0.2 is the checkpoint's -- off for a
+    network saved before it existed -- unless `isi_factor` says otherwise, so a resumed arm runs on
+    under the rule it started with.
     """
+    from walnutbutter.neuron import Neuron
     from walnutbutter.persistence import restore
     reference = [c.weight for n in fresh.all_neurons() for c in n.outgoing]
     restored, data = restore(source)
@@ -230,6 +243,7 @@ def resume_grid(fresh, source):
     for attr in RESUMED_SETTINGS:
         setattr(restored, attr, getattr(fresh, attr))
     restored.rule = "reinforce"
+    Neuron.isi_factor = bool(data.get("isi_factor", False)) if isi_factor is None else isi_factor
     return restored, int(data["epoch"]), reference
 
 
@@ -260,7 +274,7 @@ def arm_name(arm: dict) -> str:
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring, resume_from, fixed = job
+    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring, resume_from, fixed, isi = job
     from walnutbutter import fast
     from walnutbutter.network import input_stream
     from walnutbutter.problems import PROBLEMS, dataset_stream
@@ -276,7 +290,7 @@ def run_arm(job: tuple) -> dict:
         source = ROOT / "runs" / resume_from / f"{arm_name(arm)}-network.json"
         if not source.exists():
             return {"arm": arm_name(arm), "missing": str(source)}
-        grid, offset, reference = resume_grid(grid, source)
+        grid, offset, reference = resume_grid(grid, source, None if isi is None else isi == "on")
         earlier = source.with_name(f"{arm_name(arm)}.json")
         if earlier.exists():
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
@@ -317,6 +331,7 @@ def run_arm(job: tuple) -> dict:
             writer.writerow([epoch, score])
         for k, score in enumerate(trace, start=1):
             writer.writerow([offset + k * trace_every, f"{score:.6g}"])
+    from walnutbutter.neuron import Neuron
     if report.get("estimator") is not None:
         report["estimator"] = earlier_estimator + report["estimator"]
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
@@ -327,12 +342,13 @@ def run_arm(job: tuple) -> dict:
               "output_coding": grid.output_coding, "population": grid.population, "outputs": getattr(grid, "outputs", None),
               "resumed_from": resume_from, "epoch_offset": offset, "epochs_run": epochs,  # a continuation: from where, and how far
               "tau": args.tau, "refractory": args.refractory, "refractory_hops": args.refractory_hops,  # the clock the arm ran on
+              "isi_factor": Neuron.isi_factor, "target_isi": Neuron.target_isi,  # §0.2; a record without them ran without the factor
               "explore_seed": explore_seed,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided
               "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
               "decision_memory": DECISION_MEMORY if eligibility == "hebb" else None,  # the single-spike rule's memory (§6.7,
-              # September 17, 2026); a record naming hebb with count_memory beside it instead ran the epoch form, count_hebb since
+              # September 17, 2026); a record naming hebb with a count_memory that is not null ran the epoch form, count_hebb since
               "count_memory": COUNT_MEMORY if eligibility == "count_hebb" else None,  # the epoch form's memory (§6.7); a record
               # naming hebb without it is from before September 16, 2026, when hebb named the +-1 rule now called wrong_hebb
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knobs
@@ -418,9 +434,10 @@ def main() -> int:
         started = time.perf_counter()
         fixed = ([] if args.population is None else ["--population", str(args.population)]) + \
                 ([] if args.outputs is None else ["--outputs", str(args.outputs)]) + \
-                ([] if args.output_coding is None else ["--output-coding", args.output_coding])
+                ([] if args.output_coding is None else ["--output-coding", args.output_coding]) + \
+                (["--no-isi-factor"] if args.isi_factor == "off" else [])
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
-                 args.floor_ratio, args.wiring, args.resume_from, tuple(fixed)) for arm in arms]
+                 args.floor_ratio, args.wiring, args.resume_from, tuple(fixed), args.isi_factor) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)

@@ -46,11 +46,18 @@ by a plain Hebbian term (+1 if the target fired, -1 if not) and no noise is
 injected: the classic reward-modulated Hebbian rule, uncentred, which is why
 it points nowhere on a network whose neurons nearly all fire every epoch,
 and why it was so named on September 16, 2026. With `eligibility="hebb"` the
-term is centred (AUTHORITY.md §6.7): each synapse's eligibility is the
-signals it delivered this epoch, x_ij, times its target's spike count minus
-the target's own running expectation of that count, n_j - n_bar_j
-(Williams's y - y_bar, [1] §8.4; the expectation moves by COUNT_MEMORY an
-epoch and starts at the first count seen). That is the reward-modulated
+term is centred and charged at every decision (AUTHORITY.md §6.7, the
+single-spike rule of September 17, 2026): each synapse's score moves by
+(y - p_hat_j) x_ij, the outcome of the decision against the neuron's own
+per-decision expectation of its spike (moved by DECISION_MEMORY, a plain
+mean until then, the first decision charging nothing), times what the
+synapse has in the potential; weighed by the ISI factor of §0.2 when it is
+on. With `eligibility="count_hebb"`, the epoch form hebb was until that day,
+each synapse's eligibility is the signals it delivered this epoch, x_ij,
+times its target's spike count minus the target's own running expectation
+of that count, n_j - n_bar_j (Williams's y - y_bar, [1] §8.4; the
+expectation moves by COUNT_MEMORY an epoch and starts at the first count
+seen). Both are the reward-modulated
 covariance rule, the Bernoulli-logistic REINFORCE term (y - p) x with the
 probability estimated rather than known; no noise is injected either, and
 whatever varies the counts is its exploration. With
@@ -458,7 +465,7 @@ def update_rates(grid: GridOfNeurons) -> None:
     """Move every neuron's running firing-rate estimate, and its expected spike count, toward what it did this epoch.
 
     A neuron forced this epoch is skipped: that firing says nothing about the
-    network. The expected count, n_bar_j, is what the hebb eligibility centres
+    network. The expected count, n_bar_j, is what the count_hebb eligibility centres
     on (AUTHORITY.md §6.7); it starts at the first count seen and then moves
     by COUNT_MEMORY an epoch, after the update has used it.
     """

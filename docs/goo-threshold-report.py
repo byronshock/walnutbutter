@@ -68,6 +68,8 @@ def main() -> None:
     eligibility = one.get("eligibility", "wrong_hebb")  # what the arms ran (§6.7); the driver records it since September 14, 2026
     if eligibility == "hebb" and "count_memory" not in one:
         eligibility = "wrong_hebb"  # a record from before September 16, 2026: hebb then named the +-1 rule renamed that day
+    elif eligibility == "hebb" and one["count_memory"] is not None:
+        eligibility = "count_hebb"  # a record from September 16, 2026: hebb then named the epoch form, count_hebb since the 17th
     problem = one.get("problem", "copy")  # and the problem, since September 15; before that every goo sweep was copy
     # chance by critic: the class critic pays a tenth by luck, the evidence critic ln 0.1, the row and graded critics a half
     chance = {"class": 0.1, "evidence": math.log(0.1)}.get(one.get("critic"), 0.5)

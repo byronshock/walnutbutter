@@ -22,7 +22,7 @@ from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
-    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
+    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, ISI_FACTOR, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
@@ -650,6 +650,15 @@ def build_parser() -> argparse.ArgumentParser:
         "The leak is computed only when a signal reaches a neuron",
     )
     parser.add_argument(
+        "--no-isi-factor",
+        dest="isi_factor",
+        action="store_false",
+        default=ISI_FACTOR,
+        help="do not weigh the single-spike rule's charges by the ISI factor (AUTHORITY.md §0.2), f(t - ISI) with t the "
+        "time since the neuron's last spike and ISI 5.1 ms; the factor is on by default, and every run before "
+        "September 17, 2026 ran without it",
+    )
+    parser.add_argument(
         "--refractory",
         type=float,
         default=REFRACTORY,
@@ -754,6 +763,7 @@ def cli_main(argv: list[str] | None = None) -> int:
         return 2
     apply_container(args)
     was_verbose, was_refractory, was_hops, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau
+    was_isi_factor = Neuron.isi_factor
     Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
     if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
         print("error: --tau, --refractory, --refractory-hops and --interval must be positive", file=sys.stderr)
@@ -768,10 +778,12 @@ def cli_main(argv: list[str] | None = None) -> int:
         print("error: --punish-gain must not be negative and --weight-decay must be in [0, 1)", file=sys.stderr)
         return 2
     Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = args.refractory, args.refractory_hops, args.bored_after, args.tau
+    Neuron.isi_factor = args.isi_factor  # §0.2
     try:
         return _run(args)
     finally:
         Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hops, was_bored, was_tau
+        Neuron.isi_factor = was_isi_factor
 
 
 def READ_MEANS(args) -> str:
@@ -1325,6 +1337,7 @@ def _seed_worker(job: dict) -> dict:
     Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
+    Neuron.isi_factor = job.get("isi_factor", Neuron.isi_factor)  # §0.2, in each worker
     grid.interval = job.get("interval", grid.interval)
     grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's
     grid.problem = job.get("problem")
@@ -1433,7 +1446,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
-                     "tau": args.tau, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
+                     "tau": args.tau, "isi_factor": args.isi_factor, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,

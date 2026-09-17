@@ -88,6 +88,7 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
     engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
+    engine.set_isi_factor(bool(Neuron.isi_factor), Neuron.target_isi)  # §0.2: every charge weighed by the ISI factor
     # the single-spike rule (§6.7): the centred rule when the grid runs it, and each neuron's expectation and decisions
     # to date, so a resumed run charges from where it was; the traces, notes and expected counts start at zero with
     # the traces, as the engine holds no signal in a potential yet
@@ -143,7 +144,7 @@ class _Thresholds:
     The Rust engine owns the potentials; the Teacher owns each neuron's running
     firing rate and moves its threshold from that once an epoch, in Python, which
     is cheap and keeps the arithmetic in the same order as the object engine's.
-    The expected spike count the hebb eligibility centres on (§6.7) is the
+    The expected spike count the count_hebb eligibility centres on (§6.7) is the
     Teacher's too, kept here the same way: `centred()` hands the engine this
     epoch's counts against it, and `step()` then moves it.
     """
@@ -160,7 +161,7 @@ class _Thresholds:
         self.unstuck = 0
 
     def centred(self) -> list[float]:
-        """n_j - n_bar_j for every neuron, this epoch's count against the expectation as it stands (§6.7's hebb eligibility).
+        """n_j - n_bar_j for every neuron, this epoch's count against the expectation as it stands (§6.7's count_hebb eligibility).
 
         A neuron with no expectation yet centres on itself, so its first unforced
         epoch moves nothing -- the object engine's reading, operation for operation.

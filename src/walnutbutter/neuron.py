@@ -4,7 +4,20 @@ import math
 
 from .clock import slack
 from .connection import Connection
-from .constants import BORED_AFTER, DECISION_MEMORY, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS, TAU, THRESHOLD
+from .constants import (BORED_AFTER, DECISION_MEMORY, ISI_FACTOR, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS,
+                        TARGET_ISI, TAU, THRESHOLD)
+
+
+def isi_factor(now: float, fired_at: float | None, target: float) -> float:
+    """The ISI factor of AUTHORITY.md §0.2: f(t - I) = (3x - 1) / (1 + x^3), x = t / I, t the time since the last spike.
+
+    -1 at t = 0, 0 at t = I/3, 1 at t = I and nowhere higher, falling as 3(I/t)^2 after; 0 for a neuron that has
+    never fired, which is at t = infinity. Every engine computes it in this order, so the three agree to the bit.
+    """
+    if fired_at is None:
+        return 0.0
+    x = (now - fired_at) / target
+    return (3.0 * x - 1.0) / (1.0 + x * x * x)
 
 
 class Neuron:
@@ -28,6 +41,8 @@ class Neuron:
     refractory = REFRACTORY  # absolute refractory period, nominal milliseconds (see constants.py)
     refractory_hops = REFRACTORY_HOPS  # refractory period / hop time (see constants.py)
     rate_tau = RATE_TAU  # ms: the exponential window the read estimates a firing rate over (see constants.py, §4.3)
+    isi_factor = ISI_FACTOR  # weigh every charge of the single-spike rule by the ISI factor (AUTHORITY.md §0.2)
+    target_isi = TARGET_ISI  # ms: the interval that factor pays most for (§0.2)
     bored_after = BORED_AFTER  # ms of silence after which the threshold has fallen to zero (see constants.py); 0 = off
 
     @classmethod
@@ -62,7 +77,7 @@ class Neuron:
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
         self.expected_count: float | None = None  # n_bar_j: the running expectation of this neuron's spikes an epoch, which
-        # the hebb eligibility centres on (AUTHORITY.md §6.7); None until its first unforced epoch, which sets it
+        # the count_hebb eligibility (the epoch form) centres on (AUTHORITY.md §6.7); None until its first unforced epoch
         self.has_fired = False  # fired in the current epoch
         self.fired_in_wave: int | None = None  # the wave of the current epoch it (last) fired in; None until it fires
         self.forced = False  # forced to fire by the stimulus in the current epoch
@@ -276,6 +291,9 @@ class Neuron:
                 credit, q = 0.0, m
         else:
             return fired
+        if Neuron.isi_factor:  # §0.2: the charge weighed by how near the time since the last spike is to the target
+            w = isi_factor(now, self.fired_at, Neuron.target_isi)
+            credit, q = w * credit, w * q
         tau = Neuron.tau
         if tau == math.inf:  # the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike
             self.expected += q
