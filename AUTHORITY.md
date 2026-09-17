@@ -4905,6 +4905,16 @@ the layout, the inputs, and whether anything outside the network trains it.
   evening of the 17th. `docs/mnist-ff-ff2-200k.md` and `-estimator.md`
   when it lands.
 
+  *Stopped at 07:15 MDT with nothing written (Byron, choosing to stop it
+  rather than wait: "Stop it now").* Beside the thirty workers of the day
+  the arms ran at 1.3 epochs a second, not the 2.5 of their first 25,000,
+  which put the end at Friday morning; the project was being frozen, and
+  the code the arms had loaded saves an arm's network, trace and record
+  only at its end and handles no signal to stop early, so there was no
+  graceful way to keep what the 4 h 48 min had done. The driver, its ten
+  workers and its shell were killed by PID. Each arm's network at 25,000
+  epochs is in `runs/mnist-ff-ff2/` and can be resumed from there.
+
   **The partly connected goo, swept (Byron, September 17, 2026, about
   02:40 MDT: "Please build, test, and then sweep P in {0.25 0.5} across
   10 seeds with 20 workers for 100000 epochs").** `--wiring ff2-partial`
@@ -4920,6 +4930,34 @@ the layout, the inputs, and whether anything outside the network trains it.
   carry half the fully connected goo's synapses and at 0.25 a quarter,
   so hours, the 0.5 arms the longer. `docs/mnist-ff-ff2p.md` and
   `-estimator.md` when it lands.
+
+  *Landed 11:01 MDT (`docs/mnist-ff-ff2p.md`, `-estimator.md`,
+  `-estimator.png`), the 0.25 arms after 5.2 to 5.7 hours and the 0.5 arms
+  after 7.5 to 8.1.* Ten seeds a value; the correlation with $d$ over the run
+  and the read, with the fully connected goo's 25,000 epochs beside it:
+
+  | wiring | corr, 1,000 | 5,000 | 10,000 | 25,000 | 50,000 | 100,000 | sign | window, last quarter | right, last tenth | reward, last tenth | outputs' spikes a neuron, last epoch |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | ff2-partial, $P$ 0.25 (99 inputs an output) | +0.065 | +0.152 | +0.210 | +0.311 | +0.392 | **+0.462 ± 0.014** | 0.507 | +0.017 | **0.217** | −2.32 | 2.1 |
+  | ff2-partial, $P$ 0.5 (198) | +0.069 | +0.165 | +0.225 | +0.329 | +0.409 | **+0.472 ± 0.023** | 0.512 | +0.017 | **0.212** | −2.32 | 2.0 |
+  | ff2 (395), for 25,000 epochs | | | | +0.336 | | | | | 0.112 | | |
+
+  **The best read of any mnist sweep, and the two densities the same.** At
+  100,000 epochs the fraction right is 0.217 and 0.212 — every seed from
+  0.187 to 0.233, twice the fully connected goo's 25,000-epoch read and above
+  the scaled goo's 0.177 at the same length (that one population-coded, so
+  the comparison is not paired) — and level with the seed-4 watch's 0.220
+  after thirty-one million epochs. The correlation climbs the whole run,
+  about as the square root to 25,000 epochs and a little slower after, and
+  its seed spread stays near 0.02. $P$ 0.25 and 0.5 cannot be told apart on
+  any measure; at 25,000 epochs both sit just under the fully connected
+  goo's +0.336, so a quarter of the synapses aligns as fast as all of them
+  and runs about three times as fast (4.2 epochs a second against 1.3, timed
+  beside the same load). The sign agreement passes a half for the
+  first time in a sweep. Ten or eleven of the sixty outputs end stuck on in
+  every arm and none stuck off; the outputs fire about two spikes a neuron
+  an epoch. *The last sweep of the frozen project* (§0.4, and Byron the same
+  morning: the next step is a rewrite of this file).
 
   **The forgotten watch: seed 4 of sweep 1, thirty-one million epochs
   (found September 17, 2026, 03:10 MDT; Byron: "I forgot I had started
