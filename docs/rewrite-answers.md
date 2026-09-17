@@ -20,3 +20,10 @@ nothing, is where the project is going, not where the rewrite starts.
 *What this leaves open, and is asked next:* the escape hazard's rate is
 quoted today as a margin above θ in units of ESCAPE_DELTA × θ, so with θ
 deprecated the rule needs a scale from somewhere else.
+
+**The scale, answered 14:53 MDT.** *"We are going to keep the level. The
+system must implement what I was just using. We can make changes later to
+this."* So θ stays exactly as the working runs had it — the level the margin
+is measured from and the unit the width is quoted in — and "deprecate θ" is
+a later change, not the rewrite's starting point. The specification's first
+job is to state the system Byron has been running, not an improved one.
