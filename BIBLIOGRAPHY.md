@@ -131,8 +131,7 @@ AUTHORITY.md.
     The sequential probability ratio test: add up the evidence, stop at a
     boundary, decide. An integrator with a threshold and a reset is this
     test run again after every spike.
-    Not in `references/`: free at Project Euclid, which refuses a scripted
-    download.
+    In `references/`: `Wald45.pdf`, from Project Euclid, saved from a browser.
 
 15. Bialek, W., & Zee, A. (1990). Coding and computation with neural spike
     trains. *Journal of Statistical Physics*, 59(1-2), 103-115.
