@@ -27,3 +27,28 @@ this."* So θ stays exactly as the working runs had it — the level the margin
 is measured from and the unit the width is quoted in — and "deprecate θ" is
 a later change, not the rewrite's starting point. The specification's first
 job is to state the system Byron has been running, not an improved one.
+
+## 2. The baseline the specification states
+
+**Answered September 17, 2026, 14:56 MDT,** correcting the table of the last
+working sweep: *"neuron: NOT leaky, but please leave the leak option with its
+analysis. 2 hops."*
+
+So the specified neuron is the **evidence accumulator**: the potential is the
+sum of the arrivals since the last spike and nothing decays. The leak stays
+as an option — TAU, selectable per run — and the analysis of it stays with
+it: the half-life against the hop, what a steady per-hop input settles at,
+and the leak sweep of September 16 that found the fast leak best on every
+seed while confounding the leak with the learning rate (`RECORD.md` §1.2,
+§5.1, §8).
+
+The clock is **two hops**: a hop of 2.5 ms against the 5 ms refractory
+period, so a spike sent around a two-way pair returns exactly as the period
+ends.
+
+*To be recorded with the numbers:* every measurement in the record, the
+0.217 right of the partly connected goo included, was made at TAU 2 ms and
+three hops. The specified defaults are now the accumulator and two hops, so
+the record's numbers belong to a configuration the specification no longer
+starts from, and the clauses must say so rather than let the two be read as
+one.
