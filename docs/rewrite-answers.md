@@ -142,3 +142,9 @@ corrected in a word.*
 
 **Proceed.** The drafting of the new `AUTHORITY.md` begins from here: the
 baseline of answers 1-3, the scope of answer 4.
+
+**The class critic, kept (15:12 MDT):** *"keep the class critic"*. So four
+critics survive: evidence, row, graded and class -- the 1-or-0 that pays when
+the label's class out-spikes every other, a tie losing. The fraction right
+reported beside the evidence reward is that critic's own number, so the
+reported measure and the critic are one rule again rather than two.
