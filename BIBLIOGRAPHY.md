@@ -122,7 +122,8 @@ AUTHORITY.md.
     1(1), 36-41. https://doi.org/10.1038/236
     Bits cost ATP, and spikes most of all: the energy per bit that favours
     few, informative spikes.
-    In `references/`: `LaughlinDeRuyterVanSteveninckAnderson98.pdf`.
+    Not in `references/`: paywalled at Nature Neuroscience; the collaboration's
+    Princeton copy was set aside as questionable provenance.
 
 14. Wald, A. (1945). Sequential tests of statistical hypotheses. *The Annals
     of Mathematical Statistics*, 16(2), 117-186.
@@ -132,6 +133,19 @@ AUTHORITY.md.
     test run again after every spike.
     Not in `references/`: free at Project Euclid, which refuses a scripted
     download.
+
+15. Bialek, W., & Zee, A. (1990). Coding and computation with neural spike
+    trains. *Journal of Statistical Physics*, 59(1-2), 103-115.
+    https://doi.org/10.1007/BF01015565
+    A statistical model of spike trains encoding a continuously varying
+    signal, and what follows from it: the information capacity of the code,
+    the optimal algorithm for reading it and the delays that reading costs,
+    and analog computation written as transformations of spike trains. The
+    rule for reading the code depends on what the reader will decide with
+    it, and making the read less dependent on that context costs capacity --
+    the question of what the teacher of §4.3 should read, asked of a
+    neuron's reader. Added at Byron's request.
+    In `references/`: `BialekZee90.pdf`, the first author's copy (a scan).
 
 ## Not yet mentioned in our conversations, but the roots of the above
 
