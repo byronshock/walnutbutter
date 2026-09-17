@@ -591,3 +591,40 @@ def test_ff2_wires_every_input_onto_every_output_and_nothing_else():
     assert cli_main(["--goo", "16", "--wiring", "ff2", "--seeds", "1", "--seed", "1", "--epochs", "2", "--no-save"]) == 0  # 8 in, 8 out
     with pytest.raises(ValueError, match="two layers"):
         cli_main(["--goo", "20", "--wiring", "ff2", "--seeds", "1", "--seed", "1", "--epochs", "2", "--no-save"])  # a hidden zone of 4: refused
+
+
+def test_ff2_partial_draws_each_input_output_pair_at_p_and_nothing_else():
+    """§3.4 (Byron, September 17, 2026: "P(neuron i projects onto neuron j) = P iff i in inputs, j in outputs"): ff2 with P,
+    every pair its own draw; P = 1 is ff2 to the bit; no hidden neurons under it."""
+    from walnutbutter import fast
+    from walnutbutter.learning import Teacher
+    g = Goo(count=60, across=40, outputs=20, seed=2, weight=None, wiring="ff2-partial", projection=0.5)
+    ins, outs = set(g.input_row()), set(g.output_row())
+    assert all(c.source in ins and c.target in outs for c in g.connections.values())
+    pairs = {(c.source, c.target) for c in g.connections.values()}
+    assert len(pairs) == len(g.connections) and 0.35 * 800 < len(pairs) < 0.65 * 800  # about half of the 800 pairs, each at most once
+    assert g.expected_fan_in() == 20.0 and g.output_projection() == 0.5 and g.input_projection() == 0.0 and g.hidden_projection() == 0.0
+    assert g.projection_probability(0, 59) == 0.5 and g.projection_probability(59, 0) == 0.0 and g.projection_probability(0, 1) == 0.0
+    assert repr(g) == f"Goo(60 neurons, {len(g.connections)} projections at P 0.5, two layers; 40 in, 0 hidden, 20 out)"
+    full, one = (Goo(count=20, across=12, outputs=8, seed=3, weight=None, wiring=w, projection=1.0) for w in ("ff2", "ff2-partial"))
+    assert [(c.source.name, c.target.name, c.weight) for c in one.connections.values()] == \
+           [(c.source.name, c.target.name, c.weight) for c in full.connections.values()]  # P = 1 is ff2 to the bit
+    with pytest.raises(ValueError, match="two layers"):
+        Goo(count=24, across=12, outputs=8, wiring="ff2-partial", projection=0.5)
+    with pytest.raises(ValueError, match="no one zone probability"):
+        g.zone_projection()
+    import tempfile, pathlib
+    from walnutbutter.persistence import checkpoint, restore
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "p.json"
+        checkpoint(g, path)
+        back, data = restore(path)
+        assert data["wiring"] == "ff2-partial" and data["projection"] == 0.5 and back.wiring == "ff2-partial" and back.projection == 0.5
+        assert [c.weight for c in back.connections.values()] == [c.weight for c in g.connections.values()]
+    if fast.available():
+        g3 = Goo(count=24, across=16, outputs=8, seed=5, weight=None, wiring="ff2-partial", projection=0.5)
+        g3.rule, g3.drive, g3.read = "reinforce", "rate", "count"
+        g3.set_delta(0.455)
+        assert fast.compare(g3, epochs=40, teacher=Teacher(g3, seed=7, rule="reinforce", eligibility="hazard", target="copy",
+                                                          homeostasis=0.0, unstick=0.0)) == []
+    assert cli_main(["--goo", "16", "--wiring", "ff2-partial", "--projection", "0.5", "--seeds", "1", "--seed", "1", "--epochs", "2", "--no-save"]) == 0

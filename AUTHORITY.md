@@ -883,6 +883,24 @@ against the scaled goo's 8.3, so a 25,000-epoch arm is a matter of hours,
 not half of one. `--wiring ff2` asks for it; the scaled rule stays the
 default, since the problem's own network has hidden neurons.
 
+**Partly connected, two layers (Byron, September 17, 2026, about 02:40
+MDT: "I'd like to define a partly connected topology that is otherwise
+identical (2 layers), where P(neuron i projects onto neuron j) = P iff i
+in inputs, j in outputs").** The wiring `ff2-partial`, with GOO_PROJECTION
+(`--projection`) as $P$:
+
+$$P(i \to j) = \begin{cases} P & i \text{ in the input zone},\ j \text{ in the output zone} \\ 0 & \text{otherwise} \end{cases}$$
+
+each input-to-output pair its own draw from the seed's stream, nothing
+else projecting, two layers and no hidden neurons as under ff2, of which
+it is the general form: at $P = 1$ it is ff2 to the bit. An output hears
+$395P$ inputs in expectation on the mnist goo — 99 at 0.25, 198 at 0.5 —
+and its axis scales with what it hears, threshold 3.3 and 6.6, floor
+−13 and −26, width 1.5 and 3.0; the random drive's spread grows as
+$\sqrt{P}$ and the threshold as $P$, so the outputs start 1.4 and 2.0
+widths below threshold, between the scaled goo's 0.7 and the fully
+connected goo's 2.8. *Swept the same night, §8.*
+
 **The scaled rule (Byron, September 16, 2026, 01:18 MDT: "We're going to
 change the connectivity rule before we proceed").** In his words:
 
@@ -4537,3 +4555,118 @@ the layout, the inputs, and whether anything outside the network trains it.
   What it does settle: the 100 ms read's gain was not integration the
   neuron could do itself, since giving the neuron the integration hurt;
   and 2 ms, the value Byron chose on September 12, stands.
+
+  **The fully connected goo, swept (Byron, September 16, 2026, about
+  17:35 MDT: "Please sweep the fully connected feed-forward butter x 10
+  seeds for 25000 epochs").** `--wiring ff2` (§3.4) on the problem as it
+  stands: the goo of 455 with every one of its 395 inputs onto every one
+  of its 60 complement-coded outputs, 23,700 synapses, the outputs at
+  threshold 13.2 under the fan-in scaling, escape Δ 0.455 scaled, TAU 2,
+  LR 0.002, 100 ms epochs, the evidence critic at $T$ = 2, seeds 1 to 10,
+  25,000 epochs, traced every 250 — the first ten arms of the interval
+  and complement sweeps with only the wiring changed, so every cell pairs
+  with the scaled goo's 100 ms row above. Seed 1 is the arm Byron
+  watched from 17:00, to the bit. Launched 17:38 MDT on ten workers
+  (`runs/mnist-ff-ff2`); at the fully connected goo's pace, one to two
+  epochs a second, a matter of hours. `docs/mnist-ff-ff2.md` and
+  `-estimator.md` when it lands.
+
+  *Landed 20:30 MDT (`docs/mnist-ff-ff2.md`, `-estimator.md`,
+  `-estimator.png`), ten arms of 166 to 171 minutes at 2 to 3 epochs a
+  second.* Paired seed for seed with the scaled goo's 100 ms row (the
+  complement trial), the same seeds, streams and settings:
+
+  | wiring | corr, 1,000 | 5,000 | 10,000 | 25,000 | sign | window, last quarter | right, last tenth | reward, last tenth | outputs' spikes a neuron, last epoch |
+  |---|---|---|---|---|---|---|---|---|---|
+  | scaled, 22 inputs an output | +0.048 | +0.094 | +0.135 | +0.213 ± 0.024 | 0.455 | +0.017 | 0.116 | −3.21 | 3.1 |
+  | ff2, every input on every output | +0.080 | +0.170 | +0.229 | **+0.336 ± 0.011** | 0.483 | +0.032 | 0.112 | −2.92 | 2.0 |
+
+  **The estimator, freed of the wiring, aligns as far in 25,000 epochs as
+  the scaled goo did in 100,000** — +0.336 against the continuation's
+  +0.345 — higher than the scaled goo on ten seeds of ten (+0.123 paired,
+  $t$ = 15.6), with a seed spread of 0.011, the narrowest of any sweep,
+  and a window correlation of +0.032 over the last quarter, twice the
+  scaled goo's, so it is still climbing steeply; the sign agreement,
+  0.483, is the nearest to a half yet. Every seed sits between +0.320
+  and +0.356. **And the read has not moved:** 0.112 right against 0.116,
+  the same on the paired seeds ($t$ = −0.9). The reward is higher on
+  every seed, by 0.29, because the outputs are quieter — 2.0 spikes a
+  neuron in the last epoch against 3.1, the fire-if-one and fire-if-zero
+  halves alike at 2.0 — which is the hazard's rest and not their inputs
+  speaking: under the fan-in scaling the outputs start three widths
+  below threshold (§3.4) and 25,000 epochs of aligned weights have not
+  brought the label's class over it. *Claude's reading:* the weights
+  know the digit and the spikes do not yet say it; the margin the
+  hazard reads moves with the aligned weights, but from 4.7 of spread
+  against a threshold of 13.2 the movement is still inside the rest
+  firing's noise at the read. The lever is the axis: the sqrt scaling of
+  §3.4's aside, or a threshold quoted against the fan-in's spread rather
+  than its size, would put a fully connected output where the scaled
+  goo's sit, with the estimator this wiring gives it. Not run.
+
+  **Continued to 200,000 epochs (Byron, September 17, 2026, about 02:20
+  MDT: "Please continue the sweep for 175000 additional epochs").** The
+  ten arms resumed from their saved networks at 25,000 (`--resume-from`,
+  as the 100 ms arms were), 175,000 more epochs each, the estimator
+  still measured from the first start (`runs/mnist-ff-ff2-200k`).
+  Launched 02:26 MDT on ten workers; at the fully connected goo's two to
+  three epochs a second that is the better part of a day, landing in the
+  evening of the 17th. `docs/mnist-ff-ff2-200k.md` and `-estimator.md`
+  when it lands.
+
+  **The partly connected goo, swept (Byron, September 17, 2026, about
+  02:40 MDT: "Please build, test, and then sweep P in {0.25 0.5} across
+  10 seeds with 20 workers for 100000 epochs").** `--wiring ff2-partial`
+  (§3.4), $P$ = GOO_PROJECTION as the knob: the two layers of ff2 with
+  each input-to-output pair drawn at $P$, so an output hears 99 inputs
+  at 0.25 and 198 at 0.5 (threshold 3.3 and 6.6, width 1.5 and 3.0,
+  the same hazard factor 0.363), otherwise the fully connected sweep's
+  settings — complement-coded outputs, LR 0.002, 100 ms, $T$ = 2, TAU 2
+  — seeds 1 to 10, 100,000 epochs, traced every 250. The objects and the
+  Rust loop agree on both configurations, learning on, and the suite
+  holds at 497. Launched 02:55 MDT on twenty workers beside the fully
+  connected continuation's ten (`runs/mnist-ff-ff2p`); at 0.5 the arms
+  carry half the fully connected goo's synapses and at 0.25 a quarter,
+  so hours, the 0.5 arms the longer. `docs/mnist-ff-ff2p.md` and
+  `-estimator.md` when it lands.
+
+  **The forgotten watch: seed 4 of sweep 1, thirty-one million epochs
+  (found September 17, 2026, 03:10 MDT; Byron: "I forgot I had started
+  that! How did it do over ten million epochs?").** The watch Byron
+  started at 04:45 on the 16th — sweep 1's hazard arm at seed 4, the
+  scaled goo of 445 with fifty population-coded outputs, 35 ms epochs,
+  LR 0.001, the hazard *unscaled*, since the process loaded the morning's
+  code and kept it through every rebuild — was still running at 03:10 on
+  the 17th, past 31 million epochs, having saved a network every five
+  thousand: 6,244 checkpoints, 441 MB, under `runs/watch/`. Read back
+  from those (the estimator against the first start's weights; the read
+  by running each saved network 2,000 epochs at LR 0, under the hazard as
+  the watch ran it):
+
+  | epochs | corr with $d$ | sign | mean $\lvert w \rvert$ | right, 2,000 epochs at LR 0 | reward | outputs' spikes a neuron |
+  |---|---|---|---|---|---|---|
+  | 1,000 | +0.008 | 0.417 | 0.488 | 0.080 | −3.01 | 3.0 |
+  | 100,000 | +0.253 | 0.461 | 0.472 | | | |
+  | 1,000,000 | +0.467 | 0.488 | 0.468 | 0.105 | −2.33 | 2.4 |
+  | 3,000,000 | +0.461 | 0.498 | 0.483 | | | |
+  | 10,000,000 | +0.443 | 0.503 | 0.510 | 0.205 | −2.20 | 2.2 |
+  | 20,000,000 | +0.439 | 0.506 | 0.536 | | | |
+  | 31,095,000 | +0.448 | 0.523 | 0.538 | **0.220** | −2.09 | 2.6 |
+
+  **The estimator saturates near +0.45 by a million epochs and the read
+  keeps climbing for thirty million more.** The correlation follows the
+  square root to about +0.47 at one to two million epochs and then holds
+  at +0.44 to +0.45 to the end, the sign agreement creeping past a half;
+  the fraction right goes on from 0.105 at one million to 0.205 at ten
+  and 0.220 at thirty-one, the best read of any mnist network, with the
+  output zone at the hazard's rest throughout (2.2 to 2.6 spikes a
+  neuron) and the reward rising above the silent chance to −2.09. So the
+  outputs answer through small modulations of their rest firing, and
+  the read improves after the weight change's *direction* has stopped
+  improving: what grows is its magnitude along $d$ (mean $\lvert w
+  \rvert$ from 0.47 to 0.54, nothing at the rails). The network quieted
+  as it learned, and the epochs sped up from 40 a second to 300, which is
+  how thirty-one million fitted in a day. *What this says for the day's
+  sweeps:* their 25,000 and 100,000 epochs are the first two percent of
+  this run; the estimator's plateau is a million epochs out and the
+  read's gain is behind it. The watch was left running.

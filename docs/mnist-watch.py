@@ -48,8 +48,9 @@ def main() -> int:
     parser.add_argument("--output-coding", choices=("population", "complement"), default=None, help="the problem's unless given")
     parser.add_argument("--population", type=int, default=None, help="the problem's unless given")
     parser.add_argument("--outputs", type=int, default=None, help="the problem's unless given")
-    parser.add_argument("--wiring", choices=("scaled", "ff2", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
+    parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
                         help="goo's wiring (§3.4): the command line's default, scaled, unless given; ff2 is fully connected feedforward")
+    parser.add_argument("--projection", type=float, default=None, help="P for --wiring ff2-partial (and the three older wirings)")
     parser.add_argument("--resume", default=None, metavar="NETWORK.json", help="continue from a sweep's saved network (see above)")
     parser.add_argument("--every", type=int, default=1000, help="epochs between lines")
     parser.add_argument("--checkpoint-every", type=int, default=5000, help="epochs between checkpoints; 0 for none")
@@ -63,7 +64,8 @@ def main() -> int:
     from walnutbutter.problems import dataset_stream
 
     arm = {"hidden_neurons": float(args.hidden_neurons), "seed": args.seed, "threshold": args.threshold, "temperature": args.temperature}
-    for knob in ("lr", "interval", "tau"):
+    parser.set_defaults(projection=None)
+    for knob in ("lr", "interval", "tau", "projection"):
         if getattr(args, knob) is not None:
             arm[knob] = getattr(args, knob)
     fixed = []

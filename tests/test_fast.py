@@ -203,3 +203,6 @@ def test_a_resumed_run_measures_from_its_first_start_and_counts_its_epochs_on(tm
     other, _ = rs.grid_of("copy", {"goo": 30.0, "seed": 3}, "hazard", True, -4.0)
     with pytest.raises(ValueError, match="same seed and layout"):
         rs.resume_grid(other, tmp_path / "arm-network.json")
+    wrong_seed, _ = rs.grid_of("copy", {"goo": 24.0, "seed": 4}, "hazard", True, -4.0)  # the same layout, another seed's weights
+    with pytest.raises(ValueError, match="own seed"):
+        rs.resume_grid(wrong_seed, tmp_path / "arm-network.json")

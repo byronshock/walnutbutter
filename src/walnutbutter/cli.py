@@ -161,7 +161,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="scaled",
         help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor, the "
         "outputs apart since 03:05 that night; ff2, fully connected feedforward -- every input onto every output and nothing "
-        "else, two layers and no hidden neurons (Byron, the same afternoon); scaled-open, the night's first version, the outputs open to every zone; "
+        "else, two layers and no hidden neurons (Byron, the same afternoon); ff2-partial, the same two layers with each "
+        "input-to-output pair drawn at --projection (Byron, September 17); scaled-open, the night's first version, the outputs open to every zone; "
         "or one of the three before them at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
         "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
         "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "

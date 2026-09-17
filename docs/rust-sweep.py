@@ -88,7 +88,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
-    parser.add_argument("--wiring", choices=("scaled", "ff2", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
+    parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
@@ -216,6 +216,8 @@ def resume_grid(fresh, source):
     from walnutbutter.persistence import restore
     reference = [c.weight for n in fresh.all_neurons() for c in n.outgoing]
     restored, data = restore(source)
+    if data.get("seed") != fresh.seed:  # the reference weights would be another network's, and the correlation meaningless
+        raise ValueError(f"{source} was built from seed {data.get('seed')}; the arm is seed {fresh.seed} -- resume a network under its own seed")
     edges = sum(len(n.outgoing) for n in restored.all_neurons())
     if edges != len(reference) or len(restored.all_neurons()) != len(fresh.all_neurons()):
         raise ValueError(f"{source} holds a network of {len(restored.all_neurons())} neurons and {edges} synapses; the arm builds "
@@ -326,7 +328,8 @@ def run_arm(job: tuple) -> dict:
               "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
               "count_memory": COUNT_MEMORY if eligibility == "hebb" else None,  # the centred rule's memory (§6.7); a record
               # naming hebb without it is from before September 16, 2026, when hebb named the +-1 rule now called wrong_hebb
-              "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knob
+              "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knobs
+              "projection": getattr(grid, "projection", None),
               "scaling_factor": getattr(grid, "scaling_factor", None),
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
