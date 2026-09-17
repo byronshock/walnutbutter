@@ -52,3 +52,15 @@ three hops. The specified defaults are now the accumulator and two hops, so
 the record's numbers belong to a configuration the specification no longer
 starts from, and the clauses must say so rather than let the two be read as
 one.
+
+## 3. The drive
+
+**Answered September 17, 2026, 14:58 MDT:** *"Please include the Poisson
+drive as it ran."* So the specified drive is the rate drive of `RECORD.md`
+§4.3 exactly as the sweeps ran it: an independent Poisson process drives each
+input neuron across the epoch, arrivals drawn Exp(λ) apart from the network's
+own seeded stream, an arrival landing while the neuron is refractory dropped,
+so the spike train is a renewal process with dead time; specified by its
+coefficient of variation, INPUT_CV 0.6, from which λ = 0.133/ms follows, 80
+Hz, 2.8 spikes across a 35 ms epoch. The deterministic spike every TARGET_ISI
+is a later change, not the rewrite's starting point.
