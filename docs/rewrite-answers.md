@@ -128,3 +128,17 @@ sustained, population and decoded critics go with the problems they scored.
 class critic's, computed beside the evidence reward. With the class critic
 dropped, that reading has to be kept as a **reported measure** rather than a
 critic, or the runs stop reporting the thing they are read by.
+
+**The codings, confirmed 15:10 MDT.** Kept: complement coding on the inputs,
+complement coding on the outputs, and the clock neurons -- what mnist runs.
+Dropped: raw coding, population coding, population-complement, the Hamming
+and parity error-correcting codes, and the input bit flips (FLIP).
+
+**The fraction right, settled the same minute.** Kept as a **reported
+measure** and not a critic: every run reports the fraction of epochs in which
+the label's class out-spikes every other, beside the evidence reward it is
+paid on. *Claude's proposal, accepted in "confirm and proceed"; to be
+corrected in a word.*
+
+**Proceed.** The drafting of the new `AUTHORITY.md` begins from here: the
+baseline of answers 1-3, the scope of answer 4.
