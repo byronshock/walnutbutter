@@ -1,6 +1,6 @@
 import pytest
 
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.neuron import Neuron
 from walnutbutter.propagation import Signal, Wave, propagate
 
@@ -115,24 +115,6 @@ def test_empty_stimulus_gives_no_waves():
     assert propagate() == []
 
 
-def test_grid_waves_match_hex_distance_from_origin(capsys):
-    grid = GridOfNeurons(across=9, rows=7, omega=0)  # shortcuts would let waves jump
-    waves = grid.activate_origin()
-    assert grid.waves is waves
-    assert waves[0].fired == [grid.get_origin_neuron()]
-    assert len(waves[1].fired) == 18  # both rings around the origin fire in wave 1
-    for (q, r), neuron in grid.neurons.items():
-        distance = max(abs(q), abs(r), abs(q + r))
-        assert first_wave(grid, neuron) == (distance + 1) // 2  # two steps per wave
-
-
-def test_grid_accepts_multiple_stimuli_in_one_epoch(capsys):
-    grid = GridOfNeurons(across=9, rows=7)
-    origin, corner = grid.get_origin_neuron(), grid.get_neuron_at(0, 3)  # centre and left edge
-    waves = grid.propagate(fire=[origin, corner])
-    assert waves[0].fired == [origin, corner]
-    assert len(grid.fired_neurons()) == len(grid.neurons)
-    assert first_wave(grid, grid.get_neuron_at(1, 3)) == 1  # reached from the edge, not the origin
 
 
 def first_wave(grid, neuron) -> int:
@@ -140,30 +122,15 @@ def first_wave(grid, neuron) -> int:
     return next(w.number for w in grid.waves if neuron in w.fired)
 
 
-def test_grid_reset_clears_waves(capsys):
-    grid = GridOfNeurons(across=3, rows=3)
-    grid.activate_origin()
-    grid.reset()
-    assert grid.waves == [] and grid.fired_neurons() == []
 
-
-def test_large_grid_has_no_recursion_limit(capsys, monkeypatch):
-    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
-    grid = GridOfNeurons(across=80, rows=60, omega=0)  # 4800 neurons; recursion died near 1000
-    grid.activate_origin(until=60.0)  # the corners are twenty-odd hops out: several intervals
-    assert len(grid.fired_neurons()) == len(grid.neurons)
-    assert len(grid.waves) > 20  # two cells per wave; recursion would still have died
-
-
-# --- wave exploration (AUTHORITY.md §6.1) --------------------------------------------
 
 def test_the_exploration_draw_comes_once_a_wave_and_is_held_at_the_spike():
     import random
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.monitor import run_epoch
 
     def build(mode):
-        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=1, permute=False, omega=0)
+        grid = Goo(count=60, across=12, weight=None, seed=1, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.explore = mode
         return grid
@@ -199,11 +166,11 @@ def test_wave_exploration_is_bit_identical_across_the_engines():
     np = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
     from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.monitor import run_epoch
 
     def make():
-        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=5, permute=False, omega=0)
+        grid = Goo(count=60, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.quash_rate, grid.explore = 0.02, "wave"
         return grid

@@ -5,13 +5,11 @@ import inspect
 import pytest
 
 from walnutbutter import constants as C
-from walnutbutter.cartesian import CartesianNodes
 from walnutbutter.cli import build_parser
-from walnutbutter.columns import HexColumns
 from walnutbutter.dopamine import Dopamine
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.network import Network
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher, reinforce
 from walnutbutter.monitor import main
 from walnutbutter.neuron import Neuron
@@ -23,7 +21,7 @@ def defaults_of(function) -> dict:
 
 def test_the_command_line_defaults_are_the_constants():
     args = build_parser().parse_args([])
-    assert (args.rows, args.omega, args.reach, args.epsilon) == (C.ROWS, C.OMEGA, C.REACH, C.WEIGHT_EPSILON)
+    assert args.epsilon == C.WEIGHT_EPSILON
     assert (args.threshold, args.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)
     assert (args.interval, args.refractory, args.refractory_hops) == (None, C.REFRACTORY, C.REFRACTORY_HOPS)  # the problem's, else INTERVAL
     assert args.rule is None and C.RULE == "teacher"  # the problem's rule, else the constant
@@ -56,16 +54,16 @@ def test_the_neuron_and_its_clock_read_the_constants():
     assert Neuron.hop() == C.REFRACTORY / C.REFRACTORY_HOPS
     neuron = Neuron()
     assert (neuron.threshold, neuron.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)
-    assert GridOfNeurons(across=2, rows=2, omega=0).interval == C.INTERVAL
+    assert Goo(count=4, across=2).interval == C.INTERVAL
 
 
-def test_every_container_builds_the_default_network_from_the_constants():
-    for build in (GridOfNeurons, HexColumns, CartesianNodes, main):
+def test_the_container_builds_the_default_network_from_the_constants():
+    """§4.1: goo is the only container, so its defaults are the network's."""
+    for build in (Goo, main):
         d = defaults_of(build)
-        assert (d["across"], d["rows"], d["threshold"], d["minimum_potential"], d["weight_range"]) == (
-            C.ACROSS, C.ROWS, C.THRESHOLD, C.MINIMUM_POTENTIAL, C.WEIGHT_RANGE), build.__name__
-    assert defaults_of(GridOfNeurons)["omega"] == defaults_of(HexColumns)["omega"] == C.OMEGA
-    assert defaults_of(CartesianNodes.connect_within)["reach"] == C.REACH
+        assert (d["across"], d["weight_range"]) == (C.ACROSS, C.WEIGHT_RANGE), build.__name__
+        assert (d["count"], d["threshold"], d["minimum_potential"]) == (
+            C.GOO_COUNT, C.GOO_THRESHOLD, C.GOO_MINIMUM_POTENTIAL), build.__name__
 
 
 def test_goo_has_its_own_count_threshold_and_floor():
@@ -90,7 +88,7 @@ def test_goo_has_its_own_count_threshold_and_floor():
 
 def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
     """§5.2: THRESHOLD and MINIMUM_POTENTIAL are quoted per THRESHOLD_FAN_IN incoming synapses."""
-    assert C.THRESHOLD_FAN_IN == 18.0  # an interior hex cell's two rings at REACH 2
+    assert C.THRESHOLD_FAN_IN == 18.0  # the archived hex grid's interior in-degree, kept as the unit (§4.11)
     assert defaults_of(Network.scale_with_fan_in)["reference"] == C.THRESHOLD_FAN_IN
     assert defaults_of(Goo)["scale_with_fan_in"] is True  # goo scales; nothing else does yet
     args = build_parser().parse_args([])

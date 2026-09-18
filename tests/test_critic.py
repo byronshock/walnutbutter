@@ -1,6 +1,6 @@
 import pytest
 
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.inputs import HAMMING74, complement_code
 from walnutbutter.learning import (
     CRITICS, Teacher, decoded_accuracy, decoded_exact, decoded_output, expected_data, output_row, read_output_word, reward,
@@ -15,7 +15,7 @@ def quiet(monkeypatch):
 
 
 def hamming_grid(seed=1):
-    grid = GridOfNeurons(across=14, rows=4, omega=0, seed=seed)
+    grid = Goo(count=56, across=14, seed=seed)
     grid.use_ecc()
     grid.set_input_bits([True, False, True, True])
     return grid
@@ -68,7 +68,7 @@ def test_two_wrong_outputs_can_defeat_the_code_and_the_critics_disagree():
 
 
 def test_decoding_critic_without_a_code_compares_raw_bits():
-    grid = GridOfNeurons(across=8, rows=4, omega=0, seed=1)
+    grid = Goo(count=32, across=8, seed=1)
     grid.set_input_bits([True, True, False, False])
     show_on_output(grid, grid.input_pattern[::-1])
     assert decoded_output(grid) == [True, True, False, False] and decoded_exact(grid) == 1.0
@@ -91,7 +91,7 @@ def test_critics_registry_and_teacher_validation():
 
 def test_teacher_with_decoding_critic_learns_something(capsys):
     import statistics
-    grid = GridOfNeurons(across=14, rows=4, weight=None, seed=2)
+    grid = Goo(count=56, across=14, weight=None, seed=2)
     grid.use_ecc()
     teacher = Teacher(grid, critic="decoded", lr=0.1, seed=2)
     rewards = [teacher.epoch(verbose=False) for _ in range(1500)]
@@ -138,10 +138,10 @@ def test_the_rate_read_estimates_hz_over_an_exponential_window():
 
 
 def test_the_rate_read_grades_the_score_and_leaves_a_boolean_read_alone():
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import accuracy, adaline_errors, teacher_score
 
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=12, across=4, weight=1.0, permute=False)
     grid.coding, grid.readout = "raw", "top"
     grid.set_input_bits([True, True, False, False])
     grid.horizon = 20.0
@@ -168,7 +168,7 @@ def test_the_rate_read_is_bit_identical_across_the_engines():
     np = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
     from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import teacher_score
     from walnutbutter.monitor import run_epoch
     from walnutbutter.neuron import Neuron
@@ -176,7 +176,7 @@ def test_the_rate_read_is_bit_identical_across_the_engines():
     Neuron.verbose = False
 
     def make():
-        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=5, permute=False, omega=0)
+        grid = Goo(count=60, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "rate", 20.0
         grid.drive, grid.quash_rate = "rate", 0.02
         return grid
@@ -205,10 +205,10 @@ def test_the_majority_vote_reads_a_population_code():
 
 
 def test_the_kinder_teacher_scores_a_quarter_a_bit_and_forgives_one_neuron():
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import population_accuracy, population_output, teacher_score
 
-    grid = GridOfNeurons(across=12, rows=3, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=36, across=12, weight=1.0, permute=False)
     grid.coding, grid.readout, grid.read = "population", "top", "fired"
     grid.set_input_bits([True, False, False, True])  # 1001 -> 111000000111
 
@@ -234,10 +234,10 @@ def test_the_kinder_teacher_scores_a_quarter_a_bit_and_forgives_one_neuron():
 
 def test_the_teacher_signal_still_matches_the_row_critic_exactly():
     """teacher_score is now 2R - 1 through whichever critic runs; for the row critic that is what it always was."""
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import accuracy, teacher_score
 
-    grid = GridOfNeurons(across=12, rows=3, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=36, across=12, weight=1.0, permute=False)
     grid.coding, grid.readout, grid.read = "population", "top", "fired"
     grid.set_input_bits([True, False, False, True])
     for correct in range(13):

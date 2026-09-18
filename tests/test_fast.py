@@ -9,7 +9,7 @@ import random
 import pytest
 
 from walnutbutter import fast
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.neuron import Neuron
 
 
@@ -19,7 +19,7 @@ def quiet(monkeypatch):
 
 
 def mesh(rows=5, seed=1, quash=0.0, hebb=0.0, rule="teacher"):
-    grid = GridOfNeurons(across=12, rows=rows, weight=None, seed=seed, permute=False, omega=0)
+    grid = Goo(count=12 * rows, across=12, weight=None, seed=seed, permute=False)
     grid.coding, grid.readout, grid.read = "population", "top", "fired"
     grid.drive, grid.quash_rate, grid.hebb_rate, grid.rule = "rate", quash, hebb, rule
     return grid
@@ -130,7 +130,7 @@ def test_train_runs_the_perturb_rule_from_a_seeded_stream():
     assert list(a[2].weights()) != list(c[2].weights())  # a different stream, a different one
     assert set(a[3]) >= {"last_tenth", "rates", "thresholds", "stuck_on", "stuck_off"} and 0 <= a[3]["last_tenth"] <= 1
     flat = fast.train(mesh(rows=2, seed=4), 30, homeostasis=0.0, unstick=0.0)  # the default eligibility, hebb (§6.7)
-    assert flat[3]["thresholds"] == [0.25] * len(flat[3]["thresholds"])  # nothing moved them
+    assert flat[3]["thresholds"] == [n.threshold for n in mesh(rows=2, seed=4).all_neurons()]  # nothing moved them
     assert len(flat[3]["expected_counts"]) == len(flat[3]["rates"]) and any(e is not None for e in flat[3]["expected_counts"])
     old = fast.train(mesh(rows=2, seed=4), 30, eligibility="wrong_hebb", homeostasis=0.0, unstick=0.0)
     assert list(old[2].weights()) != list(flat[2].weights())  # the +-1 rule and the centred one are not the same rule

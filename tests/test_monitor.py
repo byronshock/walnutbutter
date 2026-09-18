@@ -3,7 +3,7 @@ import pytest
 
 from walnutbutter import main
 from walnutbutter.cli import cli_main
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
 
@@ -13,24 +13,23 @@ def _deterministic_stimulus(forced_input):
     """This file is about the schedule and the plumbing, not the input process (see conftest.forced_input)."""
 
 
-def test_main_fires_the_bottom_row_and_returns_the_grid(capsys):
-    grid = main(across=4, rows=3, weight=1.0, seed=1)
+def test_main_fires_the_input_zone_and_returns_the_network(capsys):
+    grid = main(count=12, across=4, weight=1.0, seed=1)
     out = capsys.readouterr().out
-    assert len(grid.fired_neurons()) == 12
-    assert grid.waves[0].fired == grid.input_neurons()
-    assert all(n.position[1] == max(r for _, r in grid.neurons) for n in grid.waves[0].fired)
-    assert "input " in out and "-> bottom row " in out
+    assert grid.waves[0].fired == grid.input_neurons()  # the input zone goes first, §4.3
+    assert set(grid.waves[0].fired) <= set(grid.input_neurons())
+    assert "input " in out and "-> input zone " in out
 
 
 def test_main_complement_codes_the_input():
-    grid = main(across=6, rows=3, weight=1.0, input_bits=[True, False, True], permute=False)
+    grid = main(count=18, across=6, weight=1.0, input_bits=[True, False, True], permute=False)
     assert grid.input_coded == [True, False, True, False, True, False]
     assert grid.input_pattern == grid.input_coded
     assert len(grid.waves[0].fired) == 3
 
 
 def test_main_permutes_the_coded_input_with_a_fixed_permutation(capsys):
-    grid = main(across=8, rows=4, weight=1.0, seed=1, input_bits=[True, True, False, False])
+    grid = main(count=32, across=8, weight=1.0, seed=1, input_bits=[True, True, False, False])
     assert grid.input_coded == [True, True, False, False, False, False, True, True]
     assert sorted(grid.permutation) == list(range(8)) and grid.permutation != list(range(8))
     assert grid.input_pattern == [grid.input_coded[i] for i in grid.permutation]
@@ -43,24 +42,24 @@ def test_main_permutes_the_coded_input_with_a_fixed_permutation(capsys):
 
 def test_run_epoch_requires_even_columns_and_the_right_bit_count(capsys):
     with pytest.raises(ValueError):
-        run_epoch(GridOfNeurons(across=5, rows=3))
+        run_epoch(Goo(count=15, across=5))
     with pytest.raises(ValueError):
-        run_epoch(GridOfNeurons(across=6, rows=3), bits=[True, False])
+        run_epoch(Goo(count=18, across=6), bits=[True, False])
 
 
 def test_run_epoch_resets_the_mesh_and_presents_a_new_input(capsys):
-    grid = main(across=8, rows=4, weight=1.0, seed=3)
-    first_bits, first_fired = grid.input_bits, [n.fired_in_wave for n in grid.neurons.values()]
+    grid = main(count=32, across=8, weight=1.0, seed=3)
+    first_bits, first_fired = grid.input_bits, [n.fired_in_wave for n in grid.all_neurons()]
     assert grid.epoch == 1
     seen = {tuple(first_bits)}
     for _ in range(6):
         run_epoch(grid)
         seen.add(tuple(grid.input_bits))
-        assert all(n.potential >= 0 or n.has_fired for n in grid.neurons.values())
+        assert all(n.potential >= 0 or n.has_fired for n in grid.all_neurons())
     assert grid.epoch == 7
     assert len(seen) > 1  # the input actually changes between epochs
     # a second grid with the same seed replays the same sequence of inputs
-    other = main(across=8, rows=4, weight=1.0, seed=3)
+    other = main(count=32, across=8, weight=1.0, seed=3)
     for _ in range(6):
         run_epoch(other)
     assert other.input_bits == grid.input_bits
@@ -68,17 +67,17 @@ def test_run_epoch_resets_the_mesh_and_presents_a_new_input(capsys):
 
 def test_run_epoch_clears_every_neuron_before_firing(capsys, monkeypatch):
     monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
-    grid = main(across=6, rows=3, weight=1.0, seed=1, permute=False)
-    fired_before = {n.name: n.fired_in_wave for n in grid.neurons.values()}
+    grid = main(count=18, across=6, weight=1.0, seed=1, permute=False)
+    fired_before = {n.name: n.fired_in_wave for n in grid.all_neurons()}
     run_epoch(grid, bits=[False, True, False])  # a specific, different input
     assert grid.waves[0].fired == grid.input_neurons()
     assert grid.input_pattern == [False, True, False, True, False, True]
-    assert any(fired_before[n.name] != n.fired_in_wave for n in grid.neurons.values())
-    assert "epoch 2 at 35 ms: input 010 -> coded 010101 -> bottom row 010101" in capsys.readouterr().out
+    assert any(fired_before[n.name] != n.fired_in_wave for n in grid.all_neurons())
+    assert "epoch 2 at 35 ms: input 010 -> coded 010101 -> input zone 010101" in capsys.readouterr().out
 
 
 def test_run_epoch_keeps_weights_and_shortcuts(capsys):
-    grid = main(across=8, rows=4, seed=2, omega=0.2)
+    grid = main(count=32, across=8, seed=2)
     weights = [c.weight for c in grid.connections.values()]
     shortcuts = len(grid.small_world_connections())
     run_epoch(grid)
@@ -87,55 +86,55 @@ def test_run_epoch_keeps_weights_and_shortcuts(capsys):
 
 
 def test_main_random_input_is_reproducible_by_seed(capsys):
-    a = main(across=8, rows=4, seed=4)
-    b = main(across=8, rows=4, seed=4)
+    a = main(count=32, across=8, seed=4)
+    b = main(count=32, across=8, seed=4)
     assert a.input_pattern == b.input_pattern
-    assert [n.has_fired for n in a.neurons.values()] == [n.has_fired for n in b.neurons.values()]
-    assert a.input_pattern != main(across=8, rows=4, seed=5).input_pattern
+    assert [n.has_fired for n in a.all_neurons()] == [n.has_fired for n in b.all_neurons()]
+    assert a.input_pattern != main(count=32, across=8, seed=5).input_pattern
 
 
 def test_cli_runs_and_returns_zero(capsys):
     assert cli_main(["--headless", "-v", "--weight", "1"]) == 0
     captured = capsys.readouterr()
-    assert captured.out.count("fired in wave 0.") >= 4  # half of the 8-place bottom row, plus any neuron the exploration noise put over threshold
-    assert "80 of 80 neurons fired" in captured.err  # default 8 x 10
+    assert captured.out.count("fired in wave 0.") >= 4  # half of the 8-place input zone, plus any neuron the exploration noise put over threshold
+    assert "of 60 neurons fired" in captured.err  # the default goo, §4.1
     assert "input permutation:" in captured.err
 
 
 def test_cli_input_option_sets_the_pattern(capsys):
-    assert cli_main(["--headless", "-v", "--across", "6", "--rows", "3", "--weight", "1", "--input", "110", "--no-permute"]) == 0
+    assert cli_main(["--headless", "-v", "--across", "6", "--goo", "18", "--weight", "1", "--input", "110", "--no-permute"]) == 0
     captured = capsys.readouterr()
-    assert "epoch 1 at 0 ms: input 110 -> coded 110001 -> bottom row 110001" in captured.out
+    assert "epoch 1 at 0 ms: input 110 -> coded 110001 -> input zone 110001" in captured.out
     assert captured.out.count("fired in wave 0.") >= 3  # the three forced, plus any neuron the exploration noise put over threshold
     assert "input permutation:" not in captured.err
 
 
-@pytest.mark.parametrize("bad", [["--input", "10"], ["--input", "1x1"], ["--across", "5", "--rows", "3"]])
+@pytest.mark.parametrize("bad", [["--input", "10"], ["--input", "1x1"], ["--across", "5", "--goo", "15"]])
 def test_cli_rejects_bad_input(bad, capsys):
-    args = ["--headless", "--across", "6", "--rows", "3"] + bad if "--across" not in bad else ["--headless"] + bad
+    args = ["--headless", "--across", "6", "--goo", "18"] + bad if "--across" not in bad else ["--headless"] + bad
     assert cli_main(args) == 2
     assert "error:" in capsys.readouterr().err
 
 
 def test_cli_defaults_to_random_weights_and_reports_the_seed(capsys):
-    assert cli_main(["--headless", "--across", "6", "--rows", "6"]) == 0
+    assert cli_main(["--headless", "--across", "6", "--goo", "36"]) == 0
     err = capsys.readouterr().err
     assert "seed " in err and "of 36 neurons fired" in err
 
 
 def test_cli_seed_makes_runs_repeatable(capsys):
-    cli_main(["--headless", "--across", "10", "--rows", "8", "--seed", "11", "--no-save"])  # no timestamped path in the output
+    cli_main(["--headless", "--across", "10", "--goo", "80", "--seed", "11", "--no-save"])  # no timestamped path in the output
     first = capsys.readouterr()
-    cli_main(["--headless", "--across", "10", "--rows", "8", "--seed", "11", "--no-save"])
+    cli_main(["--headless", "--across", "10", "--goo", "80", "--seed", "11", "--no-save"])
     second = capsys.readouterr()
     assert first.out == second.out and first.err == second.err
     assert "seed 11" in first.err
 
 
-def test_cli_columns_and_rows_options(capsys):
-    # seeded: the small-world shortcuts are random, and about one seed in ten wires a second wave (24 lines)
-    assert cli_main(["--headless", "-v", "--across", "4", "--rows", "3", "--weight", "1", "--seed", "1"]) == 0
-    assert capsys.readouterr().out.count("fired") == 12
+def test_cli_across_and_count_options(capsys):
+    # seeded: the scaled rule draws the wiring, so how far past the input zone a wave carries is the seed's
+    assert cli_main(["--headless", "-v", "--across", "4", "--goo", "12", "--weight", "1", "--seed", "1"]) == 0
+    assert "of 12 neurons fired" in capsys.readouterr().err
 
 
 def test_cli_rejects_unknown_arguments():
@@ -145,55 +144,42 @@ def test_cli_rejects_unknown_arguments():
 
 
 def test_cli_weight_and_threshold_options(capsys):
-    args = ["--headless", "-v", "--across", "6", "--rows", "5", "--weight", "0.2", "--threshold", "1", "--input", "101",
-            "--delta", "0"]  # the deterministic neuron: the count below is the threshold's doing
+    args = ["--headless", "-v", "--across", "6", "--goo", "30", "--weight", "0.2", "--threshold", "1", "--input", "101",
+            "--no-scale-with-fan-in", "--delta", "0"]  # the deterministic neuron at a flat threshold: the count is the threshold's doing
     assert cli_main(args) == 0
-    assert capsys.readouterr().out.count("fired") == 3  # only the input neurons: 0.4 max input < 1
+    assert capsys.readouterr().out.count("fired") == 3  # only the input neurons: 0.2 per synapse < 1
 
 
 def test_main_passes_weight_and_threshold_through(capsys):
-    grid = main(across=4, rows=3, weight=0.25, threshold=0.25, seed=1)
-    assert len(grid.fired_neurons()) == 12
+    grid = main(count=12, across=4, weight=0.25, threshold=0.25, seed=1)
+    assert grid.fired_neurons()  # the weight carries the input zone into the rest
 
 
-def test_cli_omega_option_reports_shortcuts(capsys):
-    assert cli_main(["--headless", "--across", "6", "--rows", "6", "--weight", "1", "--omega", "0.2", "--seed", "1"]) == 0
-    err = capsys.readouterr().err
-    assert "omega 0.2:" in err and "small-world connections" in err and "seed 1" in err
 
-
-def test_cli_rejects_omega_out_of_range(capsys):
-    assert cli_main(["--headless", "--across", "4", "--rows", "3", "--omega", "1"]) == 2
-    assert "omega" in capsys.readouterr().err
-
-
-def test_main_passes_omega_through(capsys):
-    grid = main(across=6, rows=6, weight=1.0, omega=0.25, seed=2)
-    assert grid.omega == 0.25 and len(grid.small_world_connections()) > 0
 
 
 def test_run_epoch_verbose_false_prints_nothing_about_the_input(capsys, monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
-    grid = main(across=6, rows=3, weight=1.0, seed=1)
+    grid = main(count=18, across=6, weight=1.0, seed=1)
     capsys.readouterr()
     run_epoch(grid, verbose=False)
     assert capsys.readouterr().out == ""
 
 
 def test_cli_is_silent_by_default_and_verbose_on_request(capsys):
-    assert cli_main(["--headless", "--across", "6", "--rows", "3", "--weight", "1", "--no-save"]) == 0
+    assert cli_main(["--headless", "--across", "6", "--goo", "18", "--weight", "1", "--no-save"]) == 0
     out = capsys.readouterr().out
     assert out == ""  # nothing per epoch and nothing per neuron: printing is slower than learning
     assert Neuron.verbose is False  # the process-wide flag is restored once the command finishes
-    assert cli_main(["--headless", "-v", "--across", "6", "--rows", "3", "--weight", "1", "--no-save"]) == 0
+    assert cli_main(["--headless", "-v", "--across", "6", "--goo", "18", "--weight", "1", "--no-save"]) == 0
     out = capsys.readouterr().out
     assert "fired in wave" in out and "epoch 1 at 0 ms: input" in out
-    assert cli_main(["--headless", "-v", "-q", "--across", "6", "--rows", "3", "--weight", "1", "--no-save"]) == 0
+    assert cli_main(["--headless", "-v", "-q", "--across", "6", "--goo", "18", "--weight", "1", "--no-save"]) == 0
     assert capsys.readouterr().out == ""  # --quiet still wins if both are given
 
 
 def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "2", "--quiet", "--target", "all-off",
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "2", "--quiet", "--target", "all-off",
             "--lr", "0.1", "--epochs", "200", "--rule", "reinforce"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
@@ -204,7 +190,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
 
 
 def test_cli_epochs_without_learn_just_runs_them(capsys):
-    assert cli_main(["--headless", "-v", "--across", "8", "--rows", "4", "--seed", "1", "--epochs", "5", "--no-learn"]) == 0
+    assert cli_main(["--headless", "-v", "--across", "8", "--goo", "32", "--seed", "1", "--epochs", "5", "--no-learn"]) == 0
     out = capsys.readouterr().out
     assert out.count("epoch ") == 5 and "epoch 5 at 140 ms:" in out
 
@@ -215,14 +201,14 @@ def test_cli_rejects_unknown_target():
 
 
 def test_cli_learns_by_default_and_no_learn_switches_it_off(capsys):
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "-q", "--seed", "1", "--epochs", "3"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "-q", "--seed", "1", "--epochs", "3"]) == 0
     assert "learning reversed" in capsys.readouterr().err  # the reversal problem is posed for the reinforce rule
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "-q", "--seed", "1", "--epochs", "3", "--no-learn"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "-q", "--seed", "1", "--epochs", "3", "--no-learn"]) == 0
     assert "learning" not in capsys.readouterr().err
 
 
 def test_cli_eligibility_and_sigma_options(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--eligibility", "wrong_hebb",
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--eligibility", "wrong_hebb",
             "--sigma", "0.3", "--lr", "0.02", "--epochs", "20", "--rule", "reinforce"]
     assert cli_main(args) == 0
     assert "learning reversed (wrong_hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001)" in capsys.readouterr().err
@@ -231,7 +217,7 @@ def test_cli_eligibility_and_sigma_options(capsys):
 def test_cli_saves_and_loads_weights(tmp_path, capsys):
     from walnutbutter.persistence import read_checkpoint
     path = tmp_path / "weights.json"
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "7", "-q", "--epochs", "200", "--save-weights", str(path)]
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "7", "-q", "--epochs", "200", "--save-weights", str(path)]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
     assert f"saved weights to {path}" in err
@@ -240,11 +226,11 @@ def test_cli_saves_and_loads_weights(tmp_path, capsys):
 
     # resume: the mesh comes from the file, the epoch count carries on, and settings on the
     # command line that describe the mesh are overridden by the checkpoint
-    args = ["--headless", "--across", "3", "--rows", "3", "-q", "--epochs", "50",
+    args = ["--headless", "--across", "3", "--goo", "9", "-q", "--epochs", "50",
             "--load-weights", str(path), "--save-weights", str(path)]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "loaded" in err and "8x4, seed 7, 200 epochs so far" in err
+    assert "loaded" in err and "8 across, seed 7, 200 epochs so far" in err
     assert "to date over 250 epochs" in err
     assert read_checkpoint(path)["epoch"] == 250
 
@@ -256,20 +242,20 @@ def test_cli_reports_a_bad_checkpoint(tmp_path, capsys):
 
 
 def test_cli_positive_weights_option(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5",
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5",
             "--positive_weights", "--epsilon", "0.01", "--threshold", "2"]
     assert cli_main(args) == 0
     assert "positive weights: every weight kept between 0.01 and 1" in capsys.readouterr().err
 
 
 def test_cli_positive_weights_rejects_bad_epsilon(capsys):
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--positive-weights", "--epsilon", "0"]) == 2
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--positive-weights", "--epsilon", "0"]) == 2
     assert "epsilon" in capsys.readouterr().err
 
 
 def test_cli_load_restores_positive_weights(tmp_path, capsys):
     path = tmp_path / "pos.json"
-    base = ["--headless", "--across", "8", "--rows", "4", "--seed", "3", "-q", "--epochs", "5"]
+    base = ["--headless", "--across", "8", "--goo", "32", "--seed", "3", "-q", "--epochs", "5"]
     assert cli_main(base + ["--positive-weights", "--epsilon", "0.05", "--save-weights", str(path)]) == 0
     capsys.readouterr()
     assert cli_main(["--headless", "-q", "--epochs", "5", "--load-weights", str(path)]) == 0
@@ -277,7 +263,7 @@ def test_cli_load_restores_positive_weights(tmp_path, capsys):
 
 
 def test_cli_homeostasis_options(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "20",
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "20",
             "--homeostasis", "0.01", "--target-rate", "0.3"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
@@ -287,50 +273,50 @@ def test_cli_homeostasis_options(capsys):
 def test_cli_has_no_threshold_range_option():
     """The clamp was eliminated (Byron, September 14, 2026); the flag went with it."""
     with pytest.raises(SystemExit):
-        cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5",
+        cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5",
                   "--threshold-range", "0", "3"])
 
 
 def test_run_epoch_keeps_unfired_potentials_by_default_and_can_discharge(capsys):
-    grid = GridOfNeurons(across=6, rows=4, weight=None, seed=5, threshold=5.0)  # nothing but the input fires
+    grid = Goo(count=24, across=6, weight=None, seed=5, threshold=5.0)  # nothing but the input fires
     run_epoch(grid, verbose=False)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(5))
-    held = [n.potential for n in grid.neurons.values() if not n.has_fired]
+    held = [n.potential for n in grid.all_neurons() if not n.has_fired]
     assert any(p != 0.0 for p in held)  # sub-threshold input and noise survive into the next cascade
     grid.reset()
-    assert any(n.potential != 0.0 for n in grid.neurons.values())  # a plain reset keeps them, to leak
+    assert any(n.potential != 0.0 for n in grid.all_neurons())  # a plain reset keeps them, to leak
     grid.reset(discharge=True)
-    assert all(n.potential == 0.0 for n in grid.neurons.values())  # zeroed on request
+    assert all(n.potential == 0.0 for n in grid.all_neurons())  # zeroed on request
 
 
 def test_cli_discharge_option(capsys):
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5", "--discharge"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5", "--discharge"]) == 0
     assert ", discharge)" in capsys.readouterr().err
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5"]) == 0
     assert "discharge" not in capsys.readouterr().err
 
 
 def test_noise_respects_the_minimum_potential(capsys):
     import random
-    grid = GridOfNeurons(across=6, rows=4, weight=None, seed=1, minimum_potential=-0.05)
+    grid = Goo(count=24, across=6, weight=None, seed=1, minimum_potential=-0.05)
     for _ in range(20):
         run_epoch(grid, verbose=False, noise=0.5, rng=random.Random(1))
-    assert all(n.potential >= -0.05 for n in grid.neurons.values())
+    assert all(n.potential >= -0.05 for n in grid.all_neurons())
 
 
 def test_cli_minimum_potential_option(capsys):
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "3",
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "3",
                      "--minimum-potential", "-0.5"]) == 0
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--minimum-potential", "0.5"]) == 2
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--minimum-potential", "0.5"]) == 2
     assert "must be below the threshold" in capsys.readouterr().err
 
 
 def test_cli_unstick_options(capsys):
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5",
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5",
             "--unstick", "0.02", "--unstick-target", "0.4"]
     assert cli_main(args) == 0
     assert "unstick 0.02" in capsys.readouterr().err
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "5", "--unstick", "0"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "5", "--unstick", "0"]) == 0
     assert "unstick" not in capsys.readouterr().err
 
 
@@ -339,7 +325,7 @@ def test_headless_run_records_history_and_default_report_is_one_second(tmp_path,
     from walnutbutter.persistence import read_checkpoint
     assert build_parser().parse_args([]).report == 1.0
     path = tmp_path / "w.json"
-    args = ["--headless", "--across", "8", "--rows", "4", "--seed", "1", "-q", "--epochs", "50", "--save-weights", str(path)]
+    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--epochs", "50", "--save-weights", str(path)]
     assert cli_main(args) == 0
     history = read_checkpoint(path)["learning"]["history"]
     assert len(history) == 10 and history[-1]["epoch"] == 50 and history[0]["epoch"] == 5
@@ -348,7 +334,7 @@ def test_headless_run_records_history_and_default_report_is_one_second(tmp_path,
 def test_checkpoints_are_written_by_default_to_a_timestamped_file(tmp_path, capsys):
     from pathlib import Path
     from walnutbutter.persistence import read_checkpoint
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "7", "-q", "--epochs", "20"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "7", "-q", "--epochs", "20"]) == 0
     err = capsys.readouterr().err
     files = list(Path("runs").glob("*-seed7.json"))
     assert len(files) == 1 and f"checkpointing to {files[0]}" in err and f"saved weights to {files[0]}" in err
@@ -358,10 +344,10 @@ def test_checkpoints_are_written_by_default_to_a_timestamped_file(tmp_path, caps
 
 def test_no_save_writes_nothing_and_explicit_path_wins(tmp_path, capsys):
     from pathlib import Path
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "7", "-q", "--epochs", "5", "--no-save"]) == 0
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "7", "-q", "--epochs", "5", "--no-save"]) == 0
     assert not Path("runs").exists() and "checkpointing" not in capsys.readouterr().err
     explicit = tmp_path / "mine.json"
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "7", "-q", "--epochs", "5",
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "7", "-q", "--epochs", "5",
                      "--save-weights", str(explicit)]) == 0
     assert explicit.exists() and not Path("runs").exists()
 
@@ -369,7 +355,7 @@ def test_no_save_writes_nothing_and_explicit_path_wins(tmp_path, capsys):
 def test_resumed_run_gets_its_own_file(tmp_path, capsys):
     from pathlib import Path
     first = tmp_path / "first.json"
-    assert cli_main(["--headless", "--across", "8", "--rows", "4", "--seed", "7", "-q", "--epochs", "5",
+    assert cli_main(["--headless", "--across", "8", "--goo", "32", "--seed", "7", "-q", "--epochs", "5",
                      "--save-weights", str(first)]) == 0
     before = first.read_text()
     assert cli_main(["--headless", "-q", "--epochs", "5", "--load-weights", str(first)]) == 0
@@ -380,7 +366,7 @@ def test_resumed_run_gets_its_own_file(tmp_path, capsys):
 def test_seeds_runs_in_parallel_and_reports_a_sorted_table(tmp_path, capsys):
     from pathlib import Path
     from walnutbutter.persistence import read_checkpoint
-    args = ["--seeds", "3", "--seed", "10", "--across", "8", "--rows", "4", "--epochs", "40"]
+    args = ["--seeds", "3", "--seed", "10", "--across", "8", "--goo", "32", "--epochs", "40"]
     assert cli_main(args) == 0
     captured = capsys.readouterr()
     lines = [l for l in captured.out.splitlines() if l.strip() and not l.startswith(" " * 6 + "seed")]
@@ -401,20 +387,7 @@ def test_seeds_rejects_bad_arguments(capsys):
 
 def test_seeds_with_no_save_writes_nothing(capsys):
     from pathlib import Path
-    assert cli_main(["--seeds", "2", "--seed", "1", "--across", "8", "--rows", "4", "--epochs", "10", "--no-save"]) == 0
+    assert cli_main(["--seeds", "2", "--seed", "1", "--across", "8", "--goo", "32", "--epochs", "10", "--no-save"]) == 0
     assert not Path("runs").exists()
     assert "  -" in capsys.readouterr().out
 
-
-def test_seeds_runs_the_lattice_when_nodes_is_given(tmp_path, capsys):
-    from pathlib import Path
-    from walnutbutter.cartesian import CartesianNodes
-    from walnutbutter.persistence import restore
-    assert cli_main(["--nodes", "--seeds", "2", "--seed", "20", "--across", "8", "--rows", "4", "--epochs", "30"]) == 0
-    captured = capsys.readouterr()
-    assert "lattice, reach 2" in captured.err
-    files = sorted(Path("runs").glob("*-seed2?.json"))
-    assert len(files) == 2
-    for f in files:
-        restored, data = restore(f)
-        assert isinstance(restored, CartesianNodes) and data["epoch"] == 30 and data["reach"] == 2.0

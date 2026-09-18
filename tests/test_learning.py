@@ -4,7 +4,7 @@ import statistics
 import pytest
 
 from walnutbutter import learning
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.learning import (
     Teacher,
     accuracy,
@@ -25,28 +25,27 @@ def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 
 
-def test_output_row_is_the_top_row_left_to_right():
-    grid = GridOfNeurons(across=6, rows=4, omega=0)
+def test_output_row_is_the_output_zone_by_place():
+    """§4.3: the output zone is the last `outputs` neurons in index order, read by place."""
+    grid = Goo(count=24, across=6)
     row = output_row(grid)
-    highest_r = min(r for _, r in grid.neurons)
-    assert [n.position[1] for n in row] == [highest_r] * 6
-    assert [n.position[0] for n in row] == sorted(n.position[0] for n in row)
-    assert row[0] is grid.get_neuron_at(0, 0)
+    assert row == [grid.get_neuron_at(place, 0) for place in range(6)]
+    assert row == list(grid.all_neurons())[-6:]
 
 
 def test_expected_outputs_for_each_target():
-    grid = GridOfNeurons(across=6, rows=4, omega=0)
+    grid = Goo(count=24, across=6)
     grid.set_input([True, True, False, False, False, True])
     assert expected_outputs(grid, "reversed") == [True, False, False, False, True, True]
     assert expected_outputs(grid, "copy") == [True, True, False, False, False, True]
     assert expected_outputs(grid, "all-off") == [False] * 6
     assert expected_outputs(grid, "all-on") == [True] * 6
     with pytest.raises(ValueError):
-        expected_outputs(GridOfNeurons(across=6, rows=4))
+        expected_outputs(Goo(count=24, across=6))
 
 
 def test_errors_and_accuracy_against_the_top_row():
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = Goo(count=12, across=4)
     grid.set_input([True, False, False, False])  # reversed target: only place 3 should fire
     top = output_row(grid)
     top[3].fire()  # correct
@@ -57,21 +56,21 @@ def test_errors_and_accuracy_against_the_top_row():
 
 
 def test_run_epoch_noise_gives_every_neuron_a_remembered_starting_potential():
-    grid = GridOfNeurons(across=6, rows=4, weight=None, seed=1)
+    grid = Goo(count=24, across=6, weight=None, seed=1)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(1))
-    noises = [n.noise for n in grid.neurons.values()]
+    noises = [n.noise for n in grid.all_neurons()]
     # 24 draws of standard deviation 0.1 have a standard error of 0.02 on their mean, so the bound has to be
     # several of those or it fails whenever an unrelated change shifts which draws are taken
     assert len(set(noises)) > 1 and abs(statistics.mean(noises)) < 0.10
     assert 0.05 < statistics.pstdev(noises) < 0.15
-    forced = grid.input_neurons()[0]
+    forced = grid.waves[0].fired[0]  # the input neurons whose coded bit is 1 are the forced ones
     assert forced.has_fired and forced.forced
     run_epoch(grid, verbose=False)  # without noise everything starts from 0 again
-    assert all(n.noise == 0.0 for n in grid.neurons.values())
+    assert all(n.noise == 0.0 for n in grid.all_neurons())
 
 
 def test_delivered_connections_are_those_whose_source_fired():
-    grid = main(across=8, rows=4, weight=None, seed=1)
+    grid = main(count=32, across=8, weight=None, seed=1)
     delivered = delivered_connections(grid)
     assert delivered
     assert all(c.source.has_fired for c in delivered)
@@ -80,7 +79,7 @@ def test_delivered_connections_are_those_whose_source_fired():
 
 
 def test_reinforce_moves_delivered_weights_by_advantage_times_noise():
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0)
+    grid = Goo(count=32, across=8, weight=None, seed=2)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     before = {c.id: c.weight for c in grid.connections.values()}
     changed = reinforce(grid, advantage=0.5, lr=0.01, sigma=0.1)
@@ -94,7 +93,7 @@ def test_reinforce_moves_delivered_weights_by_advantage_times_noise():
 
 
 def test_ignoring_late_signals_skips_those_that_arrived_after_their_target_fired():
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0)
+    grid = Goo(count=32, across=8, weight=None, seed=2)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     before = {c.id: c.weight for c in grid.connections.values()}
     last = {s.connection: s for s in delivered_signals(grid)}  # the rule judges a connection by its last delivery of the epoch
@@ -111,14 +110,14 @@ def test_ignoring_late_signals_skips_those_that_arrived_after_their_target_fired
 
 
 def test_reinforce_with_zero_advantage_changes_nothing():
-    grid = main(across=8, rows=4, weight=None, seed=3)
+    grid = main(count=32, across=8, weight=None, seed=3)
     before = [c.weight for c in grid.connections.values()]
     assert reinforce(grid, advantage=0.0) == 0
     assert [c.weight for c in grid.connections.values()] == before
 
 
 def test_the_wrong_hebb_eligibility_uses_target_firing_and_keeps_weights_in_range():
-    grid = main(across=8, rows=4, weight=None, seed=4)
+    grid = main(count=32, across=8, weight=None, seed=4)
     before = {c.id: c.weight for c in grid.connections.values()}
     reinforce(grid, advantage=-1.0, lr=0.5, eligibility="wrong_hebb")
     for c in delivered_connections(grid):
@@ -136,7 +135,7 @@ def test_the_wrong_hebb_eligibility_uses_target_firing_and_keeps_weights_in_rang
 def test_the_reinforce_rule_still_runs_and_moves_weights():
     """The pre-alpha's rule, factored out behind rule="reinforce": it runs, scores and moves weights. Under the
     schedule the mesh reverberates on its own, so this is kept for comparison, not as a performance claim."""
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0.05)
+    grid = Goo(count=32, across=8, weight=None, seed=2)
     before = [c.weight for c in grid.connections.values()]
     teacher = Teacher(grid, target="all-off", lr=0.1, seed=2, rule="reinforce")
     rewards = [teacher.epoch(verbose=False) for _ in range(200)]
@@ -146,7 +145,7 @@ def test_the_reinforce_rule_still_runs_and_moves_weights():
 
 
 def test_teacher_validates_tracks_and_reports():
-    grid = main(across=8, rows=4, seed=1)
+    grid = main(count=32, across=8, seed=1)
     with pytest.raises(ValueError):
         Teacher(grid, target="upside-down")
     with pytest.raises(ValueError):
@@ -170,7 +169,7 @@ def test_teacher_validates_tracks_and_reports():
 
 def test_teacher_with_seed_is_reproducible():
     def run(seed):
-        grid = GridOfNeurons(across=8, rows=4, weight=None, seed=1)
+        grid = Goo(count=32, across=8, weight=None, seed=1)
         teacher = Teacher(grid, target="copy", seed=seed)
         for _ in range(30):
             teacher.epoch(verbose=False)
@@ -186,7 +185,7 @@ def test_targets_registry_has_the_builtin_targets():
 
 
 def test_accuracy_to_date_is_the_mean_over_all_epochs():
-    grid = main(across=8, rows=4, seed=1)
+    grid = main(count=32, across=8, seed=1)
     teacher = Teacher(grid, seed=1)
     assert teacher.accuracy_to_date is None
     rewards = [teacher.step()] + [teacher.epoch(verbose=False) for _ in range(9)]
@@ -195,7 +194,7 @@ def test_accuracy_to_date_is_the_mean_over_all_epochs():
 
 
 def test_reinforce_clips_to_the_grid_weight_range():
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0, weight_range=(0.001, 1.0), threshold=2.0)
+    grid = Goo(count=32, across=8, weight=None, seed=2, weight_range=(0.001, 1.0), threshold=2.0)
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     reinforce(grid, advantage=-1.0, lr=50.0)  # a huge negative push: everything touched should hit the floor, not go negative
     touched = [c for c in delivered_connections(grid) if not c.target.forced and c.target.noise > 0]
@@ -206,7 +205,7 @@ def test_reinforce_clips_to_the_grid_weight_range():
 
 def test_rates_track_firing_and_stuck_neurons_are_counted():
     from walnutbutter.learning import stuck_neurons, update_rates, RATE_MEMORY
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = Goo(count=12, across=4)
     always, never = grid.get_neuron_at(0, 0), grid.get_neuron_at(1, 0)
     for _ in range(600):
         grid.reset()
@@ -220,7 +219,7 @@ def test_rates_track_firing_and_stuck_neurons_are_counted():
 
 def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_inputs_are_not():
     from walnutbutter.learning import forced, homeostasis, update_rates
-    grid = GridOfNeurons(across=4, rows=3, omega=0, seed=1)
+    grid = Goo(count=12, across=4, seed=1)
     # the forced drive: one stimulus at the input's moment, so a bit-1 input is forced for certain. Under the Poisson
     # drive an input that keeps itself firing is refractory whenever its own stimuli land and is never marked forced --
     # which is the rule (§4.3, §5.3), and made this test fail one run in five (found September 16, 2026)
@@ -230,12 +229,12 @@ def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_input
     row = grid.input_row()
     forced_input, unforced_input = row[0], row[1]
     assert forced(forced_input) and not forced(unforced_input)
-    rates_before = {n: n.rate for n in grid.neurons.values()}
+    rates_before = {n: n.rate for n in grid.all_neurons()}
     update_rates(grid)
     assert forced_input.rate == rates_before[forced_input]  # its firing was not the network's doing
     assert unforced_input.rate != rates_before[unforced_input]  # an ordinary neuron: its rate moved
     forced_input.rate, unforced_input.rate = 1.0, 1.0
-    thresholds = {n: n.threshold for n in grid.neurons.values()}
+    thresholds = {n: n.threshold for n in grid.all_neurons()}
     moved = homeostasis(grid, rate=0.1, target=0.5)
     assert moved == len(grid.neurons) - len(grid.input_neurons())  # everyone except the two forced this epoch
     assert forced_input.threshold == thresholds[forced_input]
@@ -244,10 +243,10 @@ def test_forced_neurons_are_left_out_of_rates_and_homeostasis_but_unforced_input
 
 def test_homeostasis_moves_thresholds_toward_the_target_rate_and_nothing_clips_them():
     from walnutbutter.learning import homeostasis
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = Goo(count=12, across=4)
     hot, cold = grid.get_neuron_at(0, 0), grid.get_neuron_at(1, 0)
     hot.rate, cold.rate = 1.0, 0.0
-    before = {n: n.threshold for n in grid.neurons.values()}
+    before = {n: n.threshold for n in grid.all_neurons()}
     assert homeostasis(grid, rate=0.1, target=0.5) == 12  # nothing has been forced: every neuron is eligible
     assert hot.threshold == pytest.approx(before[hot] + 0.05)
     assert cold.threshold == pytest.approx(before[cold] - 0.05)
@@ -270,7 +269,7 @@ def test_homeostasis_moves_thresholds_toward_the_target_rate_and_nothing_clips_t
 def test_teacher_homeostasis_reduces_stuck_neurons():
     from walnutbutter.learning import stuck_neurons
     def run(homeostasis):
-        grid = GridOfNeurons(across=8, rows=6, weight=None, seed=1)
+        grid = Goo(count=48, across=8, weight=None, seed=1)
         # un-sticking off: since September 14, 2026 it reaches every neuron and would do this job on its own
         teacher = Teacher(grid, seed=1, homeostasis=homeostasis, target_rate=0.5, unstick=0.0)
         for _ in range(3000):
@@ -281,7 +280,7 @@ def test_teacher_homeostasis_reduces_stuck_neurons():
 
 
 def test_teacher_validates_homeostasis_and_reports_it():
-    grid = main(across=8, rows=4, seed=1)
+    grid = main(count=32, across=8, seed=1)
     with pytest.raises(ValueError):
         Teacher(grid, homeostasis=-0.1)
     with pytest.raises(ValueError):
@@ -301,12 +300,13 @@ def test_teacher_validates_homeostasis_and_reports_it():
 def test_there_is_no_threshold_range_anywhere():
     """Byron, September 14, 2026: eliminate threshold clipping, it's artificial. A threshold goes where the rules take it."""
     from walnutbutter.learning import homeostasis
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = Goo(count=12, across=4)
     hot = grid.get_neuron_at(0, 0)
+    started = hot.threshold  # goo starts each neuron at its own fan-in-scaled threshold (§5.2)
     hot.rate = 1.0
     for _ in range(200):
         homeostasis(grid, rate=1.0)
-    assert hot.threshold == pytest.approx(0.25 + 100.0)  # far past the 5 that once stopped it
+    assert hot.threshold == pytest.approx(started + 100.0)  # far past the 5 that once stopped it
     with pytest.raises(TypeError):
         homeostasis(grid, rate=1.0, threshold_range=(0.0, 1.5))
     with pytest.raises(TypeError):
@@ -317,7 +317,7 @@ def test_there_is_no_threshold_range_anywhere():
 
 
 def test_the_leak_is_the_default_and_discharge_is_available():
-    grid = GridOfNeurons(across=4, rows=3, omega=0, weight=None, seed=1)
+    grid = Goo(count=12, across=4, weight=None, seed=1)
     default = Teacher(grid, seed=1)
     assert default.discharge is False
     default.epoch(verbose=False)
@@ -330,13 +330,13 @@ def test_the_leak_is_the_default_and_discharge_is_available():
 def test_unstick_touches_every_stuck_neuron_wherever_it_sits():
     """It was the output row only until September 14, 2026 (AUTHORITY.md §6.7): now a stuck interior neuron is nudged too."""
     from walnutbutter.learning import unstick
-    grid = GridOfNeurons(across=6, rows=4, omega=0)
+    grid = Goo(count=24, across=6)
     outputs = output_row(grid)
     hot, cold, fine = outputs[0], outputs[1], outputs[2]
     hot.rate, cold.rate, fine.rate = 1.0, 0.0, 0.5
     interior = grid.get_neuron_at(3, 1)
     interior.rate = 1.0  # stuck, and not an output: nudged all the same
-    before = {n: n.threshold for n in grid.neurons.values()}
+    before = {n: n.threshold for n in grid.all_neurons()}
     nudged = unstick(grid, rate=0.1)
     assert set(nudged) == {hot, cold, interior}
     assert hot.threshold == pytest.approx(before[hot] + 0.05)
@@ -348,19 +348,20 @@ def test_unstick_touches_every_stuck_neuron_wherever_it_sits():
 
 def test_unstick_stops_once_the_neuron_is_no_longer_stuck_and_nothing_clips_it():
     from walnutbutter.learning import unstick
-    grid = GridOfNeurons(across=6, rows=4, omega=0)
+    grid = Goo(count=24, across=6)
     hot = output_row(grid)[0]
+    started = hot.threshold
     hot.rate = 1.0
     for _ in range(300):
         unstick(grid, rate=1.0)
-    assert hot.threshold == pytest.approx(0.25 + 150.0)  # no range to stop at
+    assert hot.threshold == pytest.approx(started + 150.0)  # no range to stop at
     hot.rate = 0.6  # out of the stuck band: nothing more happens
     assert unstick(grid, rate=1.0) == []
-    assert hot.threshold == pytest.approx(0.25 + 150.0)  # and stays there: nothing more happened
+    assert hot.threshold == pytest.approx(started + 150.0)  # and stays there: nothing more happened
 
 
 def test_teacher_applies_unsticking_and_reports_it():
-    grid = main(across=8, rows=4, weight=1.0, seed=1)  # weight 1: every output fires every epoch
+    grid = main(count=32, across=8, weight=1.0, seed=1)  # weight 1: every output fires every epoch
     teacher = Teacher(grid, seed=1, unstick=0.01, homeostasis=0)
     for _ in range(600):
         teacher.epoch(verbose=False)
@@ -377,13 +378,13 @@ def test_teacher_applies_unsticking_and_reports_it():
 
 
 def test_unstick_defaults_on_at_one_thousandth():
-    teacher = Teacher(main(across=8, rows=4, seed=1))
+    teacher = Teacher(main(count=32, across=8, seed=1))
     assert teacher.unstick == 1e-3 and teacher.unstick_target == 0.5
 
 
 
 def test_record_appends_the_current_figures_to_the_history():
-    grid = main(across=8, rows=4, seed=1)
+    grid = main(count=32, across=8, seed=1)
     teacher = Teacher(grid, seed=1)
     assert teacher.history == []
     teacher.step()
@@ -428,12 +429,12 @@ def test_a_late_signal_counts_by_default_and_is_ignored_or_depressed_on_request(
     assert c_b.weight == pytest.approx(0.5)  # post before pre: the same good epoch now weakens it
     with pytest.raises(ValueError):
         reinforce(Tiny, advantage=1.0, late="whenever")
-    ignoring = Teacher(GridOfNeurons(across=4, rows=3, omega=0, weight=None, seed=1), late="ignore", seed=1)
+    ignoring = Teacher(Goo(count=12, across=4, weight=None, seed=1), late="ignore", seed=1)
     ignoring.epoch(verbose=False)
     assert ignoring.late == "ignore" and "late signals ignored" in ignoring.status()
-    assert Teacher(GridOfNeurons(across=4, rows=3, omega=0)).late == "count"
+    assert Teacher(Goo(count=12, across=4)).late == "count"
     with pytest.raises(ValueError):
-        Teacher(GridOfNeurons(across=4, rows=3, omega=0), late="whenever")
+        Teacher(Goo(count=12, across=4), late="whenever")
 
 
 
@@ -441,8 +442,8 @@ def test_unstick_reaches_every_stuck_neuron_and_leaves_a_forced_one_alone():
     """§6.7, September 14, 2026: un-sticking is for every neuron, not the output row -- the interior of a goo with no
     direct projection was dead for want of it. A neuron forced this epoch is left alone, as homeostasis leaves it."""
     from walnutbutter.learning import unstick
-    grid = GridOfNeurons(across=6, rows=4, omega=0)
-    interior, out, forced_in = grid.get_neuron_at(2, 2), output_row(grid)[3], grid.input_row()[0]
+    grid = Goo(count=24, across=6)
+    interior, out, forced_in = list(grid.all_neurons())[8], output_row(grid)[3], grid.input_row()[0]  # 8 is hidden: in neither zone
     for n in grid.all_neurons():
         n.rate = 0.5  # nobody stuck
     interior.rate, out.rate, forced_in.rate = 0.0, 1.0, 1.0
@@ -460,8 +461,8 @@ def test_the_count_hebb_eligibility_is_what_the_synapse_delivered_times_the_cent
     n_bar_j) -- the signals the target integrated along the synapse this
     epoch, times its spike count minus its own running expectation. A forced target is skipped, a target with no
     expectation yet moves nothing, and the rule carries its own tally, so late = count and no leaky trace."""
-    from walnutbutter.grid import GridOfNeurons
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=4, omega=0)
+    from walnutbutter.goo import Goo
+    grid = Goo(count=32, across=8, weight=None, seed=4)
     grid.rule, grid.drive = "reinforce", "rate"
     teacher = Teacher(grid, eligibility="count_hebb", seed=3, rule="reinforce")
     assert grid.tally and teacher.sigma == 0.0
@@ -494,9 +495,9 @@ def test_the_count_hebb_eligibility_is_what_the_synapse_delivered_times_the_cent
 def test_update_rates_keeps_the_expected_count_from_the_first_epoch_seen():
     """§6.7: n_bar_j starts at the first count seen in an unforced epoch and then moves by COUNT_MEMORY an epoch."""
     from walnutbutter.constants import COUNT_MEMORY
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import update_rates
-    grid = GridOfNeurons(across=6, rows=3, weight=None, seed=2, omega=0)
+    grid = Goo(count=18, across=6, weight=None, seed=2)
     grid.drive = "rate"
     run_epoch(grid, verbose=False)
     update_rates(grid)

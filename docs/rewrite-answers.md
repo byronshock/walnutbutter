@@ -148,3 +148,51 @@ critics survive: evidence, row, graded and class -- the 1-or-0 that pays when
 the label's class out-spikes every other, a tie losing. The fraction right
 reported beside the evidence reward is that critic's own number, so the
 reported measure and the critic are one rule again rather than two.
+
+---
+
+# The second round: `rewrite-decisions-2.md` Part 1, answered
+
+*September 17, 2026, 18:46 MDT. All eight of Part 1's decisions, in Byron's
+words as they were given. Part 2's twenty-eight words are still open.*
+
+**D1. §0.6 — what is the substance, now the plane is archived?**
+*"The population itself."* The substance is the population of neurons and
+their wiring; the goal is still that substance rather than any task it is
+set. §0.6 is restated without the plane, and the geometry goes with the
+containers.
+
+**D2. §5.10 — is TEACHER_THRESHOLD a rate or a line?**
+*"TEACHER demands two spikes in the epoch"*, and on being asked which of the
+two readings that was: **two spikes, whatever the epoch.** So it is a line
+and not a rate. 14.3 Hz stops being the rule — it was the rate that gave one
+spike at 35 ms — and the bar is two spikes at any epoch length. This is a
+change from what the 35 ms mnist runs did, which demanded one.
+
+**D3. §7.4 — TARGET_ISI, one constant or three?**
+*"One constant."* The shaping function's peak, the deterministic drive's
+period and the rate teacher's target for a 1 are the same quantity by
+intent. A sweep on any one of them moves all three, and that is wanted.
+
+**D4. §9.3 — the reinforcement baseline on a resume?**
+*"Restore from the checkpoint."* The baseline is run state like any other, so
+a resume continues it. `--resume-from` is the arm that is wrong and is
+brought to the checkpoint's behaviour.
+
+**D5. §9.9, §9.10, §10.1 — do the three non-default constants become 0?**
+*"The constants become 0."* Off is the specification's default; a run that
+wants homeostasis, un-sticking or quashing asks for the record's values —
+10⁻⁶, 10⁻³ and 0.02 — explicitly.
+
+**D6. §3.9 — does `--discharge` stay?**
+*"Keep as a non-default."* The flag stays, off by default, and §8.11 keeps
+the discharge arm of the settling rule.
+
+**D7. §8.3 — which eligibility runs when the threshold decides?**
+*"Refuse the combination."* A threshold-deciding run has no eligibility
+specified, so it is refused rather than approximated. Escape noise is
+required for learning. (Rules are cross-platform: every engine refuses.)
+
+**D8. §8.8 — is hebb's credit at the spike a full unit or discounted?**
+*"Keep deferring."* §8.8 stays marked not decided. The full unit stands as
+built and the clause says openly that it is unsettled.

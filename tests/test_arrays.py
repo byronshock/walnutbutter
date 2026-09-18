@@ -9,9 +9,9 @@ np = pytest.importorskip("numpy")  # the array engine is optional: without numpy
 pytest.importorskip("scipy")
 
 from walnutbutter.arrays import ArrayNetwork  # noqa: E402
-from walnutbutter.cartesian import CartesianNodes
 from walnutbutter.cli import cli_main
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.constants import ACROSS, GOO_COUNT
+from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher, accuracy, reward, stuck_neurons
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -23,10 +23,10 @@ def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 
 
-def pair(seed=3, **kwargs):
-    """The same mesh twice: one run by objects, one by arrays."""
-    mesh = GridOfNeurons(weight=None, seed=seed, **kwargs)
-    twin = GridOfNeurons(weight=None, seed=seed, **kwargs)
+def pair(seed=3, count=GOO_COUNT, across=ACROSS, **kwargs):
+    """The same network twice: one run by objects, one by arrays."""
+    mesh = Goo(count=count, across=across, weight=None, seed=seed, **kwargs)
+    twin = Goo(count=count, across=across, weight=None, seed=seed, **kwargs)
     return mesh, ArrayNetwork(twin)
 
 
@@ -56,10 +56,10 @@ def rates(grid) -> np.ndarray:
 
 
 def test_wrapping_copies_the_mesh_exactly():
-    mesh = GridOfNeurons(weight=None, seed=1)
+    mesh = Goo(count=GOO_COUNT, across=ACROSS, weight=None, seed=1)
     mesh.use_ecc(False)
     net = ArrayNetwork(mesh)
-    assert net.across == 8 and net.rows == 10 and len(net) == 80 and len(net.weight) == len(mesh.connections)
+    assert net.across == 8 and len(net) == GOO_COUNT and len(net.weight) == len(mesh.connections)
     assert net.permutation == mesh.permutation and net.seed == 1
     assert np.array_equal(weights(net), weights(mesh))
     assert [net.neurons_list[i].name for i in net.input_index] == [n.name for n in mesh.input_row()]
@@ -121,9 +121,9 @@ def test_the_count_hebb_eligibility_moves_both_engines_identically():
 
 
 def test_the_decoded_critics_agree_on_a_hamming_mesh():
-    mesh = GridOfNeurons(across=14, rows=6, weight=None, seed=2)
+    mesh = Goo(count=84, across=14, weight=None, seed=2)
     mesh.use_ecc()
-    twin = GridOfNeurons(across=14, rows=6, weight=None, seed=2)
+    twin = Goo(count=84, across=14, weight=None, seed=2)
     twin.use_ecc()
     net = ArrayNetwork(twin)
     for critic in ("row", "decoded", "decoded-exact"):
@@ -133,7 +133,7 @@ def test_the_decoded_critics_agree_on_a_hamming_mesh():
 
 
 def test_carry_over_keeps_the_same_potentials_within_rounding():
-    mesh, net = pair(seed=9, across=6, rows=4)
+    mesh, net = pair(seed=9, count=24, across=6)
     for _ in range(30):
         run_epoch(mesh, verbose=False, discharge=False)
         run_epoch(net, verbose=False, discharge=False)
@@ -142,11 +142,11 @@ def test_carry_over_keeps_the_same_potentials_within_rounding():
 
 
 def test_an_inactive_connection_carries_nothing_in_either_engine():
-    a = GridOfNeurons(weight=1.0, seed=4, across=6, rows=4, omega=0)
-    b = GridOfNeurons(weight=1.0, seed=4, across=6, rows=4, omega=0)
+    a = Goo(count=24, across=6, weight=1.0, seed=4)
+    b = Goo(count=24, across=6, weight=1.0, seed=4)
     for g in (a, b):
-        for c in g.get_neuron_at(0, 3).outgoing:
-            c.is_active = False  # the bottom-left neuron is cut off from everyone
+        for c in g.get_neuron_at(0, 1).outgoing:
+            c.is_active = False  # the first input neuron is cut off from everyone
     net = ArrayNetwork(b)
     a.set_input([True] + [False] * 5)
     net.set_input([True] + [False] * 5)
@@ -156,21 +156,9 @@ def test_an_inactive_connection_carries_nothing_in_either_engine():
     assert sum(w >= 0 for w in fired_waves(net)) == 1  # only the forced neuron fired
 
 
-def test_the_lattice_runs_on_arrays_too():
-    a = CartesianNodes(across=6, rows=5, seed=3)
-    a.connect_within(reach=2.0, weight=None)
-    b = CartesianNodes(across=6, rows=5, seed=3)
-    b.connect_within(reach=2.0, weight=None)
-    net = ArrayNetwork(b)
-    ta, tb = Teacher(a, seed=1), Teacher(net, seed=1)
-    for _ in range(40):
-        assert ta.epoch(verbose=False) == tb.epoch(verbose=False)
-        assert fired_waves(net) == fired_waves(a)
-    assert np.allclose(weights(net), weights(a), atol=1e-12)
-
 
 def test_checkpoints_cross_between_engines(tmp_path):
-    mesh, net = pair(seed=11, across=6, rows=4)
+    mesh, net = pair(seed=11, count=24, across=6)
     teacher = Teacher(net, seed=2)
     for _ in range(20):
         teacher.epoch(verbose=False)
@@ -194,7 +182,7 @@ def test_checkpoints_cross_between_engines(tmp_path):
 
 
 def test_fired_neurons_and_accuracy_read_through_the_mesh():
-    _, net = pair(seed=6, across=6, rows=4)
+    _, net = pair(seed=6, count=24, across=6)
     run_epoch(net, verbose=False)
     fired = net.fired_neurons()
     assert fired and all(n.has_fired for n in fired)
@@ -222,13 +210,13 @@ def test_cli_engine_arrays_seed_batch_and_lattice(tmp_path, capsys):
     assert cli_main(["--engine", "arrays", "--seeds", "2", "--seed", "1", "--epochs", "20", "--no-save"]) == 0
     out = capsys.readouterr().out
     assert out.count("%") >= 4  # two rows of two percentages
-    assert cli_main(["--engine", "arrays", "--nodes", "--headless", "--epochs", "10", "--no-save"]) == 0
+    assert cli_main(["--engine", "arrays", "--headless", "--epochs", "10", "--no-save"]) == 0
     assert "engine: arrays" in capsys.readouterr().err
 
 
 def test_arrays_are_much_faster_on_a_big_mesh():
     import time
-    mesh, net = pair(seed=1, across=24, rows=20)
+    mesh, net = pair(seed=1, count=480, across=24)
     ta, tb = Teacher(mesh, seed=1), Teacher(net, seed=1)
     def rate(t, n):
         t0 = time.perf_counter()
@@ -238,18 +226,3 @@ def test_arrays_are_much_faster_on_a_big_mesh():
     objects, arrays = rate(ta, 20), rate(tb, 200)
     assert arrays > objects  # a loose bound: the point is that it is not slower
 
-
-def test_the_visualizer_draws_an_array_network_through_its_mesh(tmp_path, monkeypatch):
-    pytest.importorskip("pygame")
-    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
-    from walnutbutter import visualizer as viz
-
-    _, net = pair(seed=6, across=6, rows=4)
-    teacher = Teacher(net, seed=1)
-    teacher.epoch(verbose=False)
-    path = tmp_path / "arrays.png"
-    viz.save(net, str(path), 200, 150)
-    assert path.exists() and path.stat().st_size > 0
-    text = viz.caption(net, teacher)
-    assert "fired" in text and "teaching" in text
-    assert [n.has_fired for n in net.mesh.all_neurons()] == [w >= 0 for w in net.fired_wave.tolist()]

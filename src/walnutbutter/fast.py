@@ -43,15 +43,15 @@ def _require():
     return _rust
 
 
-def flatten(grid):
-    """The grid as parallel arrays: neuron order and, within each neuron, `outgoing` order.
+def flatten(network):
+    """The network as parallel arrays: neuron order and, within each neuron, `outgoing` order.
 
     The edge order matters and is not arbitrary. Signals due at the same moment are taken
     in the order they were pushed, and the object engine pushes a firing neuron's
     outgoing connections in `neuron.outgoing` order, so an engine that pushes them in a
     different order sums a wave's input in a different order and lands on different bits.
     """
-    neurons = list(grid.all_neurons())
+    neurons = list(network.all_neurons())
     index = {neuron: i for i, neuron in enumerate(neurons)}
     source, target, weight, active = [], [], [], []
     for neuron in neurons:
@@ -63,9 +63,9 @@ def flatten(grid):
     return neurons, index, source, target, weight, active
 
 
-def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=SYNAPSE_TAU,
+def build(network, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=SYNAPSE_TAU,
           weight_range=WEIGHT_RANGE, earn=False, sigma=0.0, explore_rng=None):
-    """An Engine carrying this grid's topology and state, ready to run epochs.
+    """An Engine carrying this network's topology and state, ready to run epochs.
 
     With `sigma` > 0 the engine draws exploration noise per wave (§6.1), and
     `explore_rng` -- a `random.Random` -- is the stream it draws from: its
@@ -73,7 +73,7 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
     two engines given the same stream take the same draws in the same order.
     """
     rust = _require()
-    neurons, index, source, target, weight, active = flatten(grid)
+    neurons, index, source, target, weight, active = flatten(network)
     engine = rust.Engine(
         len(neurons), source, target, weight, active,
         [n.threshold for n in neurons], [n.minimum_potential for n in neurons],
@@ -89,10 +89,10 @@ def build(grid, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=S
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
     engine.set_isi_factor(bool(Neuron.isi_factor), Neuron.target_isi)  # §0.2: every charge weighed by the ISI factor
-    # the single-spike rule (§6.7): the centred rule when the grid runs it, and each neuron's expectation and decisions
+    # the single-spike rule (§6.7): the centred rule when the network runs it, and each neuron's expectation and decisions
     # to date, so a resumed run charges from where it was; the traces, notes and expected counts start at zero with
     # the traces, as the engine holds no signal in a potential yet
-    engine.set_centred(bool(getattr(grid, "centred", False)), DECISION_MEMORY)
+    engine.set_centred(bool(getattr(network, "centred", False)), DECISION_MEMORY)
     engine.set_centred_state([float("nan") if n.expectation is None else n.expectation for n in neurons],
                              [n.decisions for n in neurons], [0.0] * len(neurons))
     return engine, neurons, index
@@ -105,36 +105,36 @@ def sync_explore(engine, explore_rng) -> None:
         explore_rng.setstate((3, tuple(state), None))
 
 
-def _outputs_on(engine, grid, out) -> list[bool]:
+def _outputs_on(engine, network, out) -> list[bool]:
     """The read (§4.3) from the engine's arrays: fired this epoch, or the count read's rate against TEACHER_THRESHOLD."""
-    if grid.read == "count":
+    if network.read == "count":
         counts = engine.epoch_spike_counts()
-        per_ms = 1000.0 / grid.interval
-        return [counts[i] * per_ms >= grid.teacher_threshold for i in out]
-    if grid.read == "fired":
+        per_ms = 1000.0 / network.interval
+        return [counts[i] * per_ms >= network.teacher_threshold for i in out]
+    if network.read == "fired":
         fired = engine.fired_this_epoch()
         return [fired[i] for i in out]
-    raise ValueError(f"the Rust loop reads 'fired' or 'count'; {grid.read!r} is read in Python -- use the array engine")
+    raise ValueError(f"the Rust loop reads 'fired' or 'count'; {network.read!r} is read in Python -- use the array engine")
 
 
-def _reward(engine, grid, out, critic, want_of) -> float:
+def _reward(engine, network, out, critic, want_of) -> float:
     """The epoch's reward from the engine's arrays: the row critic against the target, or a label critic (§8)."""
     if critic in ("class", "graded", "evidence"):
         from .learning import class_evidence  # the one function every engine reads the zone through (§8)
         counts = engine.epoch_spike_counts()
-        groups = class_evidence([int(counts[i]) for i in out], grid.population, getattr(grid, "output_coding", "population"))
-        label = grid.input_label
+        groups = class_evidence([int(counts[i]) for i in out], network.population, getattr(network, "output_coding", "population"))
+        label = network.input_label
         if label is None:
             raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")
         if critic == "evidence":
             from .learning import evidence_reward  # the one function every engine pays it through
-            return evidence_reward(groups, label, grid.temperature)
+            return evidence_reward(groups, label, network.temperature)
         others = [g for c, g in enumerate(groups) if c != label]
         if critic == "class":
             return 1.0 if all(groups[label] > g for g in others) else 0.0
         return sum(1 for g in others if groups[label] > g) / len(others)
-    on = _outputs_on(engine, grid, out)
-    want = want_of(grid.target_pattern)
+    on = _outputs_on(engine, network, out)
+    want = want_of(network.target_pattern)
     return sum(1 for o, w in zip(on, want) if o == w) / len(want)
 
 
@@ -198,14 +198,14 @@ class _Thresholds:
         return sum(1 for r in self.rates if r > STUCK_ABOVE), sum(1 for r in self.rates if r < STUCK_BELOW)
 
 
-def compare(grid, epochs=20, bits=None, *, teacher=None):
+def compare(network, epochs=20, bits=None, *, teacher=None):
     """Run `epochs` on the object engine and on the Rust one, and report where they part.
 
     Returns a list of (epoch, what) for every disagreement, empty when the two agree. The
-    grid is left as the object engine ran it; the Rust engine is built from its starting
+    network is left as the object engine ran it; the Rust engine is built from its starting
     state and stepped alongside.
 
-    With a `teacher` (a Teacher on this grid, RULE = reinforce, the row critic, late =
+    With a `teacher` (a Teacher on this network, RULE = reinforce, the row critic, late =
     count, no trace) each epoch is `teacher.epoch()` on the object side and the same
     reward, advantage, §6.7 update, firing-rate memory, homeostasis and un-sticking
     mirrored on the Rust side, so the perturb eligibility and its per-wave draws (§6.1)
@@ -220,17 +220,17 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     if teacher is not None:
         if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence") or teacher.late != "count" or teacher.leaky:
             raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic, late = count and no trace only")
-        if teacher.grid is not grid:
-            raise ValueError("the teacher must be teaching this grid")
+        if teacher.network is not network:
+            raise ValueError("the teacher must be teaching this network")
     engine, neurons, index = build(
-        grid,
-        quash_rate=grid.quash_rate, quash_k=grid.quash_k,
-        hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau,
-        weight_range=grid.weight_range, earn=grid.rule in ("teacher", "adaline") or grid.tally,
+        network,
+        quash_rate=network.quash_rate, quash_k=network.quash_k,
+        hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau,
+        weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline") or network.tally,
         sigma=sigma, explore_rng=teacher.rng if teacher is not None else None,
     )
     edges = [c for neuron in neurons for c in neuron.outgoing]
-    out = [index[neuron] for neuron in grid.output_row()]
+    out = [index[neuron] for neuron in network.output_row()]
     book = None
     if teacher is not None:
         book = _Thresholds(engine, neurons, out, homeostasis=teacher.homeostasis, target_rate=teacher.target_rate,
@@ -239,16 +239,16 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
     parted = []
     for epoch in range(epochs):
         if teacher is None:
-            run_epoch(grid, bits, verbose=False)
+            run_epoch(network, bits, verbose=False)
         else:
             reward = teacher.epoch(bits, verbose=False)
-        engine.reset(False, grid.rule in ("teacher", "adaline") or grid.tally)
-        for place, when in (grid.input_events or []):
-            engine.stimulus(index[grid.input_row()[place]], when)
-        engine.run(grid.horizon)
+        engine.reset(False, network.rule in ("teacher", "adaline") or network.tally)
+        for place, when in (network.input_events or []):
+            engine.stimulus(index[network.input_row()[place]], when)
+        engine.run(network.horizon)
 
         if teacher is not None:
-            mine = _reward(engine, grid, out, teacher.critic, TARGETS[teacher.target])
+            mine = _reward(engine, network, out, teacher.critic, TARGETS[teacher.target])
             if mine != reward:
                 parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
             if baseline is None:
@@ -311,13 +311,13 @@ def compare(grid, epochs=20, bits=None, *, teacher=None):
             parted.append((epoch, f"weights differ by up to {worst:g}"))
         if parted:
             break
-    if not parted and teacher is not None and (sigma > 0.0 or grid.hazard):
+    if not parted and teacher is not None and (sigma > 0.0 or network.hazard):
         if list(engine.explore_state()) != list(teacher.rng.getstate()[1]):
             parted.append((epochs, "the two streams ended in different states: a different number of draws was taken"))
     return parted
 
 
-def benchmark(grid, epochs=200, bits=None):
+def benchmark(network, epochs=200, bits=None):
     """Time the same epochs on whichever engines are available. Returns {engine: seconds}."""
     import time
     from .monitor import run_epoch
@@ -325,41 +325,41 @@ def benchmark(grid, epochs=200, bits=None):
     timings = {}
     started = time.perf_counter()
     for _ in range(epochs):
-        run_epoch(grid, bits, verbose=False)
+        run_epoch(network, bits, verbose=False)
     timings["objects"] = time.perf_counter() - started
 
     if available():
         engine, neurons, index = build(
-            grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
-            hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau,
-            weight_range=grid.weight_range, earn=grid.rule in ("teacher", "adaline"),
+            network, quash_rate=network.quash_rate, quash_k=network.quash_k,
+            hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau,
+            weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline"),
         )
-        row = grid.input_row()
+        row = network.input_row()
         started = time.perf_counter()
         for _ in range(epochs):
-            engine.reset(False, grid.rule in ("teacher", "adaline"))
-            grid.new_random_input()
-            for place, when in grid.input_schedule():
+            engine.reset(False, network.rule in ("teacher", "adaline"))
+            network.new_random_input()
+            for place, when in network.input_schedule():
                 engine.stimulus(index[row[place]], when)
-            engine.run(grid.time + grid.interval)
+            engine.run(network.time + network.interval)
         timings["rust"] = time.perf_counter() - started
     return timings
 
 
-def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
+def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
           unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           direction=None, reference_weights=None, epoch_offset=0):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
-    from the grid's own seeded stream, in the same order the other engines draw them — and
+    from the network's own seeded stream, in the same order the other engines draw them — and
     Rust does the epoch and the weight update. Returns (mean score, trace), where the trace
     is every `trace_every` epochs' score, or empty when that is 0.
 
     `patterns` is a run's inputs, drawn up front by `network.input_stream` and attached
     here (§4.5), so two arms that differ in anything see the same epochs in the same
-    order. Without it the bits come from the grid's own stream, which a differently built
+    order. Without it the bits come from the network's own stream, which a differently built
     network consumes differently.
 
     `eligibility` is hebb (the single-spike rule of §6.7, September 17, 2026: every neuron
@@ -369,18 +369,18 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
     0 too), perturb, which needs a positive `sigma` and draws its noise per wave (§6.1)
     from `random.Random(seed)`, the stream a Teacher with that seed would use, so a Rust
     run and a Python run of the same seed take the same draws, or hazard, which needs the
-    grid to have been given a positive ESCAPE_DELTA (`grid.set_delta`, §5.2) and draws its
+    network to have been given a positive ESCAPE_DELTA (`network.set_delta`, §5.2) and draws its
     decisions from the same stream. The row critic and late = count only.
 
     `critic` is row (the fraction of outputs matching the target), class (§8: the
     label's group of outputs out-spikes every other group, or nothing), graded (the
     fraction of the other groups it out-spikes) or evidence (the group sums as
-    log-odds at `grid.temperature`, paid the softmax cross-entropy); the label critics
+    log-odds at `network.temperature`, paid the softmax cross-entropy); the label critics
     need `labels` beside `patterns`, one per pattern, as `mnist.stream` gives them.
     Under the evidence critic the report also carries the class critic's fraction
     over the last tenth, `accuracy_last_tenth`, so a fraction right stays readable.
 
-    `probe(epoch, engine, grid, out, book)` is called after every `probe_every`-th
+    `probe(epoch, engine, network, out, book)` is called after every `probe_every`-th
     epoch's update, for a diagnostic to read the engine's counts and the rate
     memories as the run goes; it must not change anything.
 
@@ -414,25 +414,25 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         raise ValueError(f"eligibility must be hebb, count_hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
     if eligibility == "perturb" and sigma <= 0.0:
         raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
-    if eligibility == "hazard" and not grid.hazard:
-        raise ValueError("the hazard eligibility needs escape noise: grid.set_delta(ESCAPE_DELTA > 0) first (§5.2)")
+    if eligibility == "hazard" and not network.hazard:
+        raise ValueError("the hazard eligibility needs escape noise: network.set_delta(ESCAPE_DELTA > 0) first (§5.2)")
     sigma = sigma if eligibility == "perturb" else 0.0
-    explore_rng = random.Random(seed) if (sigma > 0.0 or grid.hazard) else None  # the hazard's draws come from it too
+    explore_rng = random.Random(seed) if (sigma > 0.0 or network.hazard) else None  # the hazard's draws come from it too
 
     if critic not in ("row", "class", "graded", "evidence"):
         raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")
     if patterns is not None:
-        grid.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
-    grid.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions, as a Teacher would set
+        network.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
+    network.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions, as a Teacher would set
 
     engine, neurons, index = build(
-        grid, quash_rate=grid.quash_rate, quash_k=grid.quash_k,
-        hebb_rate=grid.hebb_rate, synapse_tau=grid.synapse_tau, weight_range=grid.weight_range,
+        network, quash_rate=network.quash_rate, quash_k=network.quash_k,
+        hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau, weight_range=network.weight_range,
         sigma=sigma, explore_rng=explore_rng, earn=eligibility == "count_hebb",  # the tally of §6.7's epoch form
     )
-    row = grid.output_row()
+    row = network.output_row()
     out = [index[neuron] for neuron in row]
-    places = grid.input_row()
+    places = network.input_row()
     at = [index[neuron] for neuron in places]
     want_of = TARGETS[target]
     book = _Thresholds(engine, neurons, out, homeostasis=homeostasis, target_rate=target_rate, unstick=unstick,
@@ -462,18 +462,18 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
                 return None
             return float(np.corrcoef(x, d_masked)[0, 1])
     for epoch in range(epochs):
-        grid.reset()
-        grid.new_random_input()
-        grid.time = grid.input_time
-        grid.epoch += 1
-        events = grid.input_schedule()
-        grid.horizon = grid.time + grid.interval
+        network.reset()
+        network.new_random_input()
+        network.time = network.input_time
+        network.epoch += 1
+        events = network.input_schedule()
+        network.horizon = network.time + network.interval
         engine.reset(False, eligibility == "count_hebb")  # a new epoch tallies afresh
         if events:
             engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
-        engine.run(grid.horizon)
+        engine.run(network.horizon)
 
-        reward = _reward(engine, grid, out, critic, want_of)
+        reward = _reward(engine, network, out, critic, want_of)
         if baseline is None:
             baseline = reward
         if eligibility in ("hazard", "hebb"):
@@ -490,7 +490,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
         if epoch >= epochs - tenth:
             tail += reward
             if critic == "evidence":  # the fraction right beside the log score: did the label's class win outright?
-                hits += _reward(engine, grid, out, "class", want_of)
+                hits += _reward(engine, network, out, "class", want_of)
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
             if estimator is not None:
@@ -500,7 +500,7 @@ def train(grid, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_eve
                                   "sign_cum": float((np.sign(cum) == np.sign(d_masked)).mean())})
                 w_prev = w
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
-            probe(epoch + 1, engine, grid, out, book)
+            probe(epoch + 1, engine, network, out, book)
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "expected_counts": book.expected, "thresholds": book.thresholds,
               # the single-spike rule's expectations and decisions to date (§6.7), so a continuation charges from where it was

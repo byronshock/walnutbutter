@@ -12,19 +12,15 @@ from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 
-from .butter import CELL_AREA
-from .cartesian import CartesianNodes
-from .columns import HexColumns
 from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
 from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
-from .grid import GridOfNeurons
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, ISI_FACTOR, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
-    MINIMUM_POTENTIAL, OMEGA, PROBLEM, REACH, REFRACTORY, REFRACTORY_HOPS, ROWS, RULE, SIGMA, TARGET, TARGET_RATE,
+    MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, SIGMA, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
     THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
@@ -43,8 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="walnutbutter",
         description=(
-            "A hexagonal mesh of neurons that learns to reproduce its input on its output row. "
-            "By default it opens a window, free-runs, learns, and reports accuracy until you close it."
+            "A goo of neurons that learns to reproduce its input on its output zone (AUTHORITY.md §4.1). "
+            "By default it free-runs, learns, and reports accuracy until interrupted."
         ),
     )
     parser.add_argument(
@@ -60,36 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--across",
         type=int,
         default=None,
-        help=f"number of hexagons across (default: the problem's, {ACROSS} for {PROBLEM}; or twice the code length with --ecc)",
-    )
-    parser.add_argument(
-        "-r",
-        "--rows",
-        type=int,
-        default=ROWS,
-        help=f"number of hexagon rows (default: {ROWS})",
-    )
-    parser.add_argument(
-        "--nodes",
-        type=int,
-        metavar="N",
-        nargs="?",
-        const=0,
-        default=None,
-        help="Cartesian neurons instead of the hex grid: a --across x --rows hexagonal lattice at unit spacing, "
-        "wired by distance (--receptive-field-sigma) and learning like the grid; or with N, that many neurons at "
-        "random in a --across x --rows unit region, just shown",
-    )
-    parser.add_argument(
-        "--layers",
-        type=int,
-        default=None,
-        metavar="N",
-        help="hexagonal columns in R3: the --across x --rows field of cells extruded into N layers, one neuron "
-        "per cell per layer, half a unit apart in the plane and an eighth between layers. Butter within one unit "
-        "horizontally always connects, at any "
-        "height; the rest is --omega shortcuts. The bottom layer is the input and the top layer the output "
-        "(with one layer: bottom row in, top row out, and the stack is the hex grid exactly)",
+        help=f"width of the input zone (default: the problem's, {ACROSS} for {PROBLEM}; or twice the code length with --ecc)",
     )
     parser.add_argument(
         "--goo",
@@ -98,13 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
         const=GOO_COUNT,
         default=None,
         metavar="N",
-        help=f"goo: N neurons with no positions at all, wired by the scaled rule at --scaling-factor, no neighbourhood and no "
-        f"shortcuts (default: {GOO_COUNT}, the working network since September 14, 2026). Goo has its own "
+        help=f"how many neurons the goo has: no positions at all, wired by the scaled rule at --scaling-factor "
+        f"(default: the problem's, else {GOO_COUNT}). Goo has its own "
         f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
-        f"--threshold and --minimum-potential override (a value equal to the grid's default is taken as not given). "
-        f"The first --across neurons are the input zone and the last --across (or the problem's outputs) the output, because with no rows "
-        f"there is nowhere else to put them. --omega, --reach and --rows do not reach it, and there is no geometry "
-        f"to draw, so it cannot be shown",
+        f"--threshold and --minimum-potential override. "
+        f"The first --across neurons are the input zone and the last --across (or the problem's outputs) the "
+        f"output (§4.3). Goo is the only container (§4.1), so this only sets the count",
     )
     parser.add_argument(
         "--hidden-neurons",
@@ -125,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=None,
         help="rescale each neuron's potential axis by its in-degree over THRESHOLD_FAN_IN (AUTHORITY.md §5.2): "
-        "--threshold and --minimum-potential are quoted at an interior hex cell's 18 incoming synapses, so a "
+        "--threshold and --minimum-potential are quoted at THRESHOLD_FAN_IN incoming synapses, so a "
         "neuron with four times the fan-in starts four times as far from zero in both directions. On by default "
         "for goo and off for every other container, because turning it on for the grid would move every "
         "threshold every result to date was measured at",
@@ -184,34 +150,11 @@ def build_parser() -> argparse.ArgumentParser:
         "faster, needs numpy and scipy). A loaded checkpoint keeps its engine unless this is given.",
     )
     parser.add_argument(
-        "--reach",
-        type=float,
-        default=REACH,
-        metavar="UNITS",
-        help=f"with --nodes: a neuron connects to every neuron within this many unit distances "
-        f"(default: {REACH:g}, the two hex rings at unit density)",
-    )
-    parser.add_argument(
-        "--window",
-        type=int,
-        nargs=2,
-        metavar=("WIDTH", "HEIGHT"),
-        default=(800, 600),
-        help="window or image size in pixels (default: 800 600)",
-    )
-    parser.add_argument(
         "-w",
         "--weight",
         type=float,
         default=None,
         help=f"fixed weight for every connection (default: random, uniform between {WEIGHT_RANGE[0]:g} and {WEIGHT_RANGE[1]:g})",
-    )
-    parser.add_argument(
-        "-o",
-        "--omega",
-        type=float,
-        default=OMEGA,
-        help=f"proportion of connections that are small-world shortcuts, 0 to <1 (default: {OMEGA:g})",
     )
     parser.add_argument(
         "-i",
@@ -234,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-permute",
         action="store_true",
-        help="lay the complement-coded bits on the bottom row in order instead of scrambling them",
+        help="lay the complement-coded bits on the input zone in order instead of scrambling them",
     )
     parser.add_argument(
         "--positive-weights",
@@ -529,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--target",
         choices=sorted(TARGETS),
         default=TARGET,
-        help=f"what the top row should show, derived from the input row (default: {TARGET})",
+        help=f"what the output zone should show, derived from the input zone (default: {TARGET})",
     )
     parser.add_argument(
         "--late",
@@ -732,12 +675,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--load-weights",
         metavar="FILE",
-        help="start from a checkpoint: rebuilds its mesh (size, omega, seed, permutation) and loads its weights",
-    )
-    parser.add_argument(
-        "--save",
-        metavar="PATH",
-        help="write a picture of the grid to PATH (e.g. grid.png)",
+        help="start from a checkpoint: rebuilds its network (count, wiring, seed, permutation) and loads its weights",
     )
     return parser
 
@@ -746,16 +684,8 @@ def cli_main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code (0 = success)."""
     args = build_parser().parse_args(argv)
     args.given_rule = args.rule  # what --rule said, if anything: it outlives a checkpoint's problem
-    # a seed batch is headless by definition, and so is goo: it has no positions, so there is nothing to draw
-    args.show = not args.headless and args.seeds is None and args.goo is None
-    args.fast = args.show and not args.step
-    if args.goo is not None and args.save:
-        print("error: goo has no geometry to draw, so --save has no picture to write", file=sys.stderr)
-        return 2
-    if args.goo is not None and (args.nodes is not None or args.layers is not None):
-        other = "--nodes" if args.nodes is not None else "--layers"
-        print(f"error: --goo is a container of its own; it cannot be combined with {other}", file=sys.stderr)
-        return 2
+    # goo has no positions, so there is nothing to draw: every run is headless (§4.1)
+    args.show = args.fast = False
     try:
         apply_problem(args)
     except ValueError as exc:
@@ -846,7 +776,7 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read = problem.read  # --read overrides what the problem asks for
     if args.read == "window" and args.read_window is None:
         args.read_window = READ_WINDOW
-    args.grid_reach, args.input_cells = problem.reach, problem.input_cells
+    args.input_cells = problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
     if args.outputs is None:
         args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8), unless --outputs
@@ -854,18 +784,16 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.data = problem.data  # a dataset the inputs and their labels come from (§4.5, §8)
     if args.hidden_neurons is None:
         args.hidden_neurons = problem.hidden_neurons  # the problem's hidden count, unless --hidden-neurons was given (§8)
-    if args.goo is None and args.hidden_neurons is not None and args.nodes is None and not args.layers:
+    if args.goo is None and args.hidden_neurons is not None:
         args.goo = args.across + args.hidden_neurons + (args.outputs or args.across)  # inputs + hidden + outputs
-    if args.goo is None and problem.goo is not None and args.nodes is None and not args.layers:
-        args.goo = problem.goo  # the problem is posed on goo of this many neurons unless a grid was asked for
-    if args.rows == ROWS and problem.rows != ROWS:
-        args.rows = problem.rows  # the problem's rows, unless --rows was given (a value equal to the default is taken as not given)
+    if args.goo is None:
+        args.goo = problem.goo if problem.goo is not None else GOO_COUNT  # goo is the only container (§4.1)
 
 
 def apply_container(args: argparse.Namespace) -> None:
     """Goo's own threshold and floor (AUTHORITY.md §1.2) unless --threshold or --minimum-potential was given.
 
-    A value equal to the grid's default is taken as not given, as --rows is;
+    A value equal to the default is taken as not given;
     the sweep driver, which knows what an arm swept, decides for itself.
     """
     if args.goo is None:
@@ -878,23 +806,8 @@ def apply_container(args: argparse.Namespace) -> None:
 
 def _run(args: argparse.Namespace) -> int:
     try:
-        if args.show or args.save:
-            try:
-                from . import visualizer
-            except ImportError:
-                print(
-                    "error: the visualizer needs pygame; install it with: pip install -e '.[viz]'",
-                    file=sys.stderr,
-                )
-                return 2
-        width, height = args.window
-        if args.nodes is not None and args.nodes < 0:
-            print(f"error: --nodes cannot be negative, got {args.nodes}", file=sys.stderr)
-            return 2
-        if args.nodes is not None and args.nodes > 0:
-            return _run_nodes(args, width, height)  # a random scatter: shown, not learnable (no rows)
         if args.seeds is not None:
-            return _run_seeds(args)  # grid, or the lattice with bare --nodes
+            return _run_seeds(args)
         loaded = None
         if args.load_weights:
             try:
@@ -904,15 +817,13 @@ def _run(args: argparse.Namespace) -> int:
                 return 2
             grid_from_file, data = loaded
             args.seed = data["seed"]
-            args.across, args.rows, args.omega = across_of(data), data["rows"], data["omega"]
+            args.across = across_of(data)
             if data.get("problem") and data["problem"] != args.problem:
                 args.problem = data["problem"]
                 args.interval = None if PROBLEMS[args.problem].interval is not None else args.interval
                 args.rule = args.given_rule  # --rule if it was given, else the problem's
                 apply_problem(args)
                 print(f"problem: {args.problem} (from the checkpoint)", file=sys.stderr)
-            if data.get("container") == "lattice":
-                args.nodes = 0
             args.ecc = _ecc_from_checkpoint(data)
             args.threshold = data["threshold"]
             args.minimum_potential = data.get("minimum_potential", -1.0)
@@ -920,7 +831,7 @@ def _run(args: argparse.Namespace) -> int:
             low, high = data.get("weight_range", (-1.0, 1.0))
             args.positive_weights, args.epsilon = low > 0, low
             print(
-                f"loaded {args.load_weights}: {args.across}x{args.rows}, seed {args.seed}, "
+                f"loaded {args.load_weights}: {args.across} across, seed {args.seed}, "
                 f"{data['epoch']:,} epochs so far",
                 file=sys.stderr,
             )
@@ -933,11 +844,9 @@ def _run(args: argparse.Namespace) -> int:
             print(f"checkpointing to {args.save_weights}", file=sys.stderr)
         settings = dict(
             across=args.across,
-            rows=args.rows,
             weight=args.weight,
             threshold=args.threshold,
             seed=seed,
-            omega=args.omega,
             permute=not args.no_permute,
             weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
             minimum_potential=args.minimum_potential,
@@ -950,14 +859,14 @@ def _run(args: argparse.Namespace) -> int:
             return 2
         if args.positive_weights:
             print(f"positive weights: every weight kept between {args.epsilon:g} and 1", file=sys.stderr)
-        if args.weight is None or args.omega > 0 or args.input is None:
+        if args.weight is None or args.input is None:
             print(f"seed {seed}", file=sys.stderr)
 
         try:
             input_bits = parse_bits(args.input) if args.input is not None else None
             if loaded:
                 grid, data = loaded
-            elif args.goo is not None:
+            else:
                 if args.hidden_neurons is not None and (args.hidden_neurons < 0 or args.goo != args.across + args.hidden_neurons + (args.outputs or args.across)):
                     print(f"error: --hidden-neurons {args.hidden_neurons} with {args.across} in and {args.outputs or args.across} "
                           f"out is a goo of {args.across + args.hidden_neurons + (args.outputs or args.across)}, not --goo {args.goo}",
@@ -1002,31 +911,6 @@ def _run(args: argparse.Namespace) -> int:
                         f"fan-in scaling off: a flat threshold {edge.threshold:g} and floor {edge.minimum_potential:g}",
                         file=sys.stderr,
                     )
-            elif args.layers is not None:
-                if args.layers < 1:
-                    print(f"error: --layers needs at least 1, got {args.layers}", file=sys.stderr)
-                    return 2
-                grid = HexColumns(layers=args.layers, **settings)
-                print(f"{grid!r}: input {len(grid.input_row())} neurons, output {len(grid.output_row())}", file=sys.stderr)
-            elif args.nodes is not None:
-                if args.reach < 0:
-                    print(f"error: --reach must not be negative, got {args.reach}", file=sys.stderr)
-                    return 2
-                grid = CartesianNodes(
-                    across=args.across, rows=args.rows, seed=seed, threshold=args.threshold,
-                    minimum_potential=args.minimum_potential, permute=not args.no_permute,
-                    weight_range=settings["weight_range"],
-                )
-                grid.connect_within(reach=args.reach, weight=args.weight)
-            else:
-                grid = GridOfNeurons(**settings, reach=args.grid_reach)
-            if args.scale_with_fan_in and args.goo is None and not loaded:
-                grid.scale_with_fan_in(args.threshold, args.minimum_potential)
-                print(
-                    f"fan-in scaling (§5.2): every threshold and floor rescaled by in-degree / "
-                    f"{THRESHOLD_FAN_IN:g}",
-                    file=sys.stderr,
-                )
             if args.input_cells and not loaded:
                 grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
@@ -1089,16 +973,9 @@ def _run(args: argparse.Namespace) -> int:
                     f"-> {2 * code.code_bits} across",
                     file=sys.stderr,
                 )
-            if isinstance(grid, CartesianNodes):
-                print(
-                    f"{grid!r}, wired: {len(grid.connections)} one-way connections, every pair within "
-                    f"{grid.reach:g} units ({grid.mean_out_degree():.1f} per neuron)",
-                    file=sys.stderr,
-                )
             if not args.no_permute or loaded:
                 laid = "coded" if grid.coding == "complement" else "raw"
-                where = "the input zone" if isinstance(getattr(grid, "mesh", grid), Goo) else "the bottom row"
-                print(f"input permutation: place i along {where} shows {laid} bit {grid.permutation}", file=sys.stderr)
+                print(f"input permutation: place i along the input zone shows {laid} bit {grid.permutation}", file=sys.stderr)
             if args.rule != "reinforce":
                 grid.rule = args.rule
                 if grid.dopamine is None:  # a loaded checkpoint brings its own pool
@@ -1176,40 +1053,26 @@ def _run(args: argparse.Namespace) -> int:
             def save_checkpoint():
                 if args.save_weights:
                     checkpoint(grid, args.save_weights, teacher)
-            if args.show:
-                # Free-running: the system runs and learns on its own and the window monitors it.
-                # --step: nothing happens until Space is pressed.
-                visualizer.show(
-                    grid, width, height, fast=args.fast, teacher=teacher, report_seconds=args.report,
-                    on_report=save_checkpoint, noise=None if teacher else args.sigma, rng=None if teacher else explore,
-                )
-            else:
-                report_every = max(1, args.epochs // 10)
-                started = time.perf_counter()
-                for epoch in range(2, args.epochs + 1):
-                    if teacher:
-                        teacher.epoch(verbose=Neuron.verbose)  # silent unless --verbose: printing is slower than learning
-                        if epoch % report_every == 0 or epoch == args.epochs:
-                            elapsed = time.perf_counter() - started
-                            teacher.record(elapsed, (epoch - 1) / elapsed if elapsed else None)
-                            print(f"epoch {epoch}: {teacher.status()}", file=sys.stderr)
-                            save_checkpoint()
-                    else:
-                        run_epoch(grid, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
-                        if epoch % report_every == 0 or epoch == args.epochs:
-                            print(f"epoch {epoch}: {health(grid)}", file=sys.stderr)
-                            save_checkpoint()
+
+            report_every = max(1, args.epochs // 10)
+            started = time.perf_counter()
+            for epoch in range(2, args.epochs + 1):
+                if teacher:
+                    teacher.epoch(verbose=Neuron.verbose)  # silent unless --verbose: printing is slower than learning
+                    if epoch % report_every == 0 or epoch == args.epochs:
+                        elapsed = time.perf_counter() - started
+                        teacher.record(elapsed, (epoch - 1) / elapsed if elapsed else None)
+                        print(f"epoch {epoch}: {teacher.status()}", file=sys.stderr)
+                        save_checkpoint()
+                else:
+                    run_epoch(grid, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
+                    if epoch % report_every == 0 or epoch == args.epochs:
+                        print(f"epoch {epoch}: {health(grid)}", file=sys.stderr)
+                        save_checkpoint()
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 
-        mesh = getattr(grid, "mesh", grid)
-        if args.omega > 0 and not isinstance(mesh, (CartesianNodes, Goo)):
-            print(
-                f"omega {args.omega:g}: {len(mesh.small_world_connections())} small-world "
-                f"connections among {len(mesh.connections)}",
-                file=sys.stderr,
-            )
         if teacher:
             teacher.close_trace()
             print(f"after {teacher.epochs} epochs: {teacher.status()}", file=sys.stderr)
@@ -1223,9 +1086,6 @@ def _run(args: argparse.Namespace) -> int:
             f"{len(grid.fired_neurons())} of {len(grid.neurons)} neurons fired in {len(grid.waves)} waves",
             file=sys.stderr,
         )
-        if args.save:
-            visualizer.save(grid, args.save, width, height)
-            print(f"Saved {args.save}", file=sys.stderr)
     except KeyboardInterrupt:
         # Ctrl+C is the normal way to stop, so exit cleanly rather than with a traceback.
         print("\nStopped.", file=sys.stderr)
@@ -1240,47 +1100,6 @@ def health(grid) -> str:
         line += f", {grid.dopamine.status()}"
     return line
 
-
-def _run_nodes(args: argparse.Namespace, width: int, height: int) -> int:
-    """--nodes [N]: place a Cartesian population and show it. No wiring, input or learning yet."""
-    if args.nodes < 0:
-        print(f"error: --nodes cannot be negative, got {args.nodes}", file=sys.stderr)
-        return 2
-    seed = args.seed if args.seed is not None else random.randrange(2**31)
-    common = dict(across=args.across, rows=args.rows, seed=seed, threshold=args.threshold,
-                  minimum_potential=args.minimum_potential)
-    print(f"seed {seed}", file=sys.stderr)
-    if args.nodes == 0:
-        nodes = CartesianNodes(layout="hex", **common)
-        print(f"{nodes!r}", file=sys.stderr)
-    else:
-        nodes = CartesianNodes(layout="random", count=args.nodes, **common)
-        print(f"{nodes!r} ({len(nodes) * CELL_AREA / (nodes.width * nodes.height):.2f} per unit cell)", file=sys.stderr)
-    if args.reach < 0:
-        print(f"error: --reach must not be negative, got {args.reach}", file=sys.stderr)
-        return 2
-    made = nodes.connect_within(reach=args.reach, weight=args.weight)
-    print(
-        f"wired: {made} one-way connections, {nodes.mean_out_degree():.1f} outgoing per neuron, every pair within "
-        f"{args.reach:g} units; input and learning are not defined for a scatter (it has no rows)",
-        file=sys.stderr,
-    )
-    if args.save or args.show:
-        try:
-            from . import visualizer
-        except ImportError:
-            print("error: the visualizer needs pygame; install it with: pip install -e '.[viz]'", file=sys.stderr)
-            return 2
-        if args.save:
-            visualizer.save_nodes(nodes, args.save, width, height)
-            print(f"Saved {args.save}", file=sys.stderr)
-        if args.show:
-            visualizer.show_nodes(nodes, width, height)
-    else:
-        for neuron in nodes:
-            x, y = neuron.position
-            print(f"{neuron.name}: ({x:+.3f}, {y:+.3f})")
-    return 0
 
 
 def _wiring_summary(grid: Goo) -> str:
@@ -1306,32 +1125,15 @@ def _seed_worker(job: dict) -> dict:
     """One seed's headless run, in its own process. Returns a summary row."""
     Neuron.verbose = False
     seed, epochs = job["seed"], job["epochs"]
-    if job.get("goo") is not None:
-        settings = job["settings"]
-        grid = Goo(
-            count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
-            seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
-            minimum_potential=settings["minimum_potential"],
-            scale_with_fan_in=job.get("scale_with_fan_in") is not False,
-            projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
-            wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
-        )
-    elif job.get("lattice"):
-        settings = job["settings"]
-        grid = CartesianNodes(
-            across=settings["across"], rows=settings["rows"], seed=seed, threshold=settings["threshold"],
-            minimum_potential=settings["minimum_potential"], permute=settings["permute"],
-            weight_range=settings["weight_range"],
-        )
-        grid.connect_within(reach=job["lattice"]["reach"], weight=settings["weight"])
-    elif not job.get("layers"):
-        grid = GridOfNeurons(**job["settings"], seed=seed, reach=job.get("grid_reach", 2))
-        if job.get("input_cells"):
-            grid.set_input_cells(job["input_cells"])
-    if job.get("layers") and job.get("goo") is None:
-        grid = HexColumns(layers=job["layers"], **job["settings"], seed=seed)
-    if job.get("scale_with_fan_in") and job.get("goo") is None:
-        grid.scale_with_fan_in(job["settings"]["threshold"], job["settings"]["minimum_potential"])
+    settings = job["settings"]
+    grid = Goo(
+        count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
+        seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
+        minimum_potential=settings["minimum_potential"],
+        scale_with_fan_in=job.get("scale_with_fan_in") is not False,
+        projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
+        wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
+    )
     if job.get("ecc"):
         grid.use_ecc(job["ecc"])
     Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
@@ -1400,10 +1202,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     settings = dict(
         across=args.across,
-        rows=args.rows,
         weight=args.weight,
         threshold=args.threshold,
-        omega=args.omega,
         permute=not args.no_permute,
         weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
@@ -1439,14 +1239,13 @@ def _run_seeds(args: argparse.Namespace) -> int:
             if args.save_weights and args.seeds > 1:
                 save = str(Path(args.save_weights).with_suffix("")) + f"-seed{seed}.json"
             Path(save).parent.mkdir(parents=True, exist_ok=True)
-        lattice = {"reach": args.reach} if args.nodes is not None else None
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
-                     "save": save, "lattice": lattice, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "save": save, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
                      "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
-                     "layers": args.layers, "refractory": args.refractory, "refractory_hops": args.refractory_hops,
+                     "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
-                     "tau": args.tau, "isi_factor": args.isi_factor, "grid_reach": args.grid_reach, "input_cells": args.input_cells,
+                     "tau": args.tau, "isi_factor": args.isi_factor, "input_cells": args.input_cells,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,
@@ -1463,17 +1262,12 @@ def _run_seeds(args: argparse.Namespace) -> int:
             print("error: the array engine needs numpy and scipy; install them with: pip install -e '.[arrays]'", file=sys.stderr)
             return 2
     workers = max(1, min(args.seeds, (os.cpu_count() or 2) - 1))
-    wiring = (f"lattice, reach {args.reach:g}" if args.nodes is not None
-              else f"{args.layers} layers of hexagonal columns, omega {args.omega:g}" if args.layers
-              else f"hex grid, omega {args.omega:g}")
-    shape = f"{args.across}x{args.rows} {wiring}"
-    if args.goo is not None:
-        density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
-                   else f"at projection {args.projection:g} under the {args.wiring} wiring")
-        hidden = args.goo - args.across - (args.outputs or args.across)
-        shape = f"{args.goo} neurons of goo {density}, {args.across} in, {hidden} hidden and {args.outputs or args.across} out"
+    density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
+               else f"at projection {args.projection:g} under the {args.wiring} wiring")
+    hidden = args.goo - args.across - (args.outputs or args.across)
+    shape = f"{args.goo} neurons of goo {density}, {args.across} in, {hidden} hidden and {args.outputs or args.across} out"
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)
-    scaled = args.scale_with_fan_in is not False if args.goo is not None else bool(args.scale_with_fan_in)
+    scaled = args.scale_with_fan_in is not False
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
     shape += f", {args.rule} rule" + (f" with the {args.eligibility} eligibility" if args.rule == "reinforce" else "")
     shape += f", escape delta {args.delta:g}" if args.delta else ""

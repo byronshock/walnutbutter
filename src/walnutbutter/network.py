@@ -1,11 +1,11 @@
-"""What every container of neurons shares: an input row, an output row, epochs and the schedule.
+"""What a container of neurons provides: an input zone, an output zone, epochs and the schedule.
 
-A network has `across` x `rows` addressable positions (`get_neuron_at(place,
-row)`, row 0 at the top), a bottom row that receives the complement-coded and
-permuted input pattern, a top row that is read as the output, and the epoch
-machinery: reset, present an input at a time, run the schedule to the next
-input's time (AUTHORITY.md §4.2). The hex mesh and the Cartesian lattice both
-build on this; the learning code works on either.
+A network addresses its two zones by place (`get_neuron_at(place, 1)` is the
+input zone and `get_neuron_at(place, 0)` the output zone, AUTHORITY.md §4.3):
+the input zone receives the complement-coded and permuted input pattern, the
+output zone is read as the output, and the epoch machinery resets, presents an
+input at a time and runs the schedule to the next input's time (§4.2). Goo is
+the only container (§4.1) and builds on this.
 """
 
 from __future__ import annotations
@@ -68,11 +68,11 @@ class Network:
             raise ValueError(f"weight range must run from low to high, got {weight_range}")
         self.weight_range = (float(low), float(high))
         self.waves: list[Wave] = []  # Waves of the most recent propagation
-        self.input_pattern: list[bool] | None = None  # one bit per place along the bottom row: what is forced
+        self.input_pattern: list[bool] | None = None  # one bit per place in the input zone: what is forced
         self.target_pattern: list[bool] | None = None  # the clean pattern the read is scored against, before any flips (§4.3)
         self.input_bits: list[bool] | None = None  # the raw bits before complement coding
         self.input_coded: list[bool] | None = None  # the complement-coded bits before permutation
-        self.permutation: list[int] = list(range(across))  # place i along the bottom row shows coded bit permutation[i]
+        self.permutation: list[int] = list(range(across))  # place i in the input zone shows coded bit permutation[i]
         self.input_stream: list[list[bool]] | None = None  # raw-bit patterns to present in order, in place of fresh
         # draws (§4.5); None draws from the network's own stream, as it always did
         self.input_at = 0  # how far through that stream the run has got
@@ -101,7 +101,7 @@ class Network:
         # the x_ij of the count_hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
         self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
         # the single-spike rule). A Teacher with that eligibility switches it on, in whichever engine (centre)
-        self.readout = "top"  # what is read as the output: the top row, or "input" (the inputs are the outputs)
+        self.readout = "top"  # what is read as the output: the output zone, or "input" (the inputs are the outputs)
         self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
@@ -117,7 +117,7 @@ class Network:
         self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
         self.input_events: list[tuple[int, float]] | None = None  # the (place, time) stimuli this epoch actually used;
         # input_schedule() draws afresh under rate drive, so this is what to read to see what happened
-        self.input_cells: list[tuple[int, int]] | None = None  # an input zone, (place, row) cells, in place of the bottom row
+        self.input_cells: list[tuple[int, int]] | None = None  # an input zone given explicitly, (place, row) cells
         self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
@@ -193,9 +193,9 @@ class Network:
         """Rescale each neuron's potential axis by its in-degree (AUTHORITY.md §5.2).
 
         THRESHOLD and MINIMUM_POTENTIAL are quoted at `reference` incoming
-        synapses -- an interior hex cell's two rings -- so a neuron wired like
-        that cell keeps 0.25 and -1 exactly and one with four times the fan-in
-        starts four times as far from zero in both directions.
+        synapses (§4.11), so a neuron wired at that in-degree keeps 0.25 and -1
+        exactly and one with four times the fan-in starts four times as far
+        from zero in both directions.
 
         The floor moves with the threshold because it is not a second
         decision: the two are points on one axis and it is the axis being
@@ -225,13 +225,13 @@ class Network:
     # --- input ------------------------------------------------------------
 
     def input_row(self) -> list[Neuron]:
-        """The network's input neurons in order: the bottom row, left to right, or the input zone if one is set."""
+        """The network's input neurons in order: the input zone, by place."""
         if self.input_cells is not None:
             return [self.get_neuron_at(place, row) for place, row in self.input_cells]
         return [self.get_neuron_at(place, self.rows - 1) for place in range(self.across)]
 
     def set_input_cells(self, cells) -> None:
-        """Put the input on these (place, row) cells instead of the bottom row; the permutation resets to the identity."""
+        """Put the input on these (place, row) cells instead of the input zone; the permutation resets to the identity."""
         cells = [(int(place), int(row)) for place, row in cells]
         for place, row in cells:
             if self.get_neuron_at(place, row) is None:
@@ -240,11 +240,11 @@ class Network:
         self.permutation = list(range(len(cells)))
 
     def output_width(self) -> int:
-        """How many neurons are read as the output: the count across, unless a container's output zone is another width (goo, §3.4)."""
+        """How many neurons are read as the output: the count across, unless the output zone is another width (§4.3)."""
         return self.across
 
     def output_row(self) -> list[Neuron]:
-        """The network's output, left to right: the top row, or the input row when the inputs are the outputs."""
+        """The network's output, by place: the output zone, or the input zone when the inputs are the outputs."""
         if self.readout == "input":
             return self.input_row()
         return [self.get_neuron_at(place, 0) for place in range(self.output_width())]
@@ -370,7 +370,7 @@ class Network:
 
         Without ecc the raw bits number half the count across. With ecc they are
         the 4 data bits, encoded to 7 before complement coding fills 14 places.
-        Place i along the bottom row receives coded bit permutation[i].
+        Place i in the input zone receives coded bit permutation[i].
         """
         bits = [bool(b) for b in bits]
         wanted = self.raw_bit_count()

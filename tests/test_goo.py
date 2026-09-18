@@ -1,4 +1,4 @@
-"""Goo: the fourth container, with the plane taken away (AUTHORITY.md §3.4)."""
+"""Goo: the only container, with the plane taken away (AUTHORITY.md §4.1)."""
 
 import json
 import pathlib
@@ -89,7 +89,7 @@ def test_a_goo_checkpoint_round_trips_from_its_count_alone():
     for _ in range(5):
         run_epoch(goo, verbose=False)
     data = checkpoint(goo, "goo.json")
-    assert data["container"] == "goo" and data["count"] == 24 and data["shortcuts"] == []
+    assert data["container"] == "goo" and data["count"] == 24
     back, _ = restore("goo.json")
     assert isinstance(back, Goo) and wiring(back) == wiring(goo)
     assert [back.connections[i].weight for i in range(1, 25)] == [goo.connections[i].weight for i in range(1, 25)]
@@ -113,22 +113,12 @@ def test_goo_restores_without_a_seed_because_no_draw_chose_its_wiring():
 
 
 
-def test_goo_is_headless_and_has_no_picture_to_save(capsys):
+def test_goo_is_headless(capsys):
+    """§4.1: goo has no positions, so there is nothing to draw and every run is headless."""
     assert cli_main(["--goo", "--epochs", "2", "--seed", "1", "--no-save"]) == 0  # no --headless, and no window opens
-    assert cli_main(["--goo", "--save", "goo.png", "--epochs", "2", "--no-save"]) == 2
-    assert "no geometry to draw" in capsys.readouterr().err
 
 
 
-
-def test_goo_is_a_container_of_its_own_and_will_not_be_mixed_with_another(capsys):
-    assert cli_main(["--goo", "--nodes", "--headless", "--epochs", "2", "--no-save"]) == 2
-    assert "cannot be combined with --nodes" in capsys.readouterr().err
-    assert cli_main(["--goo", "--layers", "3", "--headless", "--epochs", "2", "--no-save"]) == 2
-    assert "cannot be combined with --layers" in capsys.readouterr().err
-
-
-# --- the potential axis scales with fan-in (AUTHORITY.md §5.2) ------------
 
 
 def test_the_scaling_can_be_switched_off_and_then_goo_is_flat():
@@ -138,21 +128,6 @@ def test_the_scaling_can_be_switched_off_and_then_goo_is_flat():
     assert {n.minimum_potential for n in goo.all_neurons()} == {GOO_MINIMUM_POTENTIAL} and GOO_MINIMUM_POTENTIAL == pytest.approx(-0.8)
 
 
-
-def test_the_rule_is_available_to_any_container_and_reads_each_neurons_own_fan_in():
-    """Off by default everywhere but goo, because turning it on moves every threshold results were measured at."""
-    from walnutbutter.grid import GridOfNeurons
-    grid = GridOfNeurons(seed=1, weight=None)
-    assert {n.threshold for n in grid.all_neurons()} == {0.25}  # untouched until asked
-    grid.scale_with_fan_in(0.25, -1.0)
-    degrees = {len(n.incoming) for n in grid.all_neurons()}
-    assert len(degrees) > 1  # a grid is not homogeneous: corners have fewer neighbours than the interior
-    assert len({round(n.threshold, 9) for n in grid.all_neurons()}) == len(degrees)
-    for n in grid.all_neurons():
-        assert n.threshold == pytest.approx(0.25 * len(n.incoming) / THRESHOLD_FAN_IN)
-        assert n.minimum_potential / n.threshold == pytest.approx(-4.0)
-    with pytest.raises(ValueError, match="reference fan-in must be positive"):
-        grid.scale_with_fan_in(0.25, -1.0, reference=0)
 
 
 def test_both_engines_see_the_scaled_axis():
@@ -166,13 +141,6 @@ def test_both_engines_see_the_scaled_axis():
 
 
 
-def test_any_container_can_be_asked_to_scale_from_the_command_line(capsys):
-    assert cli_main(["--scale-with-fan-in", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
-    assert "every threshold and floor rescaled by in-degree / 18" in capsys.readouterr().err
-
-
-
-# --- the count read (AUTHORITY.md §4.3): count, estimate a rate, threshold it ----------
 
 def test_the_count_read_counts_the_epochs_spikes_and_thresholds_the_rate():
     from walnutbutter.constants import TEACHER_THRESHOLD

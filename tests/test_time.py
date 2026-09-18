@@ -5,9 +5,8 @@ import json
 import pytest
 
 from walnutbutter.cli import cli_main
-from walnutbutter.columns import HexColumns
 from walnutbutter import constants as C
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -37,7 +36,7 @@ HOP = 5.0 / 3.0
 
 def test_the_defaults_and_the_horizon(clock):
     assert Neuron.refractory == 5.0 and Neuron.refractory_hops == 3.0 and Neuron.hop() == pytest.approx(HOP)
-    grid = GridOfNeurons(across=4, rows=3, omega=0)
+    grid = Goo(count=12, across=4)
     assert grid.interval == C.INTERVAL == 35.0  # the swept default (§4.2)
     grid.interval = 10.0  # this test is about the horizon's arithmetic, so pin a round number
     assert grid.time == 0.0 and grid.next_time() == 0.0 and grid.horizon == 0.0
@@ -98,7 +97,7 @@ def test_a_tight_loop_sustains_itself(clock):
 
 
 def test_inputs_closer_than_the_refractory_period_are_partly_ignored(clock):
-    grid = GridOfNeurons(across=6, rows=3, weight=None, seed=1, omega=0)
+    grid = Goo(count=18, across=6, weight=None, seed=1)
     grid.interval = 3.0  # inputs every 3 ms: a neuron forced for one input is still refractory for the next
     run_epoch(grid, bits=[True, True, True], verbose=False)
     assert grid.waves[0].time == 0.0 and grid.waves[0].fired == grid.input_neurons()
@@ -110,10 +109,10 @@ def test_inputs_closer_than_the_refractory_period_are_partly_ignored(clock):
 
 
 def test_outputs_carry_the_time_of_their_spike(clock):
-    grid = GridOfNeurons(across=4, rows=2, weight=1.0, omega=0)  # everything fires
+    grid = Goo(count=8, across=4, weight=1.0)  # everything fires
     run_epoch(grid, bits=[True, False], verbose=False, time=7.0)
     times = grid.output_times()
-    assert all(t is not None and t >= 7.0 + HOP - 1e-9 for t in times)  # the top row is one hop from the bottom row
+    assert all(t is None or t >= 7.0 + HOP - 1e-9 for t in times)  # the output zone is at least one hop from the input zone
     grid.reset()
     assert grid.output_times() == [None] * 4
 
@@ -123,7 +122,7 @@ def test_both_engines_keep_the_same_clock(clock):
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=6, rows=4, weight=None, seed=8)
+        grid = Goo(count=24, across=6, weight=None, seed=8)
         grid.interval = 3.0  # refractory periods overlap inputs, so timing matters every wave
         return grid
 
@@ -145,7 +144,7 @@ def test_both_engines_keep_the_same_clock(clock):
 
 
 def test_the_clock_survives_a_checkpoint(tmp_path, clock):
-    grid = GridOfNeurons(across=6, rows=4, weight=None, seed=5)
+    grid = Goo(count=24, across=6, weight=None, seed=5)
     grid.interval = 4.0
     teacher = Teacher(grid, seed=1)  # the dopamine rule: the pool and the synapse stamps must travel too
     for _ in range(9):
@@ -172,15 +171,6 @@ def test_the_clock_survives_a_checkpoint(tmp_path, clock):
     assert restored.time == grid.time == 36.0
 
 
-def test_columns_run_on_the_same_clock(clock):
-    stack = HexColumns(across=4, rows=3, layers=2, seed=1, omega=0)
-    stack.interval = 2.0
-    bits = [True, False] * 3
-    run_epoch(stack, bits=bits, verbose=False)
-    assert stack.waves[0].fired == stack.input_neurons()
-    run_epoch(stack, bits=bits, verbose=False)  # the same input again, 2 ms later
-    assert stack.time == 2.0 and stack.waves[0].time == 2.0 and stack.waves[0].fired == []  # every forced neuron is still refractory
-
 
 def test_a_bored_neuron_fires_on_its_own_after_its_silence(clock, monkeypatch):
     monkeypatch.setattr(Neuron, "bored_after", 200.0)
@@ -194,9 +184,9 @@ def test_a_bored_neuron_fires_on_its_own_after_its_silence(clock, monkeypatch):
     assert a.threshold_at(1000.0) == 0.25  # off: the threshold is the threshold
     monkeypatch.setattr(Neuron, "bored_after", 200.0)
     # a neuron nobody talks to, in a network: it fires at the first wave after 200 ms, the next input
-    grid = GridOfNeurons(across=4, rows=3, weight=0.0, omega=0)  # weight 0: nothing propagates
+    grid = Goo(count=12, across=4, weight=0.0)  # weight 0: nothing propagates
     grid.interval = 10.0  # this test is about the boredom clock, not the epoch's length
-    lonely = grid.get_neuron_at(1, 1)
+    lonely = grid.all_neurons()[4]  # hidden: in neither zone, so nothing drives it
     for _ in range(21):
         run_epoch(grid, bits=[False, False], verbose=False)  # inputs 10 ms apart: the 21st lands at 200 ms
     assert lonely.spikes == 1 and lonely.fired_at == 200.0  # inputs at 0, 10, ..., the wave at 200 ms fires it
@@ -207,8 +197,8 @@ def test_both_engines_agree_on_bored_neurons(clock, monkeypatch):
     np = pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
     monkeypatch.setattr(Neuron, "bored_after", 60.0)
-    mesh = GridOfNeurons(across=6, rows=4, weight=None, seed=3, threshold=3.0)  # nothing fires but the inputs and the bored
-    net = ArrayNetwork(GridOfNeurons(across=6, rows=4, weight=None, seed=3, threshold=3.0))
+    mesh = Goo(count=24, across=6, weight=None, seed=3, threshold=3.0)  # nothing fires but the inputs and the bored
+    net = ArrayNetwork(Goo(count=24, across=6, weight=None, seed=3, threshold=3.0))
     for _ in range(40):
         run_epoch(mesh, verbose=False)
         run_epoch(net, verbose=False)
@@ -219,20 +209,20 @@ def test_both_engines_agree_on_bored_neurons(clock, monkeypatch):
 
 def test_cli_clock_options_and_validation(tmp_path, capsys):
     save = tmp_path / "t.json"
-    assert cli_main(["--headless", "-a", "6", "-r", "4", "--seed", "1", "--epochs", "5", "--interval", "2.5", "--refractory", "3",
+    assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "5", "--interval", "2.5", "--refractory", "3",
                      "--refractory-hops", "2", "--save-weights", str(save)]) == 0
     data = json.loads(save.read_text())
     assert data["time"] == 10.0 and data["interval"] == 2.5 and data["refractory"] == 3.0 and data["refractory_hops"] == 2.0
-    assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == 2.0 and len(data["last_update"]) == 24
+    assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == 2.0 and len(data["last_update"]) == C.GOO_COUNT
     assert (Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after) == (
         C.REFRACTORY, C.REFRACTORY_HOPS, C.BORED_AFTER)  # restored after the command
-    assert cli_main(["--headless", "-a", "6", "-r", "4", "--seed", "1", "--epochs", "3", "--bored-after", "0", "--no-save"]) == 0
+    assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "3", "--bored-after", "0", "--no-save"]) == 0
     assert cli_main(["--headless", "--bored-after", "-1"]) == 2
-    assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "6", "-r", "4", "--epochs", "5", "--interval", "2", "--no-save"]) == 0
+    assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "6", "--epochs", "5", "--interval", "2", "--no-save"]) == 0
     capsys.readouterr()
     assert cli_main(["--headless", "--refractory", "0"]) == 2
     assert cli_main(["--headless", "--tau", "0"]) == 2
-    assert cli_main(["--headless", "-a", "6", "-r", "4", "--seed", "1", "--epochs", "3", "--tau", "inf", "--no-save"]) == 0
+    assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "3", "--tau", "inf", "--no-save"]) == 0
     assert cli_main(["--headless", "--refractory-hops", "0"]) == 2
     assert cli_main(["--headless", "--interval", "-1"]) == 2
     assert "must be positive" in capsys.readouterr().err

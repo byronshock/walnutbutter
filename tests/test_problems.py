@@ -6,7 +6,7 @@ import pytest
 
 from walnutbutter import constants as C
 from walnutbutter.cli import apply_problem, build_parser, cli_main
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher, accuracy
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -53,7 +53,7 @@ def test_apply_problem_settles_interval_target_readout_and_training():
 
 
 def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0)
+    grid = Goo(count=12, across=4, weight=1.0)
     grid.readout, grid.read, grid.interval = "input", "again", 20.0
     assert grid.output_row() == grid.input_row()
     run_epoch(grid, bits=[True, False], verbose=False)
@@ -74,7 +74,7 @@ def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
 
 def test_raw_coding_lays_the_bits_down_as_they_are():
     from walnutbutter.persistence import checkpoint, restore
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0, seed=2, permute=False)
+    grid = Goo(count=12, across=4, weight=1.0, seed=2, permute=False)
     grid.coding = "raw"
     assert grid.raw_bit_count() == 4
     grid.set_input_bits([True, False, False, True])
@@ -83,7 +83,7 @@ def test_raw_coding_lays_the_bits_down_as_they_are():
     assert grid.input_neurons() == [] and sum(grid.input_pattern) == 0
     seen = {tuple(grid.new_random_input()) for _ in range(300)}
     assert len(seen) == 16 and all(len(bits) == 4 for bits in seen)  # all sixteen four-bit patterns
-    odd = GridOfNeurons(across=3, rows=2, omega=0)
+    odd = Goo(count=6, across=3)
     odd.coding = "raw"
     assert odd.raw_bit_count() == 3  # raw coding has no evenness requirement
     grid.coding = "complement"
@@ -106,7 +106,7 @@ def test_both_engines_agree_on_raw_inputs():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=4, rows=6, weight=None, seed=9)
+        grid = Goo(count=24, across=4, weight=None, seed=9)
         grid.coding, grid.readout, grid.read, grid.interval = "raw", "input", "again", 20.0
         return grid
 
@@ -122,7 +122,7 @@ def test_both_engines_agree_on_raw_inputs():
 
 def test_the_sustained_critic_scores_only_the_forced_neurons():
     from walnutbutter.learning import CRITICS, sustained
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0)
+    grid = Goo(count=12, across=4, weight=1.0)
     grid.readout = "input"
     grid.set_input_bits([True, False])  # pattern 1 0 0 1 after complement coding, before the permutation
     row = grid.input_row()
@@ -149,7 +149,7 @@ def test_both_engines_read_the_same_outputs():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=8, rows=4, weight=None, seed=4)
+        grid = Goo(count=32, across=8, weight=None, seed=4)
         grid.readout, grid.read, grid.interval = "input", "again", 20.0
         return grid
 
@@ -163,7 +163,7 @@ def test_both_engines_read_the_same_outputs():
 
 def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
     save, trace = tmp_path / "s.json", tmp_path / "s.csv"
-    assert cli_main(["--headless", "--problem", "sustain_inputs", "--seed", "3", "--epochs", "12", "-r", "4",
+    assert cli_main(["--headless", "--problem", "sustain_inputs", "--seed", "3", "--epochs", "12",
                      "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
     assert "-> coded" not in err
@@ -189,7 +189,7 @@ def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
 
 def test_reversal_is_unchanged(tmp_path, capsys):
     save = tmp_path / "r.json"
-    assert cli_main(["--headless", "--seed", "3", "--epochs", "3", "-r", "4", "--save-weights", str(save), "--no-trace"]) == 0
+    assert cli_main(["--headless", "--seed", "3", "--epochs", "3", "--save-weights", str(save), "--no-trace"]) == 0
     data = json.loads(save.read_text())
     assert data["problem"] == "reversal" and "learning" in data and data["across"] == 8 and data["interval"] == 35.0
     assert not save.with_suffix(".csv").exists()
@@ -200,7 +200,7 @@ def test_the_external_teacher_scores_the_read_and_pays_the_eligibility():
     from walnutbutter.learning import RULES, teacher_score
 
     assert RULES[0] == "teacher" and C.RULE == "teacher" and C.TEACHER_CREDIT is None  # None: 1/n, so the score spans [-1, 1]
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0, permute=False)  # the bits land where they are
+    grid = Goo(count=12, across=4, weight=1.0, permute=False, scaling_factor=0.5)  # the bits land where they are
     grid.coding, grid.readout, grid.read, grid.rule = "raw", "input", "again", "teacher"
     grid.dopamine = Dopamine(lr=0.1)
     grid.set_input_bits([True, False, True, False])
@@ -234,7 +234,7 @@ def test_the_teacher_rule_runs_end_to_end_and_both_engines_agree():
     from walnutbutter.dopamine import Dopamine
 
     def make():
-        grid = GridOfNeurons(across=4, rows=6, weight=None, seed=7)
+        grid = Goo(count=24, across=4, weight=None, seed=7)
         grid.coding, grid.readout, grid.read, grid.interval, grid.rule = "raw", "input", "again", 20.0, "teacher"
         grid.dopamine = Dopamine(lr=0.05)
         return grid
@@ -256,7 +256,7 @@ def test_adaline_corrects_mistakes_only_and_scales_by_what_each_synapse_delivere
     from walnutbutter.learning import RULES, adaline_errors, apply_adaline
 
     assert "adaline" in RULES
-    grid = GridOfNeurons(across=4, rows=3, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=12, across=4, weight=1.0, permute=False, scaling_factor=0.5)
     grid.coding, grid.readout, grid.read, grid.rule = "raw", "input", "again", "adaline"
     grid.dopamine = Dopamine(lr=0.1)
     grid.set_input_bits([True, False, True, False])
@@ -288,7 +288,7 @@ def test_adaline_runs_end_to_end_and_both_engines_agree():
     from walnutbutter.dopamine import Dopamine
 
     def make():
-        grid = GridOfNeurons(across=4, rows=6, weight=None, seed=11)
+        grid = Goo(count=24, across=4, weight=None, seed=11)
         grid.coding, grid.readout, grid.read, grid.interval, grid.rule = "raw", "input", "again", 20.0, "adaline"
         grid.dopamine = Dopamine(lr=0.05, decay=0.0)  # no forgetting: only ADALINE moves a weight here
         return grid
@@ -311,7 +311,7 @@ def test_adaline_runs_end_to_end_and_both_engines_agree():
 
 
 def test_population_coding_fills_three_neurons_per_bit():
-    grid = GridOfNeurons(across=12, rows=10, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=120, across=12, weight=1.0, permute=False)
     grid.coding = "population"
     assert grid.population == C.POPULATION == 3 and grid.raw_bit_count() == 4
     grid.set_input_bits([True, False, False, True])
@@ -320,7 +320,7 @@ def test_population_coding_fills_three_neurons_per_bit():
     assert grid.input_pattern == [False] * 9 + [True] * 3  # 0001 -> 000000000111
     seen = {tuple(grid.new_random_input()) for _ in range(300)}
     assert len(seen) == 16 and all(len(bits) == 4 for bits in seen)
-    odd = GridOfNeurons(across=10, rows=3, omega=0)  # 10 is not a multiple of three
+    odd = Goo(count=30, across=10)  # 10 is not a multiple of three
     odd.coding = "population"
     with pytest.raises(ValueError):
         odd.raw_bit_count()
@@ -328,7 +328,7 @@ def test_population_coding_fills_three_neurons_per_bit():
 
 def test_the_teacher_score_spans_minus_one_to_one_whatever_the_zone():
     from walnutbutter.learning import teacher_score
-    grid = GridOfNeurons(across=12, rows=10, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=120, across=12, weight=1.0, permute=False)
     grid.coding, grid.read = "population", "fired"
     grid.set_input_bits([True, False, False, True])
     want = list(grid.input_pattern)
@@ -376,7 +376,7 @@ def test_population_copy_runs_and_both_engines_quash_identically():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=12, rows=10, weight=None, seed=5)
+        grid = Goo(count=120, across=12, weight=None, seed=5)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.quash_rate, grid.quash_k = 0.02, 0.2
         return grid
@@ -397,13 +397,13 @@ def test_population_copy_runs_and_both_engines_quash_identically():
 def test_population_denoise_reads_the_input_zone_against_the_clean_code():
     denoise, copy = PROBLEMS["population_denoise"], PROBLEMS["population_copy"]
     assert denoise.flip == C.FLIP == pytest.approx(1 / 12) and copy.flip is None
-    for same in ("across", "rows", "interval", "coding", "critic", "target", "rule", "quash", "permute", "reach", "trained"):
+    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute", "trained"):
         assert getattr(denoise, same) == getattr(copy, same)  # the same network, read somewhere else
     assert (denoise.readout, denoise.read) == ("input", "again") and (copy.readout, copy.read) == ("top", "fired")
     args = build_parser().parse_args(["--problem", "population_denoise"])
     apply_problem(args)
     assert args.flip == pytest.approx(1 / 12) and args.readout == "input" and args.read == "again"
-    assert args.across == 12 and args.rows == 10 and args.quash == C.QUASH_RATE
+    assert args.across == 12 and args.quash == C.QUASH_RATE
     args = build_parser().parse_args(["--problem", "population_denoise", "--flip", "0"])
     apply_problem(args)
     assert args.flip == 0.0  # an explicit flip wins
@@ -416,7 +416,7 @@ def test_a_flip_corrupts_what_is_forced_but_not_what_is_scored():
     from walnutbutter.learning import expected_outputs, teacher_score
 
     def grid_with(flip):
-        grid = GridOfNeurons(across=12, rows=10, weight=1.0, omega=0, permute=False, seed=3)
+        grid = Goo(count=120, across=12, weight=1.0, permute=False, seed=3)
         grid.coding, grid.readout, grid.read, grid.flip = "population", "input", "again", flip
         return grid
 
@@ -444,13 +444,13 @@ def test_a_flip_corrupts_what_is_forced_but_not_what_is_scored():
 
 def test_no_flip_draws_nothing_from_the_stream():
     def bits(flip):
-        grid = GridOfNeurons(across=12, rows=10, weight=None, seed=7, permute=False)
+        grid = Goo(count=120, across=12, weight=None, seed=7, permute=False)
         grid.coding, grid.flip = "population", flip
         return [grid.new_random_input() for _ in range(20)]
 
     assert bits(0.0) == bits(0.0)
     assert bits(0.0) != bits(1 / 12)  # the flips come from the same seeded stream, so they do move it
-    grid = GridOfNeurons(across=12, rows=10, weight=None, seed=7, permute=False)
+    grid = Goo(count=120, across=12, weight=None, seed=7, permute=False)
     grid.coding = "population"
     assert [grid.new_random_input() for _ in range(20)] == bits(0.0)  # flip 0 leaves an older run bit for bit
 
@@ -461,7 +461,7 @@ def test_population_denoise_runs_and_both_engines_flip_identically():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=12, rows=10, weight=None, seed=5, permute=False)
+        grid = Goo(count=120, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "input", "again", 20.0
         grid.quash_rate, grid.quash_k, grid.flip = 0.02, 0.2, 1 / 12
         return grid
@@ -481,24 +481,23 @@ def test_population_denoise_runs_and_both_engines_flip_identically():
 
 def test_shallow_copy_is_population_copy_one_hop_wide():
     shallow, deep = PROBLEMS["shallow_copy"], PROBLEMS["population_copy"]
-    assert shallow.rows == 2 and deep.rows == 10  # the only thing that shrinks
-    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute", "reach",
+    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute",
                  "readout", "read", "trained", "flip"):
         assert getattr(shallow, same) == getattr(deep, same)
     args = build_parser().parse_args(["--problem", "shallow_copy"])
     apply_problem(args)
-    assert args.rows == 2 and args.across == 12 and args.readout == "top" and args.read == "fired"
-    args = build_parser().parse_args(["--problem", "shallow_copy", "--rows", "4"])
+    assert args.across == 12 and args.readout == "top" and args.read == "fired"
+    args = build_parser().parse_args(["--problem", "shallow_copy", "--goo", "48"])
     apply_problem(args)
-    assert args.rows == 4  # an explicit row count still wins
+    assert args.goo == 48  # an explicit count still wins
 
-    grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+    grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
     top, bottom = set(grid.output_row()), set(grid.input_row())
     assert len(top) == len(bottom) == 12 and not (top & bottom)  # two rows, and they are different rows
     assert len(list(grid.all_neurons())) == 24
     reaches = sum(1 for c in grid.connections.values() if c.source in bottom and c.target in top)
     feeds_back = sum(1 for c in grid.connections.values() if c.source in top and c.target in bottom)
-    assert reaches and feeds_back  # one hop from input to output, and the output feeds back: the only cycle here
+    assert reaches and not feeds_back  # one hop from input to output; §4.5 keeps the outputs apart, so nothing feeds back
 
 
 def test_rate_drive_makes_a_bit_a_firing_rate_not_a_mandated_spike():
@@ -506,7 +505,7 @@ def test_rate_drive_makes_a_bit_a_firing_rate_not_a_mandated_spike():
     import statistics
 
     def grid_with(drive, rate=0.1, off=0.0, seed=4):
-        grid = GridOfNeurons(across=12, rows=2, weight=1.0, omega=0, permute=False, seed=seed)
+        grid = Goo(count=24, across=12, weight=1.0, permute=False, seed=seed)
         grid.coding, grid.interval = "population", 20.0
         grid.drive, grid.input_rate, grid.input_rate_off = drive, rate, off
         grid.set_input_bits([True, False, False, True])
@@ -539,7 +538,7 @@ def test_rate_drive_runs_and_both_engines_draw_the_same_train():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.drive, grid.quash_rate = "rate", 0.02
         return grid
@@ -573,7 +572,7 @@ def test_a_problem_and_the_command_line_choose_the_drive():
 def test_the_default_drive_leaves_no_wave_front_at_time_zero():
     """§4.3: forced drive locks every spike onto a hop grid anchored at t_e; rate drive has no such anchor."""
     def spikes_on_the_grid(drive):
-        grid = GridOfNeurons(across=12, rows=5, weight=None, seed=1, permute=False, omega=0)
+        grid = Goo(count=60, across=12, weight=None, seed=1, permute=False)
         grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", drive
         hop, on_grid, total, at_zero = Neuron.hop(), 0, 0, 0
         row = set(grid.input_row())
@@ -605,7 +604,7 @@ def test_the_driving_process_is_not_the_spike_train():
     assert 1000.0 * (1 - INPUT_CV) / REFRACTORY == pytest.approx(80.0)  # rate = (1 - CV) / REFRACTORY, exactly
 
     def train(rate, epochs=400):
-        grid = GridOfNeurons(across=12, rows=5, weight=0.0, seed=1, permute=False, omega=0)  # weight 0: no mesh drive
+        grid = Goo(count=60, across=12, weight=0.0, seed=1, permute=False)  # weight 0: no mesh drive
         grid.coding, grid.drive, grid.input_rate = "population", "rate", rate
         row, times, arrivals = grid.input_row(), {p: [] for p in range(12)}, 0
         for _ in range(epochs):
@@ -652,12 +651,12 @@ def test_shallow_not_is_shallow_copy_with_the_target_complemented():
 
     assert TARGETS["complement"]([True, False, True]) == [False, True, False]
     a, b = PROBLEMS["shallow_not"], PROBLEMS["shallow_copy"]
-    for same in ("across", "rows", "interval", "coding", "critic", "rule", "quash", "permute",
-                 "reach", "readout", "read", "trained", "flip", "drive", "hebb"):
+    for same in ("across", "interval", "coding", "critic", "rule", "quash", "permute",
+                 "readout", "read", "trained", "flip", "drive", "hebb"):
         assert getattr(a, same) == getattr(b, same), same
     assert (a.target, b.target) == ("complement", "copy")
 
-    grid = GridOfNeurons(across=12, rows=3, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=36, across=12, weight=1.0, permute=False)
     grid.coding, grid.readout, grid.read = "population", "top", "fired"
     grid.set_input_bits([True, False, False, True])  # 1001 -> 111000000111
     for neuron, on in zip(grid.output_row(), grid.input_pattern):
@@ -679,7 +678,7 @@ def test_the_complement_is_what_excitation_alone_cannot_reach():
     """§8: an output whose whole input group is silent receives no signal, so no weight can drive it."""
     from walnutbutter.learning import accuracy
 
-    grid = GridOfNeurons(across=12, rows=2, weight=None, seed=4, permute=False, omega=0)
+    grid = Goo(count=24, across=12, weight=None, seed=4, permute=False)
     grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", "rate"
     quiet_but_wanted = quiet_and_wanted_quiet = 0
     for _ in range(60):
@@ -699,7 +698,7 @@ def test_the_complement_is_what_excitation_alone_cannot_reach():
 def test_doubling_into_complement_coding_is_the_two_stages_in_order():
     from walnutbutter.inputs import format_bits
 
-    grid = GridOfNeurons(across=16, rows=8, weight=1.0, omega=0, permute=False)
+    grid = Goo(count=128, across=16, weight=1.0, permute=False)
     grid.coding, grid.population = "population-complement", 2
     assert grid.raw_bit_count() == 4  # 2 per bit, then doubled again by the complement
     grid.set_input_bits([True, False, False, True])
@@ -707,18 +706,18 @@ def test_doubling_into_complement_coding_is_the_two_stages_in_order():
     grid.set_input_bits([False, False, False, True])
     assert format_bits(grid.input_coded) == "0000001111111100"
 
-    odd = GridOfNeurons(across=15, rows=3, omega=0)  # not even: the complement half does not divide
+    odd = Goo(count=45, across=15)  # not even: the complement half does not divide
     odd.coding, odd.population = "population-complement", 2
     with pytest.raises(ValueError, match="even number"):
         odd.raw_bit_count()
-    short = GridOfNeurons(across=10, rows=3, omega=0)  # even, but 5 per half is not a multiple of 2
+    short = Goo(count=30, across=10)  # even, but 5 per half is not a multiple of 2
     short.coding, short.population = "population-complement", 2
     with pytest.raises(ValueError, match="per raw bit"):
         short.raw_bit_count()
 
 
 def test_doubled_copy_fires_exactly_half_the_row_and_scrambles_it():
-    grid = GridOfNeurons(across=16, rows=8, weight=1.0, omega=0, seed=7)
+    grid = Goo(count=128, across=16, weight=1.0, seed=7)
     grid.coding, grid.population = "population-complement", 2
     assert grid.permutation != list(range(16))  # a consistent random permutation, drawn once for the network's life
     first = list(grid.permutation)
@@ -731,48 +730,12 @@ def test_doubled_copy_fires_exactly_half_the_row_and_scrambles_it():
     assert len(seen) == 16  # all sixteen four-bit inputs, each its own pattern
 
 
-def test_reaching_copy_wires_the_input_row_straight_to_the_output_row():
-    """AUTHORITY.md §8: reach 5 over four rows of separation makes the copy one hop, for some of it."""
-    from walnutbutter.grid import hex_distance
-
-    args = build_parser().parse_args(["--problem", "reaching_copy"])
-    apply_problem(args)
-    assert (args.across, args.rows, args.grid_reach) == (16, 5, 5)
-    assert args.coding == "population-complement" and args.population == 2 and not args.no_permute
-
-    grid = GridOfNeurons(across=16, rows=5, weight=1.0, omega=0, seed=3, reach=5)
-    bottom, top = grid.input_row(), grid.output_row()
-    assert hex_distance(bottom[0].position, top[0].position) == 4  # inside the reach, so directly wired
-    outputs = set(top)
-    direct = sum(1 for neuron in bottom for c in neuron.outgoing if c.target in outputs)
-    assert direct == 100  # of 16 x 16 pairs; the offsets that fit are -3 to +3, and 0 is always among them
-    assert len(grid.connections) == 3122 and len(grid.neurons) == 80  # the density this buys
-
-    shallow = GridOfNeurons(across=16, rows=5, weight=1.0, omega=0, seed=3, reach=2)
-    assert not any(c.target in set(shallow.output_row()) for n in shallow.input_row() for c in n.outgoing)
-
-
-def test_reaching_copy_asks_for_a_copy_not_an_unscrambling():
-    """§8: the permutation scrambles what the input row is shown, not what the top row must answer."""
-    from walnutbutter.grid import hex_distance
-    from walnutbutter.learning import expected_outputs
-
-    grid = GridOfNeurons(across=16, rows=5, weight=None, omega=0, seed=3, reach=5)
-    grid.coding, grid.population, grid.readout, grid.read = "population-complement", 2, "top", "fired"
-    grid.new_random_input()
-    assert grid.permutation != list(range(16))  # the input is scrambled
-    assert grid.input_coded != grid.input_pattern  # and lands in a different order than it was coded
-    assert expected_outputs(grid, "copy") == grid.input_pattern  # but the answer is the input row itself
-
-    bottom, top = grid.input_row(), grid.output_row()
-    assert all(hex_distance(bottom[i].position, top[i].position) == 4 for i in range(16))
-    assert all(any(c.target is top[i] for c in bottom[i].outgoing) for i in range(16))  # all sixteen, one hop
 
 
 def test_the_doubled_copy_problem_settles_its_geometry():
     args = build_parser().parse_args(["--problem", "doubled_copy"])
     apply_problem(args)
-    assert (args.across, args.rows) == (16, 8)
+    assert args.across == 16
     assert args.coding == "population-complement" and args.population == 2
     assert not args.no_permute and args.target == "copy" and args.readout == "top"
     assert PROBLEMS["doubled_copy"].population == 2 and C.POPULATION == 3  # the problem's, not the constant's
@@ -791,20 +754,20 @@ def test_the_input_stream_is_the_same_whatever_the_network_is():
 
     seen = []
     for reach, omega, rows in ((2, 0.0, 5), (5, 0.2, 8), (3, 0.4, 2)):  # every build consumes randomness differently
-        grid = GridOfNeurons(across=8, rows=rows, weight=None, omega=omega, seed=1, reach=reach)
+        grid = Goo(count=8 * rows, across=8, weight=None, seed=1)
         grid.use_input_stream(patterns)
         seen.append([grid.new_random_input() for _ in range(50)])
     assert seen[0] == seen[1] == seen[2] == patterns  # the same epochs in the same order, whatever the network
 
     drawn = []
     for reach, omega, rows in ((2, 0.0, 5), (5, 0.2, 8)):  # and without a stream they diverge, as they always did
-        grid = GridOfNeurons(across=8, rows=rows, weight=None, omega=omega, seed=1, reach=reach)
+        grid = Goo(count=8 * rows, across=8, weight=None, seed=1)
         drawn.append([grid.new_random_input() for _ in range(50)])
     assert drawn[0] != drawn[1]
 
 
 def test_a_run_longer_than_its_stream_cycles_it():
-    grid = GridOfNeurons(across=8, rows=2, weight=None, omega=0, seed=1)
+    grid = Goo(count=16, across=8, weight=None, seed=1)
     grid.use_input_stream([[True, False, True, False], [False, False, True, True]])
     got = [grid.new_random_input() for _ in range(5)]
     assert got == [got[0], got[1], got[0], got[1], got[0]]
@@ -813,7 +776,7 @@ def test_a_run_longer_than_its_stream_cycles_it():
 
 
 def test_the_stream_is_checked_when_it_is_attached():
-    grid = GridOfNeurons(across=8, rows=2, weight=None, omega=0, seed=1)
+    grid = Goo(count=16, across=8, weight=None, seed=1)
     with pytest.raises(ValueError, match="pattern 1 has 3 bits, expected 4"):
         grid.use_input_stream([[True, False, True, False], [True, False, True]])
     assert grid.input_stream is None  # and nothing is half-attached
@@ -826,7 +789,7 @@ def test_the_array_engine_carries_the_stream_across_the_wrap():
     from walnutbutter.network import input_stream
 
     patterns = input_stream(30, 4, seed=5)
-    mesh = GridOfNeurons(across=8, rows=3, weight=None, omega=0, seed=2)
+    mesh = Goo(count=24, across=8, weight=None, seed=2)
     mesh.use_input_stream(patterns)
     net = ArrayNetwork(mesh)
     assert net.input_stream == patterns and net.input_at == 0

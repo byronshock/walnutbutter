@@ -1,10 +1,11 @@
 """Input patterns for the network.
 
-The network's input is its bottom row of neurons. A pattern is one boolean
-per place along the row; the neurons whose bit is 1 are forced to fire in wave 0.
+The network's input is its input zone (AUTHORITY.md §4.3). A pattern is one
+boolean per place in the zone; the neurons whose bit is 1 are forced to fire
+in wave 0.
 
 Patterns are complement-coded: the raw bits are followed by their negations,
-so 12 raw bits become 24 bits and exactly half of the input row fires no
+so 12 raw bits become 24 bits and exactly half of the input zone fires no
 matter what the raw bits are.
 """
 

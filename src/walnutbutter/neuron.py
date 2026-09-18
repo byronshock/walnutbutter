@@ -52,7 +52,6 @@ class Neuron:
 
     def __init__(self, name: str = "Neuron", threshold: float = THRESHOLD, minimum_potential: float = MINIMUM_POTENTIAL):
         self.name = name
-        self.position = None  # (q, r) axial coordinates, set by the grid
         self.outgoing: list[Connection] = []  # connections this neuron sends signals along
         self.incoming: list[Connection] = []  # connections that deliver signals to this neuron
         self.threshold = float(threshold)  # total weighted input needed to fire

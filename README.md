@@ -1,7 +1,6 @@
 # walnutbutter
 
-A living network of simple neurons on a plane, and the substance you build
-it from.
+A living network of simple neurons.
 
 The system is specified in `AUTHORITY.md`; the code follows it. Each
 neuron is an integrate-and-fire unit with no leak: weighted input
@@ -12,27 +11,23 @@ nominal milliseconds; a wave is everything that happens at one moment. A
 neuron may fire as often as its refractory period allows, so a tight loop
 can carry a neuron's own spike back to refire it, and activity sustains
 itself. The network's input is a complement-coded, permuted bit pattern
-forced onto its bottom row; its output is the top row. Learning is
+forced onto its input zone; its output is the output zone. Learning is
 **dopamine**: a neuron that fires again after its refractory period
 releases dopamine, most when it refires the instant it may, into one
 global pool; at that same refire its incoming synapses that carried a
 signal since its previous spike move together in proportion to the pool
 minus the network's expectation of it. There is no training run and no
-evaluation run, only one run that keeps going: the window is a 30 Hz
-monitor on a free-running system that learns, checkpoints itself, and
-reports as it goes.
+evaluation run, only one run that keeps going: a free-running system that
+learns, checkpoints itself, and reports as it goes.
 
-Two containers build networks. The **hex grid** wires every cell to its two
-rings of neighbours plus a few random small-world shortcuts. **Walnut butter**
-is the substance the neurons are made of: spread it on the plane in smears of
-a given density and neurons appear at that density, and butter spread near
-other butter connects, so where you put it and how thick decides the whole
-architecture. The default of each is an 8 x 10 field of 80 neurons. **Goo**
-(`--goo`) began as the control -- the same eighty neurons with no positions
-at all and every ordered pair connected, so whatever the geometry is worth is
-what goo is missing -- and is the working network since September 14, 2026:
-sixty neurons at its own threshold, 0.2, wired by a rule about zones and
-every neuron un-sticking itself (AUTHORITY.md §1.2, §3.4).
+**Goo** is the only container (AUTHORITY.md §4.1). It has no positions at
+all, so there is no distance to measure and nothing to be near; what decides
+the architecture is the scaled wiring rule alone. Sixty neurons at its own
+threshold, 0.2, wired by a rule about zones, every neuron un-sticking itself
+(§4.4, §4.11). The hex grid, the hexagonal columns, the lattice and the
+spread left the specification on September 17, 2026; nothing is deleted --
+they stay in `RECORD.md` §2-§3 and in the code at the tag
+`lab-notebook-2026-09-17`, which is what archived means here.
 
 ## Setup (once)
 
@@ -52,37 +47,32 @@ dependencies at all.
 ```bash
 walnutbutter                 # open the window, free-run, learn, report accuracy; close it to stop
 walnutbutter --headless --epochs 20000 -q   # the same without a window, for a fixed number of epochs
-walnutbutter --step          # window where each Space press runs one epoch
 walnutbutter --no-learn      # just watch the untrained network
 walnutbutter --problem copy             # 4 bits complement-coded onto 8 input neurons, and the 8 outputs taught to show exactly that, place for place, unpermuted; an output is on if its spike count this epoch, as a rate, exceeds --teacher-threshold (AUTHORITY.md §8, §4.3; the goo task)
 walnutbutter --problem sustain_inputs   # the 16 four-bit inputs as they are on 4 neurons; score = which input neurons spiked again, against the pattern; learns by dopamine (AUTHORITY.md §8)
-walnutbutter --problem improved_sustain # the same on a 10x7 grid wired to reach 3, the 4 inputs in the middle of the middle row
-walnutbutter --problem population_copy  # 4 bits population-coded over 12 neurons (1001 -> 111000000111), copied to the top row, cycles quashed
-walnutbutter --problem shallow_copy  # the same task on two rows: 24 neurons, one hop from input to output, the floor every rule is measured against
+walnutbutter --problem population_copy  # 4 bits population-coded over 12 neurons (1001 -> 111000000111), copied to the output zone, cycles quashed
+walnutbutter --problem shallow_copy  # the same task on 24 neurons, one hop from input to output, the floor every rule is measured against
 walnutbutter --problem population_denoise  # the same network, but one bit in twelve flips on the way in and the INPUT zone is read back against the clean code
 walnutbutter --trace runs/sustain.csv   # one line per epoch: epoch, time, dopamine, expected, score (default: next to the checkpoint)
 walnutbutter --rule reinforce           # the pre-alpha's global-reward rule instead, run by the Teacher
 walnutbutter --refractory-hops 3.7 --release-theta 2 --order update-first   # the clock and dopamine knobs (see --help)
-walnutbutter --across 24 --rows 20       # a bigger mesh than the default 8 x 10: 12 input bits, coded to 24
-walnutbutter --ecc                        # 4 data bits -> Hamming (7, 4) -> 14 across, on a 14 x 10 field
+walnutbutter --goo 200 --across 24       # a bigger goo than the default sixty: 12 input bits, coded to 24
+walnutbutter --ecc                        # 4 data bits -> Hamming (7, 4) -> 14 across
 walnutbutter --ecc parity64               # the (6, 4) detect-only code on 12 across instead
 walnutbutter --input 1011                 # choose the 4 input bits
-walnutbutter --no-permute                 # coded bits in order on the bottom row
-walnutbutter --seed 42       # repeat a particular random mesh
+walnutbutter --no-permute                 # coded bits in order on the input zone
+walnutbutter --seed 42       # repeat a particular random wiring
 walnutbutter --weight 1      # a fixed weight on every connection instead
-walnutbutter --omega 0.1     # one connection in ten is a shortcut (default: 0.2)
 walnutbutter --positive-weights --threshold 2   # no inhibition: weights kept in [epsilon, 1]
-walnutbutter --omega 0       # plain mesh, no shortcuts
-walnutbutter --weight 0.2 --show   # signal dies at the origin
 python -m walnutbutter       # same thing without the installed command
 ```
 
-**Input.** The network's input is its bottom row. Each epoch draws 4 random
+**Input.** The network's input is its input zone. Each epoch draws 4 random
 bits (half the count across), complement-codes them by appending their negations,
-and scrambles the 8 coded bits with a random permutation of the places along the row that
-is drawn once per run and never changes. The bottom-row neurons whose bit is
+and scrambles the 8 coded bits with a random permutation of the places in the zone that
+is drawn once per run and never changes. The input-zone neurons whose bit is
 1 are forced to fire at the input's time (refractory period permitting), so
-up to half of the row fires every time.
+up to half of the zone fires every time.
 The raw bits, the coded bits and the permuted row are printed, and the
 permutation is printed once at the start. `--input 1011` supplies specific
 bits for the first epoch, `--no-permute` lays the coded bits down in order,
@@ -101,53 +91,10 @@ keep the best:
 walnutbutter --seeds 15 --epochs 1000000 --seed 1
 ```
 
-runs seeds 1 to 15 in parallel, headless, one process per core (add `--nodes`
-for the lattice instead of the grid), prints a table sorted best first (accuracy over each run's last tenth, and to date),
+runs seeds 1 to 15 in parallel, headless, one process per core, prints a table
+sorted best first (accuracy over each run's last tenth, and to date),
 and checkpoints every run to `runs/` so the winner can be loaded with
 `--load-weights`. Without `--seed` the base seed is random and printed.
-
-## Seeing the grid
-
-```bash
-walnutbutter                              # the default: free-running window with learning
-walnutbutter --window 1200 800            # a bigger window
-walnutbutter --report 30                  # a progress line every 30 s instead of every second
-walnutbutter --save-weights run1.json     # choose the checkpoint file (default: runs/<date>-<time>-seed<seed>.json)
-walnutbutter --load-weights run1.json     # continue from a checkpoint (same mesh, seed and permutation)
-walnutbutter --step                       # one epoch per Space press
-walnutbutter --across 24 --rows 20 --headless --save grid.png
-```
-
-By default the window is a monitor on a free-running system. The network
-runs epoch after epoch as fast as the machine allows, silently, learning
-after every one, with no coupling to the display; the window samples its
-state 30 times a second, always showing a completed epoch. The title bar
-shows the epoch count, the epoch rate, the accuracy to date (the mean over
-every epoch since the start) and the recent accuracy, and the same figures
-go to the terminal every `--report` seconds (default 1) with an elapsed-time
-stamp, so a run can be left for hours and read back later. Each report is
-also appended to an accuracy history (epoch, elapsed seconds, accuracy to
-date, recent accuracy, stuck counts, epoch rate) that `--save-weights`
-stores in the checkpoint and `--load-weights` carries forward, so the
-learning curve survives the window closing. **Esc** or **Q** closes the
-window; the final figures are printed on exit.
-
-With `--step` nothing happens until you press **Space**, which resets every
-neuron (weights, shortcuts and thresholds are kept), draws a fresh random
-input, fires the bottom row and, unless `--no-learn`, teaches. The input
-neurons are ringed in white. Fired neurons are coloured, shading from
-red for a spike at the end of the epoch cooling to blue over one epoch's
-length, neurons that never fired are grey, and the
-neurons that were forced this epoch carry a white ring. Each neuron is drawn as a disc on its hexagonal cell, sized so neighbouring discs never touch. Adding `--save PATH`
-writes whatever state the mesh is in when the window closes.
-
-```python
-from walnutbutter import main, visualizer
-
-grid = main(across=8, rows=10)
-visualizer.save(grid, "grid.png")   # write a picture, no window needed
-visualizer.show(grid, 1200, 800)    # or open a window; Space runs a new epoch, Esc quits
-```
 
 ## From Python
 
@@ -155,266 +102,16 @@ visualizer.show(grid, 1200, 800)    # or open a window; Space runs a new epoch, 
 from walnutbutter import main
 from walnutbutter.monitor import run_epoch
 
-grid = main(across=8, rows=10)  # builds the grid and runs the first epoch on its bottom row
-run_epoch(grid)                 # reset every neuron and present a new random input
-print(len(grid.fired_neurons()))
-grid.reset()                   # allow every neuron to fire again
+net = main(count=60, across=8)  # builds the goo and runs the first epoch on its input zone
+run_epoch(net)                  # reset every neuron and present a new random input
+print(len(net.fired_neurons()))
+net.reset()                     # allow every neuron to fire again
 ```
-
-## How the grid works
-
-Neurons sit on a `across x rows` rectangle of pointy-top hexagons. Every
-odd row is shifted half a cell to the right ("odd-r" layout), which is what
-lets whole hexagons fill a rectangle; the left and right edges are therefore
-slightly jagged rather than cut. Internally each cell is addressed by axial
-coordinates `(q, r)`, centred so the middle cell is `(0, 0)`. Each neuron is
-connected to its six neighbours and to the twelve neighbours of those
-neighbours, so an interior neuron has 18 outgoing and 18 incoming local
-connections (fewer on the edges), and a signal covers two cells per wave.
-`grid.get_neuron_at(place, row)`
-looks a cell up by its position from the top-left corner; `grid.get_neuron(q, r)`
-by axial coordinates.
-
-Connections are one-way and weighted. Each neighbouring pair gets two
-`Connection` objects, one in each direction, and each holds references to its
-`source` and `target` neurons, a `weight` (default 1.0), and an `is_active`
-flag. The grid keeps every connection in `grid.connections`, a dictionary
-keyed by ID starting from 1. A neuron lists the connections it sends along in
-`outgoing` and the ones it receives from in `incoming`.
-
-**Small-world shortcuts.** `omega` (0 up to but not including 1, default 0.2)
-is the proportion of all connections that are long-range shortcuts. After the local
-mesh is built with L connections, `omega * L / (1 - omega)` extra connections
-are added, each running one way from a random neuron to a random neuron that
-is more than two steps away and not already a target of it. Shortcuts are
-marked `kind == "small_world"` (first-ring connections are `"local"`,
-second-ring ones `"local2"`), listed by
-`grid.small_world_connections()`, and get weights like any other connection.
-The same `seed` reproduces both the shortcuts and the weights.
-
-**Error-correcting code.** With `--ecc` (or `network.use_ecc()`), the raw
-input is 4 data bits, encoded before complement coding. The default code is
-Hamming's (7, 4): three parity bits, each covering three of the four data
-bits, giving every bit position a distinct syndrome, so any single flipped
-bit is located and corrected (`Code.correct`, `Code.decode`); complement
-coding then fills a 14-place bottom row, so the usual field is 14 across
-by 10 rows. `--ecc parity64` is the (6, 4) code instead: two parity bits,
-minimum distance 2, single errors detected but not corrected, 12 across.
-`--ecc` sets the count across to fit unless told otherwise. The epoch line reads
-`data 1011 -> hamming74 1011010 -> coded ... -> bottom row ...`, and
-checkpoints remember which code is on.
-
-**Critics.** The reward is a single number per epoch, and `--critic` chooses
-how it is judged. `row` (the default) is the fraction of output neurons that
-match the target, neuron by neuron. `decoded` reads the output row the way a
-receiver would: it undoes the target's arrangement and the permutation,
-resolves each complement pair to a bit (a pair whose neurons contradict each
-other is unreadable), runs the word through the code's error correction, and
-rewards the fraction of data bits that come out right; `decoded-exact` gives
-1 only if all of them do. Under Hamming a single wrong output neuron costs
-nothing with the decoding critics, because the code absorbs it: the network
-is judged on the message, not the pixels, and the code's redundancy stands in
-for a population of outputs.
-
-**Firing rule** (AUTHORITY.md §5). Every neuron has a `threshold` (default
-0.25) and a running `potential`. When a neuron fires, each of its active
-outgoing connections delivers its weight to the target's potential one hop
-later. A neuron fires the moment its potential reaches its threshold, the
-spike resets the potential, and the potential leaks with time constant
-`--tau` (default 2 ms; `inf` switches it off), lazily: nothing happens to a
-quiet neuron, and when a signal arrives the potential is first decayed for
-the time since it was last brought up to date. Negative
-weights lower the potential, so they act as inhibitory connections. The
-input neurons are fired directly as an external stimulus, which ignores the
-threshold. A neuron that fired within `--refractory` milliseconds (default
-5) ignores every signal, forced stimulus included; that is the only thing
-that limits how often it fires. A neuron's threshold also falls with its
-silence, reaching zero `--bored-after` ms after its last spike (default
-200), so a bored neuron fires on its own and resets (AUTHORITY.md §5.4).
-
-**Time and the schedule** (§4). The network runs on a clock in nominal
-milliseconds. A signal takes one **hop** to travel a connection,
-`--refractory` / `--refractory-hops` (default 5 / 3 ms, and the ratio need
-not be an integer). Firing is never recursive: `propagation.Schedule` is a
-time-ordered queue of the signals in flight, and a **wave** is everything
-due at one moment, the signals arriving and the stimulus if an input lands
-then. In each wave every signal is delivered first (to targets that are not
-refractory), the floor on a potential (`--minimum-potential`, default -1)
-is applied to each touched neuron's total, and then every forced neuron and
-every neuron that has reached its threshold fires, its outgoing connections
-scheduled one hop later. Delivering everything before deciding who fires
-means the outcome never depends on the order neurons are stored in, and
-there is no recursion limit on grid size. An epoch is one input, stamped
-`--interval` milliseconds (default 10) after the last unless given its own
-time, and the schedule run up to the next input's time; signals still in
-flight then join the next epoch. Each connection stamps the time of the
-last signal its target integrated, the synapse's only trace. Each neuron
-records `fired_in_wave`, the grid keeps this epoch's `Wave` objects in
-`grid.waves`, the visualizer shades fired neurons by wave, and each output
-neuron carries the time of its last spike (`grid.output_times()`).
-`--discharge` zeroes every potential between inputs. Checkpoints save the
-clock, every neuron's potential and last two spikes, every synapse stamp,
-the signals in flight and the dopamine, so a resumed run continues
-mid-cascade rather than restarts.
-
-**Two engines, one network.** The object engine above is the one you watch:
-every neuron and connection is an object that receives and fires for
-itself. `--engine arrays` runs the same network as numpy vectors and a scipy
-sparse matrix (`arrays.py`): the neurons that fired in a wave, as a 0/1
-vector, times the weight matrix gives every neuron its summed input in one
-product, and the learning rule becomes a handful of elementwise operations
-over the edges. Both engines build the mesh the same way, share connection
-ids, read and write the same checkpoints (a loaded checkpoint keeps the
-engine that wrote it unless `--engine` says otherwise), draw the same
-exploration noise from the same seed, and are run side by side by
-`tests/test_arrays.py`, which checks that they fire the same neurons wave
-by wave and move the same weights. They can differ only in the order
-floating-point additions happen, so on the rare epoch where a potential sits
-within rounding of a threshold the two may decide differently and diverge
-from there, like two seeds. A third engine, the Rust wave loop in `rust/`
-(`fast.py`; AUTHORITY.md §6.15), owns the state for a whole run and is
-reached from Python -- `fast.train`, and `docs/rust-sweep.py` for a sweep --
-rather than from `--engine`. It runs the reinforce rule with either
-eligibility, drawing its exploration noise from Python's own stream so the
-draws are equal and not approximately equal, and `tests/test_fast.py` runs it
-against the object engine wave by wave; a rule it lacks it refuses rather
-than approximates. On this machine the array engine runs an 8x10
-mesh about twice as fast as the object engine, a 24x20 mesh five times as
-fast and a 48x40 mesh seven times as fast; the object engine has no
-dependencies and prints per neuron with `-v`, which the array engine does not.
-
-```python
-from walnutbutter.propagation import propagate
-
-grid = GridOfNeurons(across=8, rows=10)
-origin, corner = grid.get_origin_neuron(), grid.get_neuron_at(0, 0)
-waves = grid.propagate(fire=[origin, corner])          # two stimuli in one epoch
-waves = grid.propagate(inputs={origin: 0.6, corner: 0.6})  # external input amounts instead
-[len(w.fired) for w in waves]                          # neurons fired per wave
-```
-
-**Weights.** By default the command line gives every connection its own
-random weight, drawn uniformly between -1 and 1, so each direction between a
-pair of neurons gets an independent value. `--positive-weights` restricts
-the range to `[epsilon, 1]` (`--epsilon`, default 0.001) for both the
-initial draw and the clipping applied during learning, which removes all
-inhibition. With nothing to hold activity down, a positive-weight mesh at
-threshold 0.25 fires every neuron every epoch; a threshold of about 2 gives
-activity comparable to the signed default. The range is stored in
-checkpoints and restored with them. The seed is printed so a run can be
-repeated with `--seed`. With the default threshold of 0.25, a typical random
-mesh lets the signal reach somewhere between a tenth and a third of the
-neurons before it dies out; raise `--threshold` to make it die sooner, lower
-it to let it spread further. `--weight W` uses a fixed weight instead: with
-`--weight 1` one signal is enough and the wave crosses the whole grid, while
-`--weight 0.2` stops at the origin because no neuron ever hears from more
-than one fired neighbour. From Python, `GridOfNeurons(weight=None, seed=...)`
-or `grid.randomize_weights(low, high, seed)` do the same.
-
-```python
-grid = main(across=8, rows=10)
-conn = grid.get_connection(1)   # the first registered connection
-conn.weight = 0.5
-conn.is_active = False          # cut that direction only
-origin, right = grid.get_neuron(0, 0), grid.get_neuron(1, 0)
-grid.connection_between(origin, right)   # origin -> right
-grid.connection_between(right, origin)   # right -> origin, a different connection
-```
-
-## Walnut butter
-
-Walnut butter is the substance the neurons are made of. It is spread over
-the plane in **smears**: each is a shape (`Rect` or `Disc`, in unit
-distances) with a **density**, and placing the butter packs neurons on a
-hexagonal lattice inside each shape at the spacing that density implies.
-Thick butter means many neurons close together, thin butter a few far
-apart, bare plane none. **Butter that is spread near other butter
-connects:** a neuron projects to every neuron within its `reach` (default 2
-units), so density alone decides how richly a region is wired, and a gap in
-the spread is a gap in the network. Nothing about the topology is random;
-only the weights are drawn from the seed.
-
-Butterspace has one scale, the **unit distance**. Density is measured in
-neurons per unit cell, the hexagon a neuron owns in a lattice at unit
-spacing, so unit density (`UNIT_DENSITY`, which is 1) means neighbours one
-unit apart, and a density of 4 packs four neurons into each cell, half a
-unit apart. Every distance in the substance is compared with that one unit
-whatever the local density: a reach of 2 is two units everywhere, so butter
-four times as thick has four times the neurons within reach.
-
-The default network is one rectangular smear at unit density, which is the
-8 x 10 hexagonal lattice at unit spacing: `CartesianNodes()` builds it
-directly, and with a reach of 2 each interior neuron has eighteen neighbours,
-six at distance 1, six at √3 and six at 2, the same as the hex grid's two
-rings. Its bottom row is the input and its top row the output, addressed
-like the grid with `get_neuron_at(place, row)`. A free spread has no rows,
-so input and output zones for it are still to be defined.
-
-## Hexagonal columns
-
-The prespread butter. The plane is tiled with hexagonal cells, one neuron
-per cell, and every cell is extruded into a **column** of `--layers`
-neurons, so the network lives in R3. A cell is one unit across: neurons sit
-half a unit apart in the plane, and the layers of a column an eighth of a
-unit apart, a quarter of the cell spacing, so a column reads as a compact
-stack of neurons much closer to each other than to their neighbours. The
-connection rule is
-
-    same position:                       never
-    horizontal distance <= 1 + epsilon:  always
-    otherwise:                           small-world shortcuts only (--omega)
-
-measured in the plane only, so the guarantee holds at any height: a neuron
-is wired to every neuron of its own column and of the eighteen columns
-around it, in every layer, and everything further away is reached only by
-shortcuts drawn as on the grid. The bottom layer is the **input butter**
-and the top layer the **output butter**: a word is `across x rows` bits per
-layer, complement-coded and permuted as before, and the targets and critics
-read the top layer the same way they read the top row.
-
-With one layer the two surfaces coincide and the stack keeps the grid's
-convention (bottom row in, top row out). It is then the hex grid itself:
-the same neurons in the same order, the same eighteen guaranteed
-connections per neuron with the same ids, and with the same seed the same
-shortcuts, weights and permutation, so `--layers 1` reproduces a plain run
-epoch for epoch. That was the test that the rule changed nothing but the
-ruler.
-
-```bash
-walnutbutter --layers 3                    # 8 x 10 cells, three deep: 80 input neurons, 80 outputs
-walnutbutter --layers 3 --engine arrays    # the array engine wraps a stack like any mesh
-walnutbutter --layers 2 -a 7 -r 2 --ecc    # a code needs 14 input neurons, however they are arranged
-```
-
-Fan-out grows with depth: an interior neuron of an L-layer stack has 19L - 1
-guaranteed connections, so the array engine earns its keep quickly.
-
-The free spread of variable density below is kept in the library but no
-longer sets any default; the columns are where input and output live now.
-
-```python
-from walnutbutter.butter import Disc, Rect, WalnutButter, UNIT_DENSITY
-from walnutbutter.cartesian import CartesianNodes
-
-recipe = (WalnutButter()
-          .spread(Rect(-4, -4, 4, 4), UNIT_DENSITY)        # a lattice-density slab (density 1)
-          .spread(Disc(0, 0, 1.5), 3.0))                   # a dense knot in the middle
-nodes = CartesianNodes.from_butter(recipe, seed=1)
-nodes.connect_within(reach=2.0, weight=None)               # near butter connects
-```
-
-`walnutbutter --nodes` builds the default lattice, wires it with `--reach`
-(default 2), and then does everything the grid does: learns, reports,
-checkpoints to `runs/` (lattice checkpoints record the wiring and load back
-with `--load-weights`), and shows in the window or runs headless with
-`--epochs`. `--nodes N` scatters N neurons at random instead; a scatter has
-no rows, so it is shown, not trained. The earlier Gaussian receptive-field
-wiring (`connect_by_distance`) remains in the library for reference.
 
 ## Goo
 
-The plane taken away (AUTHORITY.md §3.4). Every container above has to say
-what "near" means before it can say what connects; goo has no positions, so
+The plane taken away (AUTHORITY.md §4.1). A container with positions has to
+say what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
 the scaled rule (AUTHORITY.md §3.4, Byron, September 16, 2026): no neuron
 projects onto itself, no input neuron onto another, and every other
@@ -440,25 +137,24 @@ under; at 0.2 about 650 projections, at 1 the fully connected goo of 3,300),
 ordered pair); `scaled-open` is the night's first scaled rule, the outputs
 open to every zone.
 
-With no rows there is no bottom row to be the input, so the zones go by
-index: the first `--across` neurons are the input zone and the last
-`--across` the output. They are addressed the way every other container's
-rows are (`get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out), so
-learning, the teacher, the checkpoints and the array engine need to know
-nothing about it. Goo smaller than twice the zone width overlaps them on
-purpose, and `--goo 8` reads the eight neurons it writes.
+With no positions there is nowhere to put the input but the index, so the
+zones go by index (AUTHORITY.md §4.3): the first `--across` neurons are the
+input zone and the last `--across` the output. They are addressed by place
+(`get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out), so learning,
+the teacher, the checkpoints and the array engine need to know nothing about
+it. The zones may not overlap: a goo that would overlap them is refused.
 
 ```bash
-walnutbutter --goo --headless --epochs 1000        # 80 neurons, fully connected
-walnutbutter --goo 200 --engine arrays --headless  # bigger goo, on the array engine
-walnutbutter --goo --seeds 8 --epochs 50000        # a batch, like any other container
+walnutbutter --epochs 1000                  # the default goo, sixty neurons
+walnutbutter --goo 200 --engine arrays      # a bigger goo, on the array engine
+walnutbutter --goo 200 --seeds 8 --epochs 50000   # a batch
 ```
 
 The seed decides the topology, pair by pair in (i, j) order, the projection
 draw and then the weight, so a goo needs its seed to be rebuilt, and a
 checkpoint records the wiring it was built under (`wiring`, `scaling_factor`,
-`projection`) and restores under it. `--omega`, `--reach` and `--rows` do not
-reach it, and it has no geometry, so it runs headless and cannot be shown.
+`projection`) and restores under it. It has no geometry, so every run is
+headless.
 
 **Its potential axis scales with fan-in**, and nothing else's does
 (AUTHORITY.md §5.2), and since September 14, 2026 it scales **its own
@@ -590,7 +286,7 @@ untrained reservoir. Unlike the other rules the signal is not global.
 **The reinforce rule** (`--rule reinforce`) is the pre-alpha's global
 reinforcement, factored out and kept for comparison. On a trained problem
 (`--problem reversal`) the `Teacher` tells the network each epoch what the
-top row should have shown, by default a **reversed** copy of the bottom-row
+output zone should have shown, by default a **reversed** copy of the input-zone
 input (`--target reversed`; `copy`, `all-off` and `all-on` also exist), and
 scores the fraction of output neurons that match; under the dopamine rule
 it only scores and reports. Under the reinforce rule a single scalar
@@ -741,23 +437,18 @@ src/walnutbutter/
   propagation.py Schedule: the time-ordered queue of signals in flight, run a wave at a time; propagate()
   dopamine.py  Dopamine: the global pool, its expectation, and the learning at a refire
   arrays.py    ArrayNetwork: the same network as numpy vectors and a scipy sparse matrix (--engine arrays)
-  fast.py      the Rust wave loop (rust/), built from a grid; train(), compare() against the object engine
+  fast.py      the Rust wave loop (rust/), built from a network; train(), compare() against the object engine
   exploration.py the Box-Muller noise draws both engines share
   constants.py every global constant: the default network, the neuron's clock, the learning rule's knobs
-  grid.py      GridOfNeurons: builds the rectangle of hexagons and wires up both rings of neighbours
-  goo.py       Goo: no positions, every ordered pair connected, zones by index (--goo); the control
-  columns.py   HexColumns: the cells extruded into layers in R3 (--layers); bottom layer in, top layer out
-  butter.py    WalnutButter: smears of neuron density (per unit cell) on the plane; shapes Rect and Disc
-  cartesian.py CartesianNodes: the lattice, a scatter, or a placed recipe; reach wiring
+  goo.py       Goo: no positions, wired by the scaled rule, zones by index; the only container
   inputs.py    random bits, complement coding, parsing and formatting
-  monitor.py   main(): build a grid and run its first epoch; run_epoch(): reset and present a new input
+  monitor.py   main(): build a network and run its first epoch; run_epoch(): reset and present a new input
   learning.py  output targets, reward, the global-reinforcement rule, and Teacher
   problems.py  the problems (--problem): layout, inputs, and whether a Teacher trains the network
   persistence.py checkpoint() and restore() for learned weights
-  visualizer.py hex geometry and pygame drawing: show() and save()
   cli.py       argument parsing and the `walnutbutter` command
   __main__.py  lets you run `python -m walnutbutter`
-tests/         pytest tests for the neuron, the grid, and the command line
+tests/         pytest tests for the neuron, the network, and the command line
 pyproject.toml project metadata, dependencies, and the command definition
 ```
 

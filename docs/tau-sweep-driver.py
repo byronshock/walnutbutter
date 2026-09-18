@@ -25,12 +25,12 @@ def log(msg):
 def run(job):
     tau, seed, epochs = job
     from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     from walnutbutter.learning import Teacher
     from walnutbutter.neuron import Neuron
     Neuron.verbose = False
     Neuron.tau = tau
-    t = Teacher(ArrayNetwork(GridOfNeurons(seed=seed, weight=None)), seed=seed)
+    t = Teacher(ArrayNetwork(Goo(seed=seed, weight=None)), seed=seed)
     tail_from = int(epochs * 0.9)
     tail_sum = 0.0
     for i in range(epochs):

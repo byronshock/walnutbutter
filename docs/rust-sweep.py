@@ -4,12 +4,12 @@
     docs/rust-sweep.py --name rate-interval-1m --problem doubled_copy \
         --interval 25 30 35 --input-rate 0.1 0.2 0.35 0.5 0.75 1 --seed 1 2 3 4 5 6 --epochs 1000000
 
-The arms are the product of every list given. One process per arm; each builds the grid the
+The arms are the product of every list given. One process per arm; each builds the network the
 command line would build, then runs `fast.train`, which keeps the input and the Poisson drive
 in Python's seeded stream and does the epoch and the weight update in Rust. Writes
 runs/<name>/<arm>.csv (a downsampled trace) and docs/<name>.md.
 
-`--goo N [N ...]` runs goo (AUTHORITY.md §3.4) in place of the grid, a knob like any other so
+`--goo N [N ...]` sets the goo's count (AUTHORITY.md §4.1), a knob like any other so
 its count can be swept, its potential axis scaled with fan-in unless `--no-scale-with-fan-in`.
 `--floor-ratio R` ties the floor to the threshold arm by arm, MINIMUM_POTENTIAL = R × THRESHOLD
 (the grid's own ratio is -4), so a threshold sweep moves the whole axis and not the ratio (§5.2).
@@ -93,7 +93,7 @@ def parse() -> argparse.Namespace:
                                 default=None, metavar="V")
     parser.add_argument("--seed", type=int, nargs="+", default=[1])
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
-                        help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (the grid's is -4)")
+                        help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (goo's ratio is -4)")
     parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
@@ -135,30 +135,25 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     eligibility = arm.get("eligibility", eligibility)
     from walnutbutter.cli import apply_problem, build_parser
     from walnutbutter.goo import Goo
-    from walnutbutter.grid import GridOfNeurons
     from walnutbutter.neuron import Neuron
 
-    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD
+    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD
 
     from walnutbutter.problems import PROBLEMS
-    on_goo = ("goo" in arm or "hidden_neurons" in arm or PROBLEMS[problem].goo is not None
-              or PROBLEMS[problem].hidden_neurons is not None)  # posed on goo: by the arm, or by the problem
     argv = ["--problem", problem, "--eligibility", eligibility] + ([] if wiring is None else ["--wiring", wiring]) + list(fixed)
-    base_threshold = GOO_THRESHOLD if on_goo else THRESHOLD  # goo has its own (§1.2)
-    if on_goo and "threshold" not in arm:
+    base_threshold = GOO_THRESHOLD  # goo is the only container and has its own (§4.11)
+    if "threshold" not in arm:
         argv += ["--threshold", f"{GOO_THRESHOLD:g}"]
     if floor_ratio is not None:
         if "minimum_potential" in arm:
             raise ValueError("--floor-ratio derives the floor from the threshold; do not also sweep --minimum-potential")
         argv += ["--minimum-potential", f"{floor_ratio * float(arm.get('threshold', base_threshold)):g}"]
-    elif on_goo and "minimum_potential" not in arm:
+    elif "minimum_potential" not in arm:
         argv += ["--minimum-potential", f"{GOO_MINIMUM_POTENTIAL:g}"]
     for knob, value in arm.items():
         if knob in ("seed", "rows", "eligibility") or knob in DERIVED:
             continue
         argv += [KNOBS[knob], f"{value:g}"]
-    if "rows" in arm:
-        argv += ["--rows", f"{arm['rows']:g}"]
     if "cv" in arm:
         argv += ["--cv", f"{arm['cv']:.12g}"]
     args = build_parser().parse_args(argv)
@@ -166,15 +161,11 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
     Neuron.isi_factor = args.isi_factor  # §0.2: on unless --no-isi-factor is among the fixed words
-    if on_goo:  # apply_problem sized the goo: --goo, or the problem's hidden count and zones
-        grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]),
-                   permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
-                   scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
-                   scaling_factor=args.scaling_factor)
-    else:
-        grid = GridOfNeurons(across=args.across, rows=args.rows, weight=None, seed=int(arm["seed"]),
-                             omega=args.omega, reach=args.grid_reach, permute=not args.no_permute,
-                             threshold=args.threshold, minimum_potential=args.minimum_potential)
+    # goo is the only container (AUTHORITY.md §4.1); apply_problem sized it: --goo, or the problem's hidden count and zones
+    grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]),
+               permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
+               scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
+               scaling_factor=args.scaling_factor)
     grid.coding, grid.population, grid.clock = args.coding, args.population, args.clock
     grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
     grid.temperature = args.temperature  # the evidence critic's (§8)
@@ -390,10 +381,8 @@ def summarise(args) -> None:
         return
     axes = [k for k in swept if k != "seed"]
     from walnutbutter.problems import PROBLEMS
-    on_goo = (bool(args.goo) or args.hidden_neurons is not None or PROBLEMS[args.problem].goo is not None
-              or PROBLEMS[args.problem].hidden_neurons is not None)  # posed on goo: by the arms, or by the problem
     sizes = (" " + " ".join(f"{g:g}" for g in args.goo)) if args.goo else ""
-    container = ("goo" + sizes + ("" if args.scale else ", flat")) if on_goo else "hex grid"
+    container = "goo" + sizes + ("" if args.scale else ", flat")
     lines = [f"# {args.name}: {args.problem} on the {container}, {args.epochs:,} epochs an arm, the Rust wave loop (§6.15), "
              f"{', '.join(args.eligibility)} eligibility", ""]
     if len(axes) == 2:

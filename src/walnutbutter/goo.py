@@ -1,10 +1,11 @@
-"""Goo: butter with the plane taken away (AUTHORITY.md §3.4).
+"""Goo: the only container (AUTHORITY.md §4.1).
 
-Every other container spends its structure on geometry. The hex grid wires
-each cell to its two rings of neighbours, the columns extrude those cells
-into R3, the lattice measures unit distances -- and all three then have to
-say what "near" means before they can say what connects. Goo has no
-positions at all, so there is no distance to measure and nothing to be near.
+A container with positions has to say what "near" means before it can say
+what connects. Goo has no positions at all, so there is no distance to
+measure and nothing to be near, and the wiring rule is all there is. The
+containers that had positions -- the hex grid, the hexagonal columns, the
+lattice and the spread -- left the specification on September 17, 2026 and
+are kept at the tag lab-notebook-2026-09-17.
 
 Its wiring is the scaled rule (Byron, September 16, 2026: "P(i projects
 onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij
@@ -34,10 +35,10 @@ that the zones not overlap. Nothing is drawn where the probability is 0
 or 1; otherwise the seed's stream decides, pair by pair in (i, j) order,
 the projection draw and then the weight.
 
-With no rows there is no bottom row to be the input, so the zones go by
-index and are addressed the way every other container's rows are --
-`get_neuron_at(place, 1)` in, `get_neuron_at(place, 0)` out -- so `rows` is
-2 because it is counting those two zones, not any depth. The input zone is
+With no positions there is nowhere to put the input but the index, so the
+zones go by index and are addressed by place -- `get_neuron_at(place, 1)`
+in, `get_neuron_at(place, 0)` out -- so `rows` is 2 because it is counting
+those two zones, not any depth. The input zone is
 the first `across` neurons and the output zone the last `outputs`.
 
 A sixth wiring, "ff2" -- fully-connected-feedforward-2 (Byron, September 16,

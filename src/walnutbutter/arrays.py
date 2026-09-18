@@ -1,8 +1,7 @@
 """The array engine: the same network as vectors and a sparse matrix.
 
-`ArrayNetwork` wraps a mesh built the usual way (a `GridOfNeurons`, a
-`HexColumns` or a `CartesianNodes`) and runs it with numpy and scipy instead
-of neuron objects. Neurons become vectors of length N (potential, threshold,
+`ArrayNetwork` wraps a mesh built the usual way (a `Goo`) and runs it with
+numpy and scipy instead of neuron objects. Neurons become vectors of length N (potential, threshold,
 noise, firing rate, spike times, the wave each fired in this epoch);
 connections become vectors of length E in connection-id order (source,
 target, weight, active, the stamp of the last signal integrated) and a
@@ -25,7 +24,7 @@ sides so that the dopamine arithmetic agrees to the last bit.
 
 The mesh stays attached as `mesh`: `sync_to_mesh()` copies the arrays back
 into its neuron and connection objects, which is how checkpoints are
-written and the visualizer draws an array network. Nothing prints per
+written. Nothing prints per
 neuron in this engine.
 """
 
@@ -66,7 +65,7 @@ class ArrayWave:
 
 
 class ArrayNetwork(Network):
-    """A mesh run as arrays. Build the mesh first, then wrap it: `ArrayNetwork(GridOfNeurons(seed=1))`."""
+    """A mesh run as arrays. Build the mesh first, then wrap it: `ArrayNetwork(Goo(seed=1))`."""
 
     engine = "arrays"
 

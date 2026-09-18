@@ -7,8 +7,9 @@ import random
 import pytest
 
 from walnutbutter.cli import cli_main
+from walnutbutter.constants import ACROSS, GOO_COUNT
 from walnutbutter.dopamine import ORDERS, Dopamine, learn
-from walnutbutter.grid import GridOfNeurons
+from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -125,7 +126,7 @@ def test_a_loop_that_refires_releases_and_moves_its_gated_incoming_weights():
 def test_an_input_neuron_that_should_not_fire_is_punished_for_refiring():
     """Two input neurons with the same history; the one whose bit is 0 moves its weight the opposite way."""
     from walnutbutter.propagation import Wave
-    grid = GridOfNeurons(across=2, rows=2, weight=1.0, omega=0)
+    grid = Goo(count=4, across=2, weight=1.0)
     yes, no = grid.input_row()
     grid.set_input([True, False])
     assert yes.should_fire is True and no.should_fire is False and grid.get_neuron_at(0, 0).should_fire is None
@@ -155,20 +156,20 @@ def test_synapses_forget_by_the_decay_each_epoch_in_both_engines():
     pytest.importorskip("scipy")
     from walnutbutter.arrays import ArrayNetwork
 
-    grid = GridOfNeurons(across=4, rows=3, weight=None, seed=6, omega=0)
+    grid = Goo(count=12, across=4, weight=None, seed=6)
     grid.dopamine = Dopamine(decay=0.01, lr=0.0)  # no learning: only the forgetting
     before = [c.weight for c in grid.connections.values()]
     run_epoch(grid, verbose=False)
     assert [c.weight for c in grid.connections.values()] == pytest.approx([w * 0.99 for w in before])
     run_epoch(grid, verbose=False)
     assert [c.weight for c in grid.connections.values()] == pytest.approx([w * 0.99 * 0.99 for w in before])
-    twin = GridOfNeurons(across=4, rows=3, weight=None, seed=6, omega=0)
+    twin = Goo(count=12, across=4, weight=None, seed=6)
     twin.dopamine = Dopamine(decay=0.01, lr=0.0)
     net = ArrayNetwork(twin)
     run_epoch(net, verbose=False)
     run_epoch(net, verbose=False)
     assert np.allclose(net.weight, [c.weight for c in grid.connections.values()], atol=1e-15)
-    still = GridOfNeurons(across=4, rows=3, weight=None, seed=6, omega=0)
+    still = Goo(count=12, across=4, weight=None, seed=6)
     still.dopamine = Dopamine(decay=0.0, lr=0.0)
     run_epoch(still, verbose=False)
     assert [c.weight for c in still.connections.values()] == before  # decay 0: nothing forgets
@@ -180,9 +181,9 @@ def test_both_engines_learn_identically_by_dopamine(order):
     pytest.importorskip("scipy")
     from walnutbutter.arrays import ArrayNetwork
 
-    mesh = GridOfNeurons(weight=None, seed=5, across=6, rows=4)
+    mesh = Goo(count=24, across=6, weight=None, seed=5)
     mesh.dopamine = Dopamine(order=order)
-    twin = GridOfNeurons(weight=None, seed=5, across=6, rows=4)
+    twin = Goo(count=24, across=6, weight=None, seed=5)
     twin.dopamine = Dopamine(order=order)
     net = ArrayNetwork(twin)
     ra, rb = random.Random(3), random.Random(3)
@@ -199,7 +200,7 @@ def test_both_engines_learn_identically_by_dopamine(order):
 
 
 def test_the_weights_move_on_the_default_grid_and_stay_in_range():
-    grid = GridOfNeurons(weight=None, seed=1)  # the proven 8x10 topology
+    grid = Goo(count=GOO_COUNT, across=ACROSS, weight=None, seed=1)  # the default goo (§4.1)
     grid.dopamine = Dopamine()
     before = [c.weight for c in grid.connections.values()]
     rng = random.Random(1)
@@ -211,12 +212,12 @@ def test_the_weights_move_on_the_default_grid_and_stay_in_range():
 
 
 def test_the_teacher_scores_under_dopamine_and_reinforces_under_the_other_rule():
-    grid = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0)
+    grid = Goo(count=32, across=8, weight=None, seed=2)
     teacher = Teacher(grid, seed=2, rule="dopamine")
     assert teacher.rule == "dopamine" and grid.dopamine is not None and grid.dopamine.lr == teacher.lr
     teacher.epoch(verbose=False)
     assert "dopamine" in teacher.status() and "perturb, lr" not in teacher.status()
-    other = GridOfNeurons(across=8, rows=4, weight=None, seed=2, omega=0)
+    other = Goo(count=32, across=8, weight=None, seed=2)
     old = Teacher(other, seed=2, rule="reinforce")
     old.epoch(verbose=False)
     assert old.rule == "reinforce" and other.dopamine is None and "perturb, lr" in old.status()
@@ -226,7 +227,7 @@ def test_the_teacher_scores_under_dopamine_and_reinforces_under_the_other_rule()
 
 def test_sustain_inputs_runs_by_dopamine_and_checkpoints_it(tmp_path, capsys):
     save = tmp_path / "s.json"
-    assert cli_main(["--headless", "--problem", "sustain_inputs", "--rule", "dopamine", "--seed", "3", "--epochs", "30", "-r", "4",
+    assert cli_main(["--headless", "--problem", "sustain_inputs", "--rule", "dopamine", "--seed", "3", "--epochs", "30",
                      "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
     assert "rule: dopamine, release-first" in err and "release gamma(alpha 2, theta 1 ms)" in err and "after 30 epochs" in err
@@ -236,10 +237,10 @@ def test_sustain_inputs_runs_by_dopamine_and_checkpoints_it(tmp_path, capsys):
     assert cli_main(["--headless", "--load-weights", str(save), "--rule", "dopamine", "--epochs", "5", "--no-save"]) == 0
     err = capsys.readouterr().err
     assert "from the checkpoint" in err and "rule: dopamine" in err
-    assert cli_main(["--headless", "-a", "8", "-r", "4", "--seed", "1", "--epochs", "5", "--rule", "reinforce", "--no-save", "-q"]) == 0
+    assert cli_main(["--headless", "-a", "8", "--seed", "1", "--epochs", "5", "--rule", "reinforce", "--no-save", "-q"]) == 0
     assert "hazard, lr" in capsys.readouterr().err  # the default eligibility follows the neuron, which has escape noise by default
     assert cli_main(["--headless", "--order", "update-first", "--dopamine-tau", "0"]) == 2
-    assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "8", "-r", "4", "--epochs", "5", "--no-save",
+    assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "8", "--epochs", "5", "--no-save",
                      "--rule", "dopamine", "--order", "update-first"]) == 0
 
 
@@ -316,7 +317,7 @@ def test_leaky_hebb_composes_with_the_quash_and_both_engines_agree():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.quash_rate, grid.quash_k, grid.hebb_rate = 0.02, 0.2, 0.01
         return grid
@@ -328,7 +329,7 @@ def test_leaky_hebb_composes_with_the_quash_and_both_engines_agree():
         run_epoch(net, verbose=False)
         assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
 
-    alone = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)  # the quash alone, same seed
+    alone = Goo(count=24, across=12, weight=None, seed=5, permute=False)  # the quash alone, same seed
     alone.coding, alone.readout, alone.read, alone.interval = "population", "top", "fired", 20.0
     alone.quash_rate, alone.quash_k = 0.02, 0.2
     for _ in range(30):
@@ -394,7 +395,7 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = GridOfNeurons(across=12, rows=2, weight=None, seed=5, permute=False)
+        grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.quash_rate = 0.02
         return grid

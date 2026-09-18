@@ -203,7 +203,7 @@ def test_the_count_scales_every_hazard_down_as_its_square_root():
     by sqrt(N)"): m = (dt / hop) sqrt(N0 / N) e^(s / Delta_j), N0 = ESCAPE_REFERENCE_COUNT = 60, the goo the width was
     set on -- so at 60 nothing moves, a smaller network is louder and a larger one quieter, at every margin alike."""
     from walnutbutter.constants import ESCAPE_REFERENCE_COUNT
-    from walnutbutter.grid import GridOfNeurons
+    from walnutbutter.goo import Goo
     assert ESCAPE_REFERENCE_COUNT == 60
     for count, scale in ((20, math.sqrt(3.0)), (60, 1.0), (240, 0.5)):
         g = Goo(count=count, across=4, seed=1, weight=0.0, projection=1.0, wiring="zones-equal")
@@ -216,7 +216,7 @@ def test_the_count_scales_every_hazard_down_as_its_square_root():
         assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp((0.0 - neuron.threshold) / neuron.delta)
         neuron.potential, neuron.last_update = neuron.threshold, Neuron.hop()  # at threshold: sqrt(N0 / N) a hop, not one
         assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp(0.0)
-    grid = GridOfNeurons(across=4, rows=4, omega=0)
+    grid = Goo(count=16, across=4)
     grid.set_delta(0.455)
     assert grid.escape_scale == math.sqrt(60.0 / 16.0)  # any container: its count
     # the array engine and the Rust loop carry the factor: the agreement tests above run at 40, where it is 1.22

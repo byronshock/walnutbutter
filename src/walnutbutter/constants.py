@@ -15,30 +15,26 @@ restores) per run.
 """
 
 # --- the default network: footprint and wiring ----------------------------------
-ACROSS = 8  # cells across (the input row has one neuron per coded bit)
-ROWS = 10  # rows of cells, input at the bottom, output at the top
-OMEGA = 0.2  # proportion of all connections that are small-world shortcuts, 0 <= omega < 1
-REACH = 2.0  # lattice wiring: every pair within this many unit distances connects (the two hex rings)
+ACROSS = 8  # the input zone's width: the first ACROSS neurons, one per coded bit (§4.3)
 WEIGHT_RANGE = (-1.0, 1.0)  # random weights are drawn from this range, and learning clips to it
 WEIGHT_EPSILON = 0.001  # --epsilon: the smallest weight allowed under --positive-weights, range (epsilon, 1)
 
 # --- the neuron: activation and the clock (nominal milliseconds) ----------------
 THRESHOLD = 0.25  # total weighted input a neuron needs before it fires, quoted at THRESHOLD_FAN_IN incoming synapses
-THRESHOLD_FAN_IN = 18.0  # the in-degree THRESHOLD is quoted at: an interior hex cell's two rings at REACH 2 (AUTHORITY.md
-# §5.2, Byron, September 14, 2026). A container that scales starts neuron j at THRESHOLD * d_j / THRESHOLD_FAN_IN, so a
-# neuron wired like that cell keeps 0.25 exactly and goo's 79 incoming synapses ask proportionally more. Goo scales;
-# nothing else does yet, because turning it on for the grid would move every threshold every result was measured at.
+THRESHOLD_FAN_IN = 18.0  # the in-degree THRESHOLD is quoted at (AUTHORITY.md §4.11, Byron, September 14, 2026): the
+# eighteen an interior cell of the archived hex grid heard, kept as the unit although that container has left the
+# specification. A container that scales starts neuron j at THRESHOLD * d_j / THRESHOLD_FAN_IN.
 MINIMUM_POTENTIAL = -1.0  # floor on a potential: inhibition and carried-over charge can go no lower
 
 # --- goo, the working network (AUTHORITY.md §3.4; Byron, September 14, 2026: "We will speed everything up by
 # selecting 60 units of goo, with THRESHOLD=1") -----------------------------------------------------------------
-GOO_COUNT = 60  # neurons in goo when --goo is given no number: 3,540 connections against 80's 6,320, about twice the speed
-GOO_THRESHOLD = 0.2  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN like the grid's and scaled by goo's fan-in (§5.2): a goo
+GOO_COUNT = 60  # neurons in goo when no problem and no --goo names a count: 3,540 connections, the working network
+GOO_THRESHOLD = 0.2  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled by goo's fan-in (§5.2): a goo
 # of 60 starts at 0.2 * 59/18 = 0.66. Set from the fine sweep of §3.4 (Byron, September 14, 2026, "the word"): with every
 # neuron un-sticking, 0.15-0.40 is a plateau and 0.20 the one level where every seed learned. It was 1 -- theta 3.28,
 # chosen to sit past the saturation edge -- which turned out to be off the plateau: a dead interior on the no-direct
-# copy. The grid keeps 0.25 -- the threshold belongs to the container, the third reading §3.4 named, adopted for goo
-GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the floor follows at the grid's ratio of -4, as
+# copy. The threshold belongs to the container, the third reading §3.4 named, adopted for goo
+GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the floor follows at the ratio of -4, as
 # every goo sweep ran it (§5.2, one axis, two points)
 GOO_SCALING_FACTOR = 0.05  # goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026: "P(i projects
 # onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij necessary to give j an average of N * scaling_factor
@@ -179,7 +175,7 @@ DOPAMINE_PUNISH_GAIN = 2.0  # and that reversed update is this many times as lar
 WEIGHT_DECAY = 1e-4  # every weight moves toward 0 by this fraction each epoch: synapses that forget on their own (Byron, same day, 'for now')
 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
-TARGET = "reversed"  # what the top row should show, derived from the input row (learning.TARGETS)
+TARGET = "reversed"  # what the output zone should show, derived from the input zone (learning.TARGETS)
 CRITIC = "row"  # how the reward is judged (learning.CRITICS)
 TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron, September 16, 2026: "the spikes are EVIDENCE"):
 # the class sums are read as log-odds at this scale, q_k = exp(n_k / T) / sum_j exp(n_j / T), and the reward is ln q_y; a lead of
