@@ -871,13 +871,14 @@ the file said the second. With it go TARGET_ISI, HOPS,
 EARLY_ARRIVAL_PUNISHMENT_FACTOR and ISI_FACTOR, and with it goes §7.6, which
 said a resumed network keeps the setting it was saved under. LAG stays: it is
 §3.2's and belongs to the hop. What §0.12's deterministic drive and §9.13's
-rate teacher are to be quoted in, having quoted TARGET_ISI, is REFRACTORY +
-LAG — Byron, September 18, 2026: "REFRACTORY+LAG" — written as the sum because
-the interval has no name of its own any more (§3.2). That is not TARGET_ISI
-restored under another name: being the unit those two quote makes the hop no
-more a set point than it was, since no rule in force reads a neuron's own
-interval, which is this clause. Neither of them is in force. [RECORD §0.2,
-§6.7]*
+rate teacher were to be quoted in, having quoted TARGET_ISI, was answered
+twice over on September 18, 2026. The drive's interval is REFRACTORY + LAG —
+"REFRACTORY+LAG" — written as the sum because it has no name of its own any
+more (§3.2); that is not TARGET_ISI restored under another name, since being
+the unit the drive quotes makes the hop no more a set point than it was, no
+rule in force reading a neuron's own interval, which is this clause. The rate
+teacher's 1-target is not quoted in the hop at all: it is ONE_TARGET, a
+constant of its own (§9.13). Neither clause is in force. [RECORD §0.2, §6.7]*
 
 ---
 
@@ -1367,25 +1368,24 @@ $$\text{reinforcement} \;\propto\; r^{\text{obs}}_j - r^{\text{target}}_j.$$
 
 As specified on September 17, 2026 this difference was soft-gated by the ISI
 factor. The gate went with §7.4 on September 18 and is not carried; what
-stands is the bare difference. The target is the **drive rate** for a coded
-bit of 1 — one spike every REFRACTORY + LAG, which is one spike per hop — and
-the **exploration rate** for a 0: the hazard's rest rate (§7.2), which is new,
-is not zero, and is a set point rather than an extreme. Written in §7.2's own
-unit the two are 1.000 and, at $N = 60$, 0.111 spikes per hop, against the
-1.020 spikes per hop the refractory period allows. Being a rate difference it
-needs no bit, so the row critic's pickiness (§9.5) has no job under it.
+stands is the bare difference. The target for a coded bit of 1 is
+**ONE_TARGET**, a constant of its own in §7.2's unit — spikes per hop —
+ONE_TARGET $= 1$; and the target for a 0 is the **exploration rate**: the
+hazard's rest rate (§7.2), which is new, is not zero, and is a set point
+rather than an extreme. In that one unit the two are 1.000 and, at $N = 60$,
+0.111 spikes per hop, against the 1.020 spikes per hop the refractory period
+allows. Being a rate difference it needs no bit, so the row critic's pickiness
+(§9.5) has no job under it.
 
-**What the 1-target now costs, and is not settled.** One spike per hop is
-196 Hz against the 200 Hz that is $1/\text{REFRACTORY}$ and the fastest §2.5
-allows: the target for a 1 sits at 98% of saturation. When this clause was
-written the 1-target was TARGET_ISI, then derived at HOPS × (REFRACTORY + LAG)
-= 10.2 ms, and being half of saturation is what let the clause say it had left
-behind the teacher it replaces — whose targets stood "at the two extremes of
-what a neuron can do" [RECORD §6.9]. Quoted in REFRACTORY + LAG the interval
-halves and the 1-target returns to that extreme, while the 0-target does not:
-at $N = 60$ it is 10.9% of the range where the 1-target is 98%. Whether that
-is wanted is Byron's, and it is the one thing this clause asserts that its own
-provenance argues against.
+**ONE_TARGET is quoted off nothing.** It is not the drive's rate, not an
+interval, and not derived from the clock: it is a number of spikes per hop
+that a run sets, and the default is the value the clause has always run at.
+That is what makes where it sits a choice. At ONE_TARGET $= 1$ the target is
+98% of the 1.020 the refractory period allows, which is where this clause
+stood when the interval carried it, and the teacher it replaces is criticised
+in this file for targets "at the two extremes of what a neuron can do"
+[RECORD §6.9] — so 1 is a starting value, to be swept, and the range it is
+swept over runs from the 0-target up to 1.020 and no further.
 
 **Open. Each part blocks a build:**
 
@@ -1414,20 +1414,14 @@ provenance argues against.
   have today — and the rest rate carries the count's factor $\kappa(N)$
   (§6.6), so the target for a 0 moves when the network is resized. Whether a
   target that follows the network's size is wanted is open.
-- **The 1-target is the clock's.** Quoting it in REFRACTORY + LAG makes the
-  teacher depend on §2.5's refractory period and §3.2's LAG, a link §2, §3 and
-  §9 do not have today. Unlike the 0-target's dependence on ESCAPE_DELTA this
-  one cannot be tuned away: those two constants carry the refractory period,
-  the hop and §6.12's resumption of the hazard with them, so the 1-target
-  cannot be swept without moving the clock the whole network runs on.
 One collision the specification carried on September 17, 2026 is gone with
 §7.4, and is named so that taking the gate up again re-asks it: that a neuron
 which has never fired stands at $f = 0$, so a gated teacher posts nothing to
 it and a network that starts silent cannot be taught out of silence. The other
-is not gone but renamed. TARGET_ISI held three jobs, and that was the reason
-the collision was recorded; REFRACTORY + LAG now holds three — §3.2's hop,
-§0.12's drive interval and this clause's 1-target — and the two that are not
-in force are quoted off the one that is.
+is not gone but reduced. TARGET_ISI held three jobs, and that was the reason
+the collision was recorded; REFRACTORY + LAG holds two — §3.2's hop and
+§0.12's drive interval — and this clause's 1-target, which was briefly the
+third, is ONE_TARGET and is quoted off nothing.
 
 *Byron, September 17, 2026: the reinforcement rule and its soft gate are his,
 specified and not built [RECORD §0.2]; the gate went out with §7.4 on
@@ -1437,7 +1431,11 @@ extremes of what a neuron can do and the risk Byron asked to be recorded on
 September 14, 2026, is [RECORD §6.9] and is not carried. The four open parts
 are decision 7 of `docs/rewrite-decisions.md`, unanswered; the unit of the
 1-target, which that decision also carried, is answered above — Byron,
-September 18, 2026: "REFRACTORY+LAG".*
+September 18, 2026: "REFRACTORY+LAG". The 1-target was quoted there for the
+rest of that day and then separated, Byron the same evening: "Please separate
+the 1-target from REFRACTORY+LAG ... ONE_TARGET = 1 (by default)." What the
+separation buys is that the 98% is now a property of the default and not of
+the specification: the constant can be swept without moving the clock.*
 
 
 ## 10. Local rules
@@ -1660,6 +1658,7 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 | TARGET_RATE | 0.5 | the firing rate homeostasis aims for | §9.9 [record §1.3] |
 | UNSTICK | 10⁻³ | **non-default.** The per-epoch rate a stuck neuron's threshold moves toward its target; zero for mnist (11.12) | §9.10 [record §1.3] |
 | UNSTICK_TARGET | 0.5 | the firing rate the un-sticking aims for | §9.10 [record §1.3] |
+| ONE_TARGET | 1 spike per hop | **not in force.** The rate teacher's target for a coded bit of 1, in §7.2's unit and quoted off nothing else; a starting value, to be swept, with 1.020 the most the refractory period allows | §9.13 [Byron, September 18, 2026] |
 
 **The problem, and what is reported**
 
