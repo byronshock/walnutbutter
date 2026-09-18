@@ -52,8 +52,7 @@ single-spike rule of September 17, 2026): each synapse's score moves by
 (y - p_hat_j) x_ij, the outcome of the decision against the neuron's own
 per-decision expectation of its spike (moved by DECISION_MEMORY, a plain
 mean until then, the first decision charging nothing), times what the
-synapse has in the potential; weighed by the ISI factor of §0.2 when it is
-on. With `eligibility="count_hebb"`, the epoch form hebb was until that day,
+synapse has in the potential. With `eligibility="count_hebb"`, the epoch form hebb was until that day,
 each synapse's eligibility is the signals it delivered this epoch, x_ij,
 times its target's spike count minus the target's own running expectation
 of that count, n_j - n_bar_j (Williams's y - y_bar, [1] §8.4; the

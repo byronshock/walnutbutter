@@ -415,3 +415,50 @@ the interval'. Byron's principle settles which one goes.
 **Left open, and Byron's:** §0.12's deterministic drive and §9.13's rate
 teacher both quoted TARGET_ISI as their unit. Neither is in force, and neither
 has a unit now. Both clauses say so rather than choosing one.
+
+**§3.2, §0.12, §9.13 — TARGET_ISI and TIME_CONSTANT_OF_TRANSMISSION deprecated**
+(September 18, 2026):
+
+> *"Please deprecate: TARGET_ISI (replace with REFRACTORY) and
+> TIME_CONSTANT_OF_TRANSMISSION. These should not exist in the specifications.
+> We keep the LAG at some very small value. Arrival times may eventually be
+> stochastic."*
+
+and, correcting the parenthetical:
+
+> *"REFRACTORY+LAG"*
+
+So one quantity, spelled out, replaces two retired names. The hop keeps its
+value and loses its name: §3.2 writes `h = REFRACTORY + LAG = 5.1 ms`, where
+`h` is arithmetic shorthand and not a constant, and Appendix A's row is keyed
+on the sum. This closes the question §7.4 left open the same morning — §0.12's
+deterministic drive and §9.13's rate teacher are both quoted in REFRACTORY +
+LAG.
+
+*What the answer settles, and what it raises.* Three things are worth keeping
+in view, none of which the instruction decides:
+
+1. **The 1-target moves to 98% of saturation.** TARGET_ISI's last value was
+   the derived HOPS × (REFRACTORY + LAG) = 10.2 ms, half of saturation, and
+   that is what let §9.13 claim it had left behind the old teacher's targets
+   "at the two extremes of what a neuron can do". Quoted in REFRACTORY + LAG
+   the interval halves: one spike per hop is 196 Hz against the 200 Hz the
+   refractory period allows. The 0-target does not move. §9.13 now states the
+   answer and states this cost beside it, as the one thing the clause asserts
+   that its own provenance argues against. Byron's.
+2. **The collision retired with the shaping function comes back renamed.**
+   TARGET_ISI held three jobs and that was why the collision was recorded;
+   REFRACTORY + LAG now holds three — the hop, the drive's interval, and the
+   1-target — with the two that are not in force quoted off the one that is.
+3. **The lattice worry does not apply.** A deterministic drive whose period
+   equals the hop looks like the synchrony Byron struck on September 14, but
+   §5.7 is in force and forbids the shared phase it would need: no neuron is
+   driven at the epoch's moment, so each driven neuron carries its own phase
+   and there is no one lattice. The 100%-on-the-lattice measurement of
+   [RECORD §4.3] needed a common phase *and* a fixed hop, not the hop alone.
+
+**Stochastic arrival times** join §0.12 as a sixth intention, named and not
+made: what a drawn hop would re-ask is §2.5's and §6.12's boundary arithmetic
+(each statement becomes a probability), the hazard's per-hop unit (§6.5,
+§7.2), and the one-stream-one-order invariant (§7.3, §12.6), which gains a
+consumer. LAG stays small meanwhile.

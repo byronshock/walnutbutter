@@ -121,7 +121,8 @@ The form it is meant to take is one sparse matrix of every synaptic connection, 
 **0.12 The changes intended, and not made.** These are named here and nowhere else in this file; no clause is written from one, and when one is taken up it is specified whole, from §0 down.
 - Exploration generated at the synapse (§0.11), and with it the deprecation of θ and a hazard set by a neuron's fan-in. *Byron, September 17, 2026: "Theta should also be deprecated" — and, the same afternoon, 14:53 MDT, that the rewrite states the system as he has been running it, θ and its fan-in scaling included. [the quoted words are at `docs/rewrite-outline.md` §6.2, attributed to Byron there; RECORD §0.3 for "θ ignored"; `docs/rewrite-answers.md` §1 for the 14:53 counter]*
 - A dopamine reward produced locally at a spike (§0.10).
-- A deterministic drive: one spike at a fixed interval on each driven neuron in place of the Poisson rate drive. The interval was quoted in TARGET_ISI, which §7.4 took out with the shaping function; what it is quoted in when the drive is taken up is open and Byron's. *Byron, September 17, 2026, 14:58 MDT: "Please include the Poisson drive as it ran." [`docs/rewrite-answers.md` §3]*
+- A deterministic drive: one spike every REFRACTORY + LAG on each driven neuron in place of the Poisson rate drive. The interval was quoted in TARGET_ISI, which §7.4 took out with the shaping function, and is quoted in the hop since — Byron, September 18, 2026: "REFRACTORY+LAG". *Byron, September 17, 2026, 14:58 MDT: "Please include the Poisson drive as it ran." [`docs/rewrite-answers.md` §3]*
+- A signal's travel time drawn rather than fixed. §3.2 gives every connection the one hop $h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, and the arithmetic that keeps an arrival off a refractory boundary (§2.5, §6.12) is that one number's; a drawn hop makes each of those statements a probability, takes "spikes per hop" away from the hazard as its unit (§6.5, §7.2), and adds a consumer to the streams a seed fixes (§7.3, §12.6). Which stream it draws from, and whether a draw may fall below REFRACTORY and be dropped by §8.13, are open and Byron's. LAG stays at a very small value meanwhile. A signal still arrives whole and at an instant (§0.3): what a draw spreads is the population of signals, not the signal. *Byron, September 18, 2026, retiring TIME_CONSTANT_OF_TRANSMISSION as a name: "We keep the LAG at some very small value. Arrival times may eventually be stochastic."*
 - Small-world shortcuts, to return. *Byron, September 17, 2026, 15:08 MDT: "We'll bring back small world shortcuts later."*
 - The plane, as one way of putting the substance into a maker's hands rather than as a container of its own (§0.6). *Byron, September 17, 2026: "It is not THE idea, but AN idea of how to make neural networks useful to makers."*
 
@@ -305,12 +306,14 @@ it.
 
 **3.2 The hop.** A signal generated at time $t$ is delivered at
 $t + \text{REFRACTORY} + \text{LAG}$, and **never** at $t + \text{REFRACTORY}$.
-That is the hop,
+That is the hop, and it has no name of its own: wherever this file needs it,
+it is written out,
 
-$$h = \text{TIME\_CONSTANT\_OF\_TRANSMISSION} = \text{REFRACTORY} + \text{LAG}
-= 5.1\ \text{ms},$$
+$$h = \text{REFRACTORY} + \text{LAG} = 5.1\ \text{ms},$$
 
-with LAG $= 0.1$ ms, and there is no other delay: the time in signalling is
+where $h$ is this file's shorthand in arithmetic and not a constant —
+REFRACTORY and LAG are the two constants and the hop is what they add to.
+LAG $= 0.1$ ms, and there is no other delay: the time in signalling is
 carried by the hop alone. It is a delay and not a decay — a signal arrives
 whole, one hop after it was sent (§0.3).
 
@@ -320,7 +323,11 @@ has travelled $k$ connections is delivered $k\,h$ after the spike that
 generated it, and a neuron that fired in that same wave is recovered
 REFRACTORY after, so the arrival falls $k\,h - \text{REFRACTORY}$ past that
 neuron's wall — 0.1 ms at one hop, 5.2 ms at two, 10.3 ms at three, and never
-zero. A neuron's own spike reaches it again only round a cycle, and §4.4 gives
+zero. In general that clearance is $(k-1)\,\text{REFRACTORY} + k\,\text{LAG}$,
+positive for every $k \ge 1$ whenever LAG is positive and smallest at $k = 1$,
+where it is LAG itself: any positive LAG puts every whole number of hops clear
+of the period, and the one hop is the tight one. A neuron's own spike reaches
+it again only round a cycle, and §4.4 gives
 it no cycle shorter than two connections, so its own earliest return is at
 $2h = 10.2$ ms, 5.2 ms past its wall.
 
@@ -331,19 +338,35 @@ neurons — would decide whether the signal was taken or dropped. With it, no
 delivery is ever settled by which side of a rounding error it fell on. What
 §2.5 and §6.12 say about arrivals and refires is this arithmetic and no
 other.
-*The hop is Byron's, September 11, 2026. Fixed directly, and named, by Byron,
-September 17, 2026: "I no longer want to specify REFRACTORY_HOPS. I want to
-specify $h$ directly as TIME_CONSTANT_OF_TRANSMISSION." It was
+*The hop is Byron's, September 11, 2026. Fixed directly by Byron, September
+17, 2026: "I no longer want to specify REFRACTORY_HOPS. I want to specify $h$
+directly as TIME_CONSTANT_OF_TRANSMISSION." The first half of that stands: the
+hop is specified directly and not as a count of refractory periods. The name
+did not — Byron retired TIME_CONSTANT_OF_TRANSMISSION on September 18, 2026,
+"REFRACTORY+LAG", leaving the quantity, its two constants and its 5.1 ms
+untouched; only the name went. It was
 REFRACTORY / REFRACTORY_HOPS with REFRACTORY_HOPS 2 until then, and Byron on
 why that form went rather than being renamed: "refractory_hops was a nice
 convenience when we were working on an integer hex grid." There a trip had a
 length in cells, so counting the refractory period in hops measured how far a
 spike could travel before its neuron recovered. Goo has no distance (§4.2),
 every projection is one hop, and the count has nothing to count [RECORD §1.2,
-§4.1]. The 5.1 ms is REFRACTORY + LAG and is nothing else: TARGET_ISI was also
-5.1 ms and is gone with §7.4, and the two must not be read back into one
-another — LAG is 0.1 ms because a tenth of a millisecond is enough to keep a
-delivery off a boundary, not because any interval was being aimed at.*
+§4.1]. The 5.1 ms is REFRACTORY + LAG: a delay, and not an interval any rule
+aims at. TARGET_ISI, in the form hardcoded at 5.1 ms until September 17, 2026
+— not the derived HOPS × (REFRACTORY + LAG) = 10.2 ms that briefly replaced it
+— was the same number, and Byron replaced it with REFRACTORY + LAG on
+September 18, 2026: a name retired in favour of the arithmetic, not two
+meanings merged. Nothing in force aims at this interval.
+
+The LAG has a floor as well as a ceiling. It must stay far above the clock's
+slack (§3.4) — a LAG within slack(t) puts the delivery back inside the very
+tolerance it was introduced to escape — and far below REFRACTORY, so the hop
+stays a refractory period and a hair and the hazard's per-hop unit (§6.5) does
+not move. At TOLERANCE $10^{-12}$, 0.1 ms clears the slack by a factor of
+$10^{11}$ at a millisecond of clock time and by ten at $10^{10}$ ms, and §0.8
+says the network never stops: the margin is the reason for the value and not a
+coincidence of it. Byron, September 18, 2026: "We keep the LAG at some very
+small value."*
 
 **3.3 A wave is everything at one time.** The queue is a time-ordered
 schedule of signals and stimuli, not a per-hop loop, and a wave is the batch
@@ -717,10 +740,12 @@ the input zone.*
 
 *Named here as an intention and not as a clause (Byron, September 17, 2026,
 14:58 MDT — "Please include the Poisson drive as it ran"): the drive is to
-become one deterministic spike at a fixed interval on each driven neuron,
+become one deterministic spike every REFRACTORY + LAG on each driven neuron,
 specified but not built, and a later change to 5.4 through 5.7 rather than
 a rule now in force. The interval was quoted in TARGET_ISI, which §7.4 took
-out; what it is quoted in is open (§0.12).*
+out, and is quoted in the hop since (§0.12, §3.2). Note what 5.7 costs it:
+no neuron may be driven at the epoch's moment, so a deterministic drive gives
+each driven neuron its own phase and not one lattice for the network.*
 
 ## 6. Firing
 
@@ -846,8 +871,13 @@ the file said the second. With it go TARGET_ISI, HOPS,
 EARLY_ARRIVAL_PUNISHMENT_FACTOR and ISI_FACTOR, and with it goes §7.6, which
 said a resumed network keeps the setting it was saved under. LAG stays: it is
 §3.2's and belongs to the hop. What §0.12's deterministic drive and §9.13's
-rate teacher are to be quoted in, having quoted TARGET_ISI, is open and
-Byron's. [RECORD §0.2, §6.7]*
+rate teacher are to be quoted in, having quoted TARGET_ISI, is REFRACTORY +
+LAG — Byron, September 18, 2026: "REFRACTORY+LAG" — written as the sum because
+the interval has no name of its own any more (§3.2). That is not TARGET_ISI
+restored under another name: being the unit those two quote makes the hop no
+more a set point than it was, since no rule in force reads a neuron's own
+interval, which is this clause. Neither of them is in force. [RECORD §0.2,
+§6.7]*
 
 ---
 
@@ -1338,11 +1368,24 @@ $$\text{reinforcement} \;\propto\; r^{\text{obs}}_j - r^{\text{target}}_j.$$
 As specified on September 17, 2026 this difference was soft-gated by the ISI
 factor. The gate went with §7.4 on September 18 and is not carried; what
 stands is the bare difference. The target is the **drive rate** for a coded
-bit of 1 and the **exploration rate** for a 0: the hazard's rest rate (§7.2),
-which is new, is not zero, and is a set point rather than an extreme. The
-1-target was quoted in TARGET_ISI and is now unquoted, which is an open part
-below. Being a rate difference it needs no bit, so the row critic's pickiness
-(§9.5) has no job under it.
+bit of 1 — one spike every REFRACTORY + LAG, which is one spike per hop — and
+the **exploration rate** for a 0: the hazard's rest rate (§7.2), which is new,
+is not zero, and is a set point rather than an extreme. Written in §7.2's own
+unit the two are 1.000 and, at $N = 60$, 0.111 spikes per hop, against the
+1.020 spikes per hop the refractory period allows. Being a rate difference it
+needs no bit, so the row critic's pickiness (§9.5) has no job under it.
+
+**What the 1-target now costs, and is not settled.** One spike per hop is
+196 Hz against the 200 Hz that is $1/\text{REFRACTORY}$ and the fastest §2.5
+allows: the target for a 1 sits at 98% of saturation. When this clause was
+written the 1-target was TARGET_ISI, then derived at HOPS × (REFRACTORY + LAG)
+= 10.2 ms, and being half of saturation is what let the clause say it had left
+behind the teacher it replaces — whose targets stood "at the two extremes of
+what a neuron can do" [RECORD §6.9]. Quoted in REFRACTORY + LAG the interval
+halves and the 1-target returns to that extreme, while the 0-target does not:
+at $N = 60$ it is 10.9% of the range where the 1-target is 98%. Whether that
+is wanted is Byron's, and it is the one thing this clause asserts that its own
+provenance argues against.
 
 **Open. Each part blocks a build:**
 
@@ -1353,10 +1396,6 @@ below. Being a rate difference it needs no bit, so the row critic's pickiness
   epoch itself. The neuron keeps a rate memory over a window of its own
   (§2.6), and whether the teacher's window is that one or another is the
   same question asked twice.
-- **What the 1-target is quoted in.** It was one spike every TARGET_ISI, a
-  half of saturation against a refractory period of 5 ms, where the teacher
-  this replaces targeted saturation itself [RECORD §6.9]. TARGET_ISI went with
-  §7.4 and the interval has no name in this file now.
 - **Its critic**, or whether a rate difference implies one at all.
 - **Whether it pays once at the horizon or continuously.** A teacher that
   posts per decision has no single reading instant, and if it posts
@@ -1375,11 +1414,20 @@ below. Being a rate difference it needs no bit, so the row critic's pickiness
   have today — and the rest rate carries the count's factor $\kappa(N)$
   (§6.6), so the target for a 0 moves when the network is resized. Whether a
   target that follows the network's size is wanted is open.
-Two collisions the specification carried on September 17, 2026 are gone with
-§7.4, and are named so that taking the gate up again re-asks them: that
-TARGET_ISI would acquire a third job, and that a neuron which has never fired
-stands at $f = 0$, so a gated teacher posts nothing to it and a network that
-starts silent cannot be taught out of silence.
+- **The 1-target is the clock's.** Quoting it in REFRACTORY + LAG makes the
+  teacher depend on §2.5's refractory period and §3.2's LAG, a link §2, §3 and
+  §9 do not have today. Unlike the 0-target's dependence on ESCAPE_DELTA this
+  one cannot be tuned away: those two constants carry the refractory period,
+  the hop and §6.12's resumption of the hazard with them, so the 1-target
+  cannot be swept without moving the clock the whole network runs on.
+One collision the specification carried on September 17, 2026 is gone with
+§7.4, and is named so that taking the gate up again re-asks it: that a neuron
+which has never fired stands at $f = 0$, so a gated teacher posts nothing to
+it and a network that starts silent cannot be taught out of silence. The other
+is not gone but renamed. TARGET_ISI held three jobs, and that was the reason
+the collision was recorded; REFRACTORY + LAG now holds three — §3.2's hop,
+§0.12's drive interval and this clause's 1-target — and the two that are not
+in force are quoted off the one that is.
 
 *Byron, September 17, 2026: the reinforcement rule and its soft gate are his,
 specified and not built [RECORD §0.2]; the gate went out with §7.4 on
@@ -1387,7 +1435,9 @@ September 18 and the rule stands without it. The targets are settled in
 direction and not in value. The old teacher this replaces, with its targets at the two
 extremes of what a neuron can do and the risk Byron asked to be recorded on
 September 14, 2026, is [RECORD §6.9] and is not carried. The four open parts
-are decision 7 of `docs/rewrite-decisions.md`, unanswered.*
+are decision 7 of `docs/rewrite-decisions.md`, unanswered; the unit of the
+1-target, which that decision also carried, is answered above — Byron,
+September 18, 2026: "REFRACTORY+LAG".*
 
 
 ## 10. Local rules
@@ -1573,7 +1623,7 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 | REFRACTORY | 5 ms | the absolute refractory period | §2.5 [record §1.2] |
 | LAG | 0.1 ms | how long after a target could take it a signal actually arrives, so no delivery lands on the end of a refractory period | §3.2 [Byron, September 17, 2026] |
 | TOLERANCE | 10⁻¹² | the clock's slack, relative: two moments within slack(t) = TOLERANCE × max(1, \|t\|) are one moment | §3.4 [Byron, September 17, 2026] |
-| TIME_CONSTANT_OF_TRANSMISSION | 5.1 ms | **derived:** REFRACTORY + LAG. The hop: how long a signal takes to travel any connection, and the only delay in signalling. A delay, not a decay | §3.2 [Byron, September 17, 2026] |
+| REFRACTORY + LAG | 5.1 ms | **derived.** The hop: how long a signal takes to travel any connection, and the only delay in signalling. A delay, not a decay; it has no name of its own | §3.2 [Byron, September 17, 2026; the name TIME_CONSTANT_OF_TRANSMISSION retired September 18, 2026] |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given | §3 [record §1.2, §4.2] |
 | THRESHOLD | 0.25 | the starting θ of a container that does not set its own, quoted at THRESHOLD_FAN_IN | §6 [record §1.2, §5.2] |
 | GOO_THRESHOLD | 0.2 | goo's starting θ, quoted the same way | §6 [record §1.2] |

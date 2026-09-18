@@ -32,8 +32,7 @@ the eligibility a teacher pays at the read (§6.9) -- the same tally the epoch f
 centred Hebbian eligibility of §6.7 reads (`reinforce_count_hebb`, `reinforce_hebb` from
 September 16 to 17, 2026; the ±1 rule it replaced is `reinforce_wrong_hebb`). The
 single-spike rule of §6.7, hebb and hazard alike, is charged in the loop at every decision,
-weighed by the ISI factor of §0.2 when it is on, settled with `settle_scores` and paid by
-`reinforce_scores`.
+settled with `settle_scores` and paid by `reinforce_scores`.
 
 Exploration noise (§6.1) and the perturb eligibility of §6.7 as well, since September
 14, 2026: the engine runs Python's own MT19937, seeded by handing over `rng.getstate()`,

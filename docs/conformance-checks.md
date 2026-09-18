@@ -57,21 +57,28 @@ unclaimed list leaves PROBLEM open.*
 in one re-timing, followed by a re-measurement of mnist — not one at a time.*
 
 **A1. §3.2 — the hop is half what the file says.** The file fixes
-$h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms and retires the old form in
-Byron's words: *"I no longer want to specify REFRACTORY_HOPS. I want to specify
-$h$ directly as TIME_CONSTANT_OF_TRANSMISSION."* `neuron.py:51` still computes
+$h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, written out and with no name of
+its own since September 18, 2026, and retires the old form in Byron's words:
+*"I no longer want to specify REFRACTORY_HOPS. I want to specify $h$
+directly."* `neuron.py:51` still computes
 `REFRACTORY / REFRACTORY_HOPS` = 2.5 ms. Every delay in the system is half the
 specified one, and the LAG's whole purpose fails with it: a signal sent to a
 neuron that fired in the same wave now lands at $t + 2.5$ ms, **inside** that
 neuron's refractory period, where §3.2 requires it to land at $t + 5.1$ ms,
 just after recovery.
 
-**A2. Appendix A — LAG, HOPS and TIME_CONSTANT_OF_TRANSMISSION have no home.**
-`rg '\bLAG\b'` and `rg TIME_CONSTANT_OF_TRANSMISSION` over `src/` and `rust/`
-return nothing. HOPS exists only as `REFRACTORY_HOPS`, which is a different
-quantity under a similar name — the refractory period divided by the hop, not
-the connections a spike travels. The value coincides at 2; the meaning does
-not. A.0 wants one home for every value in the register.
+**A2. Appendix A — LAG has no home, and the code has no hop to add it to.**
+`rg '\bLAG\b'` over `src/` and `rust/` returns nothing, so the register's one
+remaining unhoused clock constant is LAG. The hop is now written out as
+REFRACTORY + LAG and has no name to look for: what the code must carry is the
+sum, and it carries `REFRACTORY / REFRACTORY_HOPS` instead (A1). HOPS and
+TIME_CONSTANT_OF_TRANSMISSION are no longer register names at all — HOPS went
+with the shaping function on September 18, 2026, and the name
+TIME_CONSTANT_OF_TRANSMISSION was retired the same day, leaving the quantity.
+`REFRACTORY_HOPS` survives in the code as the divisor of A1 and is a different
+quantity under a similar name: the refractory period divided by the hop, not
+the connections a spike travels. A.0 wants one home for every value in the
+register.
 
 **A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~
 Dissolved — Byron took the shaping function out, September 18, 2026.** The
@@ -231,12 +238,17 @@ The Appendix A diff was run row by row. **Everything not listed below matches**
 | TAU | ∞ | 2.0 |
 | TOLERANCE | 10⁻¹² | 1e-9 |
 | LAG | 0.1 ms | absent |
-| TIME_CONSTANT_OF_TRANSMISSION | 5.1 ms | absent |
+| REFRACTORY + LAG | 5.1 ms | 2.5 ms, as `REFRACTORY / REFRACTORY_HOPS` |
 | ELIGIBILITY | hazard | "perturb" |
 
 *TARGET_ISI, HOPS and EARLY_ARRIVAL_PUNISHMENT_FACTOR left this table with the
 shaping function on September 18, 2026 (A3, A4): the register no longer carries
-them and neither does the code.*
+them and neither does the code. TIME_CONSTANT_OF_TRANSMISSION left it the same
+day, as a name and not as a quantity — Byron retired the name, so the row is
+keyed on the arithmetic and the gap it records is A1's.*
+
+*In the code and in no row of the register, on this same subject:*
+`REFRACTORY_HOPS` *— the divisor A1 is about. It goes when the hop does.*
 
 In the code and in no row of the register: COUNT_MEMORY, SIGMA, EXPLORE,
 LEAKY_ELIGIBILITY, FLIP, READ_WINDOW, BORED_AFTER, TEACHER_CREDIT, RATE_ON,
