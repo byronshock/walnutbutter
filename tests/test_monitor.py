@@ -171,7 +171,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
             "--lr", "0.1", "--epochs", "200", "--rule", "reinforce"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "learning all-off (hazard, lr 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err  # the default follows the neuron
+    assert "learning all-off (hazard, lr 0.1): accuracy" in err  # §9.9, §9.10: off unless a run asks
     assert "after 200 epochs:" in err and "to date over 200 epochs" in err
     final = float(err.rsplit("% recent", 1)[0].rsplit(" ", 1)[1])
     assert 0 <= final <= 100  # the factored-out rule runs and reports; no performance claim under the schedule

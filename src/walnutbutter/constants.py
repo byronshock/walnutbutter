@@ -141,9 +141,11 @@ POPULATION = 3  # neurons per raw bit under population coding (Byron, September 
 FLIP = 1.0 / 12.0  # the probability a problem that corrupts its input flips each coded bit with (Byron, September 13, 2026,
 # reading the input zone back): a network built in the library does not flip until it is asked to; 0 = off
 
-# --- quashing cycles (AUTHORITY.md §6.11) -------------------------------------------
-QUASH_RATE = 0.02  # the rate a problem that quashes uses: a refire weakens each contributing synapse by this fraction
-# of its weight. A network built in the library does not quash until it is asked to; 0 = off.
+# --- the local rules (AUTHORITY.md §10) ----------------------------------------------
+QUASH_RATE = 0.02  # **non-default** (§10.1): the fraction of its weight a refire weakens each contributing synapse
+# by. The rule does not run unless a run asks for it -- this is a LATENT KNOB (§9.9, Byron, September 17, 2026: "a
+# rule that is off carries the value it would run at, so turning it on is asking for it and not inventing it"), so
+# the constant keeps its value and every run leaves it off until it asks.
 QUASH_K = 0.2  # per ms: the quash falls off as exp(-k * (t - t_fired)) with the delay since the previous spike
 
 LR = 0.03  # learning rate, both rules
@@ -162,11 +164,13 @@ ELIGIBILITY = "hazard"  # which of the two eligibilities of AUTHORITY.md §8.3 a
 # neuron's rate is moving. Where the threshold decides, no eligibility runs and the rule refuses to learn (§8.3)
 BASELINE_RATE = 0.05  # per-epoch update of the running reward baseline the advantage is measured against
 WINDOW = 200  # epochs the Teacher's moving-average accuracy spans
-HOMEOSTASIS = 1e-6  # per-epoch rate at which a threshold moves toward the target firing rate; 0 = off
+HOMEOSTASIS = 1e-6  # **non-default** (§9.9): the per-epoch rate a threshold drifts toward its target firing rate.
+# A latent knob like the quash -- the constant keeps its value and the run switches it off, rather than the constant
+# being zero and a run supplying the value -- so a run gets it only by asking (--homeostasis).
 TARGET_RATE = 0.5  # firing rate homeostasis aims for, 0 to 1
-UNSTICK = 1e-3  # per-epoch rate at which a stuck neuron's threshold moves toward UNSTICK_TARGET; 0 = off. Every neuron,
-# not the output row only, since September 14, 2026 (AUTHORITY.md §6.7): the interior of a goo with no direct
-# projection was dead for want of it, and 'all neurons are first-class citizens' (Byron)
+UNSTICK = 1e-3  # **non-default** (§9.10): the per-epoch rate a stuck neuron's threshold moves toward UNSTICK_TARGET,
+# a latent knob like the other two. Every neuron, not the output row only, since September 14, 2026 (§9.10): the
+# interior of a goo with no direct projection was dead for want of it, and 'all neurons are first-class citizens'
 UNSTICK_TARGET = 0.5  # firing rate the un-sticking aims for
 # THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
 # (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.

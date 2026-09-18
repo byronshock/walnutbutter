@@ -92,9 +92,9 @@ import random
 from typing import Callable, Sequence
 
 from .constants import (
-    BASELINE_RATE, CRITIC, ELIGIBILITY, HOMEOSTASIS, LR, RATE_MEMORY, RULE,
+    BASELINE_RATE, CRITIC, ELIGIBILITY, LR, RATE_MEMORY, RULE,
     STUCK_ABOVE, STUCK_BELOW,
-    TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
+    TARGET, TARGET_RATE, UNSTICK_TARGET, WINDOW,
 )
 from .monitor import run_epoch
 from .network import Network
@@ -499,10 +499,10 @@ class Teacher:
         baseline_rate: float = BASELINE_RATE,
         window: int = WINDOW,
         seed: int | None = None,
-        homeostasis: float = HOMEOSTASIS,
+        homeostasis: float = 0.0,  # §9.9: off unless a run asks; HOMEOSTASIS is the value it would run at
         target_rate: float = TARGET_RATE,
         discharge: bool = False,
-        unstick: float = UNSTICK,
+        unstick: float = 0.0,  # §9.10, the same
         unstick_target: float = UNSTICK_TARGET,
         critic: str = CRITIC,
         rule: str = RULE,

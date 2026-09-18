@@ -38,7 +38,8 @@ class Problem:
     critic: str | None = None  # how the read is scored (None: --critic)
     population: int | None = None  # neurons per raw bit where the coding repeats it (None: constants.POPULATION)
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
-    quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
+    quash: float | None = None  # the rate this problem asks the quash to run at (§10.1); None: off, as every
+    # problem the specification states leaves it
     hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
     drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
     outputs: int | None = None  # the width of the output zone when it differs from the input's (goo, §3.4); None: across
@@ -47,8 +48,8 @@ class Problem:
     hidden_neurons: int | None = None  # goo's hidden count, inputs + hidden + outputs being the goo (Byron, September 16, 2026;
     # mnist, §8); --hidden-neurons overrides it, and 0 is a network the scaled rule can build
     data: str | None = None  # a dataset the inputs come from, with their labels, in place of random bits (§4.5): "mnist"
-    homeostasis: float | None = None  # the Teacher's threshold drift for this problem (§1.3); None: the constant, unless given
-    unstick: float | None = None  # and its un-sticking; 0 switches either off for the problem (mnist, §8: Byron, September 15, 2026)
+    homeostasis: float | None = None  # the rate this problem asks homeostasis to run at (§9.9); None: off
+    unstick: float | None = None  # and the same for un-sticking (§9.10); None: off
     lr: float | None = None  # the problem's own learning rate; None: the constant, unless --lr is given (mnist 0.002, §8: Byron,
     # September 16, 2026, "default LR to 0.002 for this task")
 
@@ -57,8 +58,7 @@ PROBLEMS: dict[str, Problem] = {
     "reversal": Problem(
         "reversal",
         "the output zone learns to show the input zone reversed, taught by a Teacher with a target and a critic",
-        ACROSS, trained=True, rule="reinforce", quash=False,
-    ),
+        ACROSS, trained=True, rule="reinforce", ),
     "copy": Problem(
         "copy",
         "an input is complement-coded and presented on the input neurons, and the desired output is exactly the "
@@ -67,7 +67,7 @@ PROBLEMS: dict[str, Problem] = {
         "first-class citizens of the population' (Byron, same day), and on goo a permutation of the input zone is only "
         "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
         "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
-        ACROSS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
+        ACROSS, trained=True, target="copy", critic="row", rule="reinforce", read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
         # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
     "mnist": Problem(
@@ -86,7 +86,7 @@ PROBLEMS: dict[str, Problem] = {
         "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule "
         "at LR 0.002 (Byron, September 16, 'default LR to 0.002 for this task'); the train split in a seeded shuffle, "
         "cycling (mnist.stream)",
-        3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, read="count", population=3, outputs=60, clock=3, hidden_neurons=199,
+        3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", read="count", population=3, outputs=60, clock=3, hidden_neurons=199,
         data="mnist", homeostasis=0.0, unstick=0.0, lr=0.002,
     ),
 }

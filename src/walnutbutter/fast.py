@@ -17,7 +17,7 @@ the same bits. `compare()` is the harness for that.
 from __future__ import annotations
 
 from .constants import (
-    DECISION_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, TARGET_RATE, UNSTICK,
+    DECISION_MEMORY, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, TARGET_RATE,
     UNSTICK_TARGET, WEIGHT_RANGE,
 )
 from .neuron import Neuron
@@ -305,8 +305,8 @@ def benchmark(network, epochs=200, bits=None):
 
 
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
-          eligibility="hebb", seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
-          unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
+          eligibility="hebb", seed=None, homeostasis=0.0, target_rate=TARGET_RATE,
+          unstick=0.0, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           direction=None, reference_weights=None, epoch_offset=0, baseline=None):
     """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
 

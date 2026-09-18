@@ -228,11 +228,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--quash",
         type=float,
+        nargs="?",
+        const=QUASH_RATE,
         default=None,
         metavar="RATE",
-        help=f"cycles are quashed (AUTHORITY.md §6.11): a refire weakens each contributing synapse by this fraction of "
-        f"its weight, falling off with the delay since its previous spike (default: the problem's, {QUASH_RATE:g} where "
-        f"it quashes; 0 = off)",
+        help=f"ask for the quash (AUTHORITY.md §10.1), which is off unless a run does: a refire weakens each "
+        f"contributing synapse by this fraction of its weight, falling off with the delay since its previous spike. "
+        f"Bare, it runs at {QUASH_RATE:g}, the value the constant holds for it; with a number, at that instead",
     )
     parser.add_argument(
         "--read",
@@ -391,9 +393,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--homeostasis",
         type=float,
-        default=HOMEOSTASIS,
+        nargs="?",
+        const=HOMEOSTASIS,
+        default=None,
         metavar="RATE",
-        help=f"per-epoch rate at which each neuron's threshold moves toward its target firing rate (default: {HOMEOSTASIS:g}; 0 = off)",
+        help=f"ask for homeostasis (§9.9), which is off unless a run does: each neuron's threshold drifts toward its "
+        f"target firing rate at this rate per epoch. Bare, it runs at {HOMEOSTASIS:g}, the value the constant holds "
+        f"for it; with a number, at that instead",
     )
     parser.add_argument(
         "--target-rate",
@@ -404,12 +410,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--unstick",
         type=float,
-        default=UNSTICK,
+        nargs="?",
+        const=UNSTICK,
+        default=None,
         metavar="RATE",
-        help=f"per-epoch rate at which a stuck neuron's threshold moves toward --unstick-target -- every neuron, "
-        f"not the outputs only, since September 14, 2026 (AUTHORITY.md §6.7); only "
-        f"neurons firing >99%% or <1%% of the time are touched, only while stuck, and never one forced this epoch "
-        f"(default: {UNSTICK:g}; 0 = off)",
+        help=f"ask for un-sticking (§9.10), which is off unless a run does: a stuck neuron's threshold moves toward "
+        f"--unstick-target at this rate per epoch -- every neuron, not the outputs only; only neurons firing >99%% "
+        f"or <1%% of the time are touched, only while stuck, and never one forced this epoch. Bare, it runs at "
+        f"{UNSTICK:g}, the value the constant holds for it; with a number, at that instead",
     )
     parser.add_argument(
         "--unstick-target",
@@ -587,10 +595,10 @@ def apply_problem(args: argparse.Namespace) -> None:
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
     if not problem.trained:
         args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
-    if problem.homeostasis is not None and args.homeostasis == HOMEOSTASIS:
-        args.homeostasis = problem.homeostasis  # the problem's, unless --homeostasis was given (a value equal to the default is taken as not given)
-    if problem.unstick is not None and args.unstick == UNSTICK:
-        args.unstick = problem.unstick
+    if args.homeostasis is None:  # §9.9: off unless a run asks -- the flag, else the problem's, else zero
+        args.homeostasis = problem.homeostasis if problem.homeostasis is not None else 0.0
+    if args.unstick is None:  # §9.10, the same
+        args.unstick = problem.unstick if problem.unstick is not None else 0.0
     if problem.lr is not None and args.lr == LR:  # the problem's own rate, unless --lr was given (a value equal to LR counts as not given)
         args.lr = problem.lr
     if problem.target is not None:
@@ -599,8 +607,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.critic = problem.critic if problem.critic is not None else CRITIC  # --critic overrides the problem's
     if args.rule is None:
         args.rule = problem.rule or RULE
-    if args.quash is None:
-        args.quash = QUASH_RATE if problem.quash else 0.0
+    if args.quash is None:  # §10.1, the same
+        args.quash = problem.quash if problem.quash is not None else 0.0
     if args.drive is None:
         args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
     if args.population is None:

@@ -29,8 +29,13 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.eligibility is None and C.ELIGIBILITY == "hazard"  # §8.3: where a run names none, the eligibility is hazard
     assert args.delta == C.ESCAPE_DELTA == 0.455  # escape noise on by default (§5.2, Byron, September 15, 2026)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
-    assert (args.lr, args.homeostasis, args.target_rate) == (C.LR, C.HOMEOSTASIS, C.TARGET_RATE)
-    assert (args.unstick, args.unstick_target) == (C.UNSTICK, C.UNSTICK_TARGET)
+    assert (args.lr, args.target_rate) == (C.LR, C.TARGET_RATE)
+    # §9.9, §9.10, §10.1: the three are latent knobs -- off unless a run asks, and the constant is what asking gets
+    assert (args.homeostasis, args.unstick, args.quash) == (None, None, None)
+    for argv, want in ((['--homeostasis'], C.HOMEOSTASIS), (['--unstick'], C.UNSTICK), (['--quash'], C.QUASH_RATE)):
+        asked = build_parser().parse_args(argv)
+        assert getattr(asked, argv[0][2:]) == want, argv
+    assert args.unstick_target == C.UNSTICK_TARGET
     assert args.pickiness == C.ROW_CRITIC_PICKINESS_IN_SPIKES == 2 and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
 
@@ -90,8 +95,9 @@ def test_the_teacher_and_the_rule_read_the_constants():
     assert (d["target"], d["critic"]) == (C.TARGET, C.CRITIC)
     assert d["eligibility"] is None  # §8.3: a run that names none gets ELIGIBILITY
     assert (d["lr"], d["baseline_rate"], d["window"]) == (C.LR, C.BASELINE_RATE, C.WINDOW)
-    assert (d["homeostasis"], d["target_rate"]) == (C.HOMEOSTASIS, C.TARGET_RATE) and "threshold_range" not in d
-    assert (d["unstick"], d["unstick_target"]) == (C.UNSTICK, C.UNSTICK_TARGET)
+    assert (d["homeostasis"], d["unstick"]) == (0.0, 0.0)  # §9.9, §9.10: the library default is off
+    assert d["target_rate"] == C.TARGET_RATE and "threshold_range" not in d
+    assert d["unstick_target"] == C.UNSTICK_TARGET
     r = defaults_of(reinforce)
     assert (r["lr"], r["eligibility"]) == (C.LR, C.ELIGIBILITY)
     assert d["rule"] == C.RULE

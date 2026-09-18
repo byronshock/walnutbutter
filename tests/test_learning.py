@@ -105,7 +105,7 @@ def test_teacher_validates_tracks_and_reports():
     second = teacher.epoch(verbose=False)
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
-    assert "learning reversed (hazard, lr 0.01, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
+    assert "learning reversed (hazard, lr 0.01): accuracy" in teacher.status()  # §9.9, §9.10 off unless asked
     Teacher(grid, eligibility="hazard", rule="reinforce")
     assert not grid.centred  # §8.7: the hazard takes the escape decision's own score, not the neuron's expectation
     Teacher(grid, eligibility="hebb", rule="reinforce")
@@ -240,8 +240,8 @@ def test_teacher_validates_homeostasis_and_reports_it():
     assert "homeostasis 0.01 toward 0.4" in teacher.status() and "stuck" not in teacher.status()
     default = Teacher(grid, seed=1, rule="reinforce")
     default.step()
-    assert "homeostasis 1e-06 toward 0.5" in default.status()
-    assert default.homeostasis == 1e-6 and default.target_rate == 0.5
+    assert "homeostasis" not in default.status()  # §9.9: off unless a run asks
+    assert default.homeostasis == 0.0 and default.target_rate == 0.5
     off = Teacher(grid, seed=1, homeostasis=0)
     off.step()
     assert "homeostasis" not in off.status()
@@ -327,9 +327,13 @@ def test_teacher_applies_unsticking_and_reports_it():
         Teacher(grid, unstick_target=0)
 
 
-def test_unstick_defaults_on_at_one_thousandth():
+def test_unstick_is_off_until_a_run_asks_and_then_runs_at_the_constant():
+    """§9.10: a latent knob -- the constant keeps its value and the run switches it off."""
+    from walnutbutter.constants import UNSTICK
     teacher = Teacher(main(count=32, across=8, seed=1))
-    assert teacher.unstick == 1e-3 and teacher.unstick_target == 0.5
+    assert teacher.unstick == 0.0 and teacher.unstick_target == 0.5
+    asked = Teacher(main(count=32, across=8, seed=1), unstick=UNSTICK)
+    assert asked.unstick == 1e-3
 
 
 
