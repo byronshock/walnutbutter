@@ -119,7 +119,7 @@ def _reward(engine, network, out, critic, want_of) -> float:
     if critic in ("class", "graded", "evidence"):
         from .learning import class_evidence  # the one function every engine reads the zone through (§8)
         counts = engine.epoch_spike_counts()
-        groups = class_evidence([int(counts[i]) for i in out], network.population, getattr(network, "output_coding", "population"))
+        groups = class_evidence([int(counts[i]) for i in out], network.population)
         label = network.input_label
         if label is None:
             raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")

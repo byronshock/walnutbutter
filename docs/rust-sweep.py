@@ -35,7 +35,7 @@ spike times, widths and expectations, the input stream advanced to the epoch it 
 start's weights, and the trace and record continued from the earlier ones. The reinforcement
 baseline is carried over (§9.3). Still not a resume to the bit, which §12.11 requires: the
 exploration stream starts afresh (seed + 1,000,000) and no checkpoint carries a generator's
-state. `--population`, `--outputs` and `--output-coding`, fixed for the
+state. `--population` and `--outputs`, fixed for the
 sweep, rebuild an arm under a layout the problem no longer defaults to.
 
 The ISI factor of §0.2 weighs every charge of hebb and hazard, on by default; `--isi-factor off`
@@ -114,8 +114,6 @@ def parse() -> argparse.Namespace:
                         help="continue every arm from runs/NAME/<arm>-network.json for --epochs more epochs (see above)")
     parser.add_argument("--population", type=int, default=None, help="neurons per population, fixed for the sweep (the problem's unless given)")
     parser.add_argument("--outputs", type=int, default=None, help="the output zone's width, fixed for the sweep (the problem's unless given)")
-    parser.add_argument("--output-coding", choices=("population", "complement"), default=None,
-                        help="the output zone's coding (§8), fixed for the sweep (the problem's unless given)")
     parser.add_argument("--trace-every", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--summary", action="store_true", help="summarise what is on disk; run nothing")
@@ -131,7 +129,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     """The network the command line would build for this problem, with the arm's knobs applied.
 
     An arm carrying `eligibility` (a swept one) overrides the argument; `fixed`
-    is extra command-line words the whole sweep runs with (--population, --output-coding).
+    is extra command-line words the whole sweep runs with (--population, --outputs).
     """
     eligibility = arm.get("eligibility", eligibility)
     from walnutbutter.cli import apply_problem, build_parser
@@ -163,19 +161,16 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
     Neuron.isi_factor = args.isi_factor  # §0.2: on unless --no-isi-factor is among the fixed words
     # goo is the only container (AUTHORITY.md §4.1); apply_problem sized it: --goo, or the problem's hidden count and zones
-    grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]),
-               permute=not args.no_permute, threshold=args.threshold, minimum_potential=args.minimum_potential,
+    grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]), threshold=args.threshold, minimum_potential=args.minimum_potential,
                scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
                scaling_factor=args.scaling_factor)
-    grid.coding, grid.population, grid.clock = args.coding, args.population, args.clock
-    grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
+    grid.population, grid.clock = args.population, args.clock
     grid.temperature = args.temperature  # the evidence critic's (§8)
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.pickiness = args.pickiness  # the count read's line, in spikes (§5.10, §9.5)
     grid.interval, grid.drive = args.interval, args.drive
     grid.input_rate, grid.input_rate_off = args.input_rate, args.input_rate_off
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
-    grid.flip = args.flip
     grid.rule = "reinforce"
     grid.set_delta(args.delta)  # escape noise (§5.2), once the thresholds are the container's
     return grid, args
@@ -208,8 +203,8 @@ def _save_network(engine, grid, report: dict, path) -> None:
 
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
-                    "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k",
-                    "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
+                    "temperature", "population", "clock", "quash_rate", "quash_k",
+                    )  # what the arm's settings decide, applied to a restored network over its checkpoint
 
 
 def resume_grid(fresh, source, isi_factor: bool | None = None):
@@ -427,7 +422,6 @@ def main() -> int:
         started = time.perf_counter()
         fixed = ([] if args.population is None else ["--population", str(args.population)]) + \
                 ([] if args.outputs is None else ["--outputs", str(args.outputs)]) + \
-                ([] if args.output_coding is None else ["--output-coding", args.output_coding]) + \
                 (["--no-isi-factor"] if args.isi_factor == "off" else [])
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
                  args.floor_ratio, args.wiring, args.resume_from, tuple(fixed), args.isi_factor) for arm in arms]

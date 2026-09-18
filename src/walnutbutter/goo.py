@@ -123,7 +123,6 @@ class Goo(Network):
         weight: float | None = 1.0,
         threshold: float = GOO_THRESHOLD,
         seed: int | None = None,
-        permute: bool = True,
         weight_range: tuple[float, float] = WEIGHT_RANGE,
         minimum_potential: float = GOO_MINIMUM_POTENTIAL,
         scale_with_fan_in: bool = True,
@@ -154,9 +153,8 @@ class Goo(Network):
         (§1.2), and `scale_with_fan_in` rescales each neuron's potential axis
         by its own in-degree over THRESHOLD_FAN_IN (§5.2). `weight` is given
         to every projection; None draws each uniformly from `weight_range`.
-        `permute` shuffles which coded bit each place of the input zone
-        shows. The seed's stream is spent, in order, on the projection draws
-        and weights pair by pair, then the permutation, then the inputs.
+        The seed's stream is spent, in order, on the projection draws and
+        weights pair by pair, then the inputs (§5.2: there is no permutation).
         """
         outputs = across if outputs is None else outputs
         if across < 1 or outputs < 1:
@@ -199,8 +197,6 @@ class Goo(Network):
         self.scale_with_fan_in_on = scale_with_fan_in
         if scale_with_fan_in:
             self.scale_with_fan_in(threshold, minimum_potential)  # after the wiring: it reads the in-degree
-        if permute:
-            self._rng.shuffle(self.permutation)
 
     # --- building ---------------------------------------------------------
 

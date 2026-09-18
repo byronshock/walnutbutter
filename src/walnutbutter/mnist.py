@@ -184,8 +184,7 @@ def supervised_direction(grid, folder: Path | str = FOLDER):
     on, on_given = pixel_statistics(grid.clock, folder)
     inputs = {neuron: i for i, neuron in enumerate(grid.input_row())}
     row = grid.output_row()
-    complement = getattr(grid, "output_coding", "population") == "complement"
-    classes = len(row) // (grid.population * (2 if complement else 1))
+    classes = len(row) // (grid.population * 2)  # §5.11: the zone is complement-coded, P a class in each half
     outputs = {}  # output neuron -> (its class, +1 for a fire-if-one neuron, -1 for a fire-if-zero one)
     for k, neuron in enumerate(row):
         group = k // grid.population

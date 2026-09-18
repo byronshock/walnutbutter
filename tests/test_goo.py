@@ -46,16 +46,6 @@ def test_nothing_between_the_zones_is_addressable_which_is_what_makes_it_goo():
 
 
 
-def test_the_permutation_scrambles_the_coded_bits_across_the_input_zone():
-    goo = Goo(count=20, across=4, seed=1)
-    assert sorted(goo.permutation) == [0, 1, 2, 3] and goo.permutation != [0, 1, 2, 3]
-    assert Goo(count=20, across=4, seed=1, permute=False).permutation == [0, 1, 2, 3]
-
-
-# --- what it is for -------------------------------------------------------
-
-
-# --- running it -----------------------------------------------------------
 
 def test_goo_presents_an_input_and_is_read_like_any_other_container():
     goo = Goo(seed=1, weight=None)
@@ -93,7 +83,6 @@ def test_a_goo_checkpoint_round_trips_from_its_count_alone():
     back, _ = restore("goo.json")
     assert isinstance(back, Goo) and wiring(back) == wiring(goo)
     assert [back.connections[i].weight for i in range(1, 25)] == [goo.connections[i].weight for i in range(1, 25)]
-    assert back.permutation == goo.permutation and back.epoch == 5 and back.time == goo.time
     assert [n.potential for n in back.all_neurons()] == [n.potential for n in goo.all_neurons()]
 
 
@@ -145,7 +134,7 @@ def test_both_engines_see_the_scaled_axis():
 def test_the_count_read_counts_the_epochs_spikes_and_takes_the_pickiness_as_its_line():
     """§5.10: the read is the count itself; §9.5 puts the line at ROW_CRITIC_PICKINESS_IN_SPIKES, an integer."""
     from walnutbutter.constants import ROW_CRITIC_PICKINESS_IN_SPIKES
-    goo = Goo(count=20, across=4, seed=1, permute=False)
+    goo = Goo(count=20, across=4, seed=1)
     goo.read = "count"
     assert goo.pickiness == ROW_CRITIC_PICKINESS_IN_SPIKES == 2  # spikes, not hertz: the epoch's length does not enter
     run_epoch(goo, bits=[True, False], verbose=False)
@@ -169,7 +158,7 @@ def test_the_count_read_is_the_same_in_all_three_engines():
     from walnutbutter.arrays import ArrayNetwork
     from walnutbutter import fast
     from walnutbutter.learning import Teacher
-    mesh, twin = Goo(count=30, across=6, seed=5, weight=None, permute=False), Goo(count=30, across=6, seed=5, weight=None, permute=False)
+    mesh, twin = Goo(count=30, across=6, seed=5, weight=None), Goo(count=30, across=6, seed=5, weight=None)
     for g in (mesh, twin):
         g.read, g.rule, g.drive = "count", "reinforce", "rate"
     net = ArrayNetwork(twin)
@@ -178,7 +167,7 @@ def test_the_count_read_is_the_same_in_all_three_engines():
         run_epoch(net, verbose=False)
         assert net.output_counts_hz() == mesh.output_counts_hz() and net.output_fired() == mesh.output_fired()
     if fast.available():
-        goo = Goo(count=30, across=6, seed=5, weight=None, permute=False)
+        goo = Goo(count=30, across=6, seed=5, weight=None)
         goo.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         goo.read, goo.rule, goo.drive = "count", "reinforce", "rate"
         teacher = Teacher(goo, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
@@ -283,7 +272,7 @@ def test_a_weight_is_fixed_or_drawn_in_connection_id_order_inside_the_range():
 
 
 def test_the_zones_go_by_index_because_there_are_no_places_to_go_by():
-    goo = Goo(count=20, across=4, seed=1, permute=False)
+    goo = Goo(count=20, across=4, seed=1)
     assert goo.rows == 2  # it is counting the two zones, not any depth
     assert [n.name for n in goo.input_row()] == ["Goo_0", "Goo_1", "Goo_2", "Goo_3"]
     assert [n.name for n in goo.output_row()] == ["Goo_16", "Goo_17", "Goo_18", "Goo_19"]
@@ -406,7 +395,6 @@ def test_the_command_line_builds_goo_learns_and_checkpoints(tmp_path, capsys):
     assert cli_main(["--goo", "--headless", "--epochs", "20", "--seed", "1", "--save-weights", str(save)]) == 0
     err = capsys.readouterr().err
     assert "projections at scaling factor 0.05; 8 in, 44 hidden, 8 out, zones apart, inputs onto outputs)" in err
-    assert "input permutation: place i along the input zone" in err  # not "the bottom row": goo has none
     assert "omega" not in err  # omega does not reach goo, so it is not reported as if it had
     data = json.loads(save.read_text())
     assert data["container"] == "goo" and data["count"] == 60 and data["epoch"] == 20

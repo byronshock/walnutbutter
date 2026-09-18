@@ -25,11 +25,8 @@ def test_the_problems_and_the_default():
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"
     # copy (Byron, September 14, 2026): eight complement-coded input neurons, eight outputs, place for place, unpermuted
     copy = PROBLEMS["copy"]
-    assert (copy.across, copy.coding, copy.target, copy.critic, copy.rule) == (8, "complement", "copy", "row", "reinforce")
-    assert copy.trained and not copy.permute and not copy.quash
     assert PROBLEMS["reversal"].trained
     assert all(p.rule == "reinforce" for p in PROBLEMS.values())  # §9.1: the one rule that pays at the read
-    assert all(p.coding == "complement" for p in PROBLEMS.values())  # §5.2
     assert all(p.interval is None for p in PROBLEMS.values())  # every problem takes INTERVAL (§4.2)
 
 
@@ -37,14 +34,12 @@ def test_apply_problem_settles_interval_target_readout_and_training():
     args = build_parser().parse_args(["--problem", "copy"])
     apply_problem(args)
     assert args.interval == C.INTERVAL == 35.0 and args.target == "copy" and args.readout == "top"
-    assert args.critic == "row" and args.coding == "complement" and args.across == 8
     args = build_parser().parse_args(["--problem", "copy", "--interval", "7"])
     apply_problem(args)
     assert args.interval == 7.0  # an explicit interval wins
     args = build_parser().parse_args([])
     apply_problem(args)
     assert args.interval == C.INTERVAL and args.readout == "top" and args.read == "fired" and args.target == "reversed"
-    assert args.coding == "complement"
     args = build_parser().parse_args(["--problem", "copy", "--rule", "local"])
     apply_problem(args)  # §9.1: a run may have none, and then the local rules are the whole of the learning
     assert args.rule == "local"
@@ -70,25 +65,6 @@ def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
     assert grid.output_fired() == [n.has_fired for n in grid.input_row()]  # the plain read: fired this epoch
 
 
-
-def test_both_engines_agree_on_raw_inputs():
-    pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-    from walnutbutter.arrays import ArrayNetwork
-
-    def make():
-        grid = Goo(count=24, across=4, weight=None, seed=9)
-        grid.coding, grid.readout, grid.read, grid.interval = "raw", "input", "again", 20.0
-        return grid
-
-    mesh, net = make(), ArrayNetwork(make())
-    assert net.coding == "raw"
-    for _ in range(40):
-        run_epoch(mesh, verbose=False)
-        run_epoch(net, verbose=False)
-        assert mesh.input_pattern == net.input_pattern and len(mesh.input_pattern) == 4
-        assert mesh.output_fired() == net.output_fired()
-        assert accuracy(mesh, "copy") == accuracy(net, "copy")
 
 
 def test_the_sustained_critic_scores_only_the_forced_neurons():
@@ -145,22 +121,6 @@ def test_reversal_is_unchanged(tmp_path, capsys):
 
 
 
-def test_population_coding_fills_three_neurons_per_bit():
-    grid = Goo(count=120, across=12, weight=1.0, permute=False)
-    grid.coding = "population"
-    assert grid.population == C.POPULATION == 3 and grid.raw_bit_count() == 4
-    grid.set_input_bits([True, False, False, True])
-    assert grid.input_pattern == [True] * 3 + [False] * 6 + [True] * 3  # 1001 -> 111000000111
-    grid.set_input_bits([False, False, False, True])
-    assert grid.input_pattern == [False] * 9 + [True] * 3  # 0001 -> 000000000111
-    seen = {tuple(grid.new_random_input()) for _ in range(300)}
-    assert len(seen) == 16 and all(len(bits) == 4 for bits in seen)
-    odd = Goo(count=30, across=10)  # 10 is not a multiple of three
-    odd.coding = "population"
-    with pytest.raises(ValueError):
-        odd.raw_bit_count()
-
-
 
 def test_quashing_weakens_the_synapses_that_carried_a_cycle():
     import math
@@ -196,7 +156,7 @@ def test_population_copy_runs_and_both_engines_quash_identically():
 
     def make():
         grid = Goo(count=120, across=12, weight=None, seed=5)
-        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid.readout, grid.read, grid.interval = "top", "fired", 20.0
         grid.quash_rate, grid.quash_k = 0.02, 0.2
         return grid
 
@@ -215,34 +175,20 @@ def test_population_copy_runs_and_both_engines_quash_identically():
 
 
 
-def test_no_flip_draws_nothing_from_the_stream():
-    def bits(flip):
-        grid = Goo(count=120, across=12, weight=None, seed=7, permute=False)
-        grid.coding, grid.flip = "population", flip
-        return [grid.new_random_input() for _ in range(20)]
-
-    assert bits(0.0) == bits(0.0)
-    assert bits(0.0) != bits(1 / 12)  # the flips come from the same seeded stream, so they do move it
-    grid = Goo(count=120, across=12, weight=None, seed=7, permute=False)
-    grid.coding = "population"
-    assert [grid.new_random_input() for _ in range(20)] == bits(0.0)  # flip 0 leaves an older run bit for bit
-
-
-
 
 def test_rate_drive_makes_a_bit_a_firing_rate_not_a_mandated_spike():
     """AUTHORITY.md §4.3: each input neuron is a Poisson process across the epoch."""
     import statistics
 
     def grid_with(drive, rate=0.1, off=0.0, seed=4):
-        grid = Goo(count=24, across=12, weight=1.0, permute=False, seed=seed)
-        grid.coding, grid.interval = "population", 20.0
+        grid = Goo(count=24, across=12, weight=1.0, seed=seed)
+        grid.interval = 20.0
         grid.drive, grid.input_rate, grid.input_rate_off = drive, rate, off
-        grid.set_input_bits([True, False, False, True])
+        grid.set_input_bits([True, False, False, True, True, False])
         return grid
 
     forced = grid_with("forced")
-    assert forced.input_schedule() == [(p, 0.0) for p in (0, 1, 2, 9, 10, 11)]  # one spike each, all at t_e
+    assert forced.input_schedule() == [(p, 0.0) for p in (0, 3, 4, 7, 8, 11)]  # one spike each, all at t_e
     assert forced.input_schedule() == forced.input_schedule()  # and no randomness to consume
 
     rated = grid_with("rate")
@@ -268,8 +214,8 @@ def test_rate_drive_runs_and_both_engines_draw_the_same_train():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
-        grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
+        grid = Goo(count=24, across=12, weight=None, seed=5)
+        grid.readout, grid.read, grid.interval = "top", "fired", 20.0
         grid.drive, grid.quash_rate = "rate", 0.02
         return grid
 
@@ -302,12 +248,12 @@ def test_a_problem_and_the_command_line_choose_the_drive():
 def test_the_default_drive_leaves_no_wave_front_at_time_zero():
     """§4.3: forced drive locks every spike onto a hop grid anchored at t_e; rate drive has no such anchor."""
     def spikes_on_the_grid(drive):
-        grid = Goo(count=60, across=12, weight=None, seed=1, permute=False)
-        grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", drive
+        grid = Goo(count=60, across=12, weight=None, seed=1)
+        grid.readout, grid.read, grid.drive = "top", "fired", drive
         hop, on_grid, total, at_zero = Neuron.hop(), 0, 0, 0
         row = set(grid.input_row())
         for _ in range(40):
-            run_epoch(grid, [True, False, True, False], verbose=False)
+            run_epoch(grid, [True, False, True, False, True, False], verbose=False)
             for wave in grid.waves:
                 phase = (wave.time - grid.time) % hop
                 aligned = min(phase, hop - phase) < 1e-9
@@ -334,11 +280,11 @@ def test_the_driving_process_is_not_the_spike_train():
     assert 1000.0 * (1 - INPUT_CV) / REFRACTORY == pytest.approx(80.0)  # rate = (1 - CV) / REFRACTORY, exactly
 
     def train(rate, epochs=400):
-        grid = Goo(count=60, across=12, weight=0.0, seed=1, permute=False)  # weight 0: no mesh drive
-        grid.coding, grid.drive, grid.input_rate = "population", "rate", rate
+        grid = Goo(count=60, across=12, weight=0.0, seed=1)  # weight 0: no mesh drive
+        grid.drive, grid.input_rate = "rate", rate
         row, times, arrivals = grid.input_row(), {p: [] for p in range(12)}, 0
         for _ in range(epochs):
-            run_epoch(grid, [True] * 4, verbose=False)
+            run_epoch(grid, [True] * 6, verbose=False)
             arrivals += len(grid.input_events)
             for wave in grid.waves:
                 for neuron in wave.fired:
@@ -381,11 +327,11 @@ def test_the_complement_is_what_excitation_alone_cannot_reach():
     """§8: an output whose whole input group is silent receives no signal, so no weight can drive it."""
     from walnutbutter.learning import accuracy
 
-    grid = Goo(count=24, across=12, weight=None, seed=4, permute=False)
-    grid.coding, grid.readout, grid.read, grid.drive = "population", "top", "fired", "rate"
+    grid = Goo(count=24, across=12, weight=None, seed=4)
+    grid.readout, grid.read, grid.drive = "top", "fired", "rate"
     quiet_but_wanted = quiet_and_wanted_quiet = 0
     for _ in range(60):
-        run_epoch(grid, [True, False, True, False], verbose=False)
+        run_epoch(grid, [True, False, True, False, True, False], verbose=False)
         want = [not b for b in grid.input_pattern]
         for fired, w in zip(grid.output_fired(), want):
             if w and not fired:
@@ -397,43 +343,6 @@ def test_the_complement_is_what_excitation_alone_cannot_reach():
 
 
 # --- doubled, complement-coded and scrambled (AUTHORITY.md §8) -----------------------
-
-def test_doubling_into_complement_coding_is_the_two_stages_in_order():
-    from walnutbutter.inputs import format_bits
-
-    grid = Goo(count=128, across=16, weight=1.0, permute=False)
-    grid.coding, grid.population = "population-complement", 2
-    assert grid.raw_bit_count() == 4  # 2 per bit, then doubled again by the complement
-    grid.set_input_bits([True, False, False, True])
-    assert format_bits(grid.input_coded) == "1100001100111100"  # 1001 -> 11000011 -> the whole run and its negation
-    grid.set_input_bits([False, False, False, True])
-    assert format_bits(grid.input_coded) == "0000001111111100"
-
-    odd = Goo(count=45, across=15)  # not even: the complement half does not divide
-    odd.coding, odd.population = "population-complement", 2
-    with pytest.raises(ValueError, match="even number"):
-        odd.raw_bit_count()
-    short = Goo(count=30, across=10)  # even, but 5 per half is not a multiple of 2
-    short.coding, short.population = "population-complement", 2
-    with pytest.raises(ValueError, match="per raw bit"):
-        short.raw_bit_count()
-
-
-def test_doubled_copy_fires_exactly_half_the_row_and_scrambles_it():
-    grid = Goo(count=128, across=16, weight=1.0, seed=7)
-    grid.coding, grid.population = "population-complement", 2
-    assert grid.permutation != list(range(16))  # a consistent random permutation, drawn once for the network's life
-    first = list(grid.permutation)
-    seen = set()
-    for _ in range(200):
-        grid.new_random_input()
-        assert sum(grid.input_pattern) == 8  # complement coding: half the row, whatever the bits
-        seen.add(tuple(grid.input_pattern))
-        assert grid.permutation == first  # and it does not move between epochs
-    assert len(seen) == 16  # all sixteen four-bit inputs, each its own pattern
-
-
-
 
 
 def test_the_input_stream_is_the_same_whatever_the_network_is():
@@ -498,8 +407,7 @@ def test_copy_asks_each_output_for_exactly_its_input_place(capsys):
     from walnutbutter.learning import TARGETS
     args = build_parser().parse_args(["--problem", "copy"])
     apply_problem(args)
-    assert args.target == "copy" and args.critic == "row" and args.no_permute and args.across == 8
-    goo = Goo(seed=1, permute=False)
+    goo = Goo(seed=1)
     goo.set_input_bits([True, False, False, True])
     assert goo.input_pattern == [True, False, False, True, False, True, True, False]  # the bits, then their negations
     assert TARGETS["copy"](goo.target_pattern) == goo.input_pattern  # what the eight outputs are asked to show

@@ -2,7 +2,7 @@
 
 A checkpoint is a JSON file holding every connection's weight (by ID) together
 with what is needed to rebuild the identical network: count, the wiring
-rule, threshold, seed and the input permutation. Loading rebuilds it from
+rule, threshold and seed. Loading rebuilds it from
 those settings
 and copies the weights back in, so a run that took hours can be continued or
 inspected later.
@@ -18,7 +18,7 @@ from .goo import Goo, scaled_projection
 from .network import Network
 from .neuron import Neuron
 
-FORMAT = 1
+FORMAT = 2  # 1 held a permutation, an input coding, an error-correcting code and a flip; §5.2 dropped all four
 
 
 def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
@@ -37,15 +37,10 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "seed": network.seed,
         "weight": getattr(network, "weight", None),
         "weight_range": list(network.weight_range),
-        "permutation": network.permutation,
-        "ecc": network.ecc,
-        "coding": network.coding,  # complement, raw or population
         "population": network.population,  # neurons per raw bit under population coding
-        "output_coding": getattr(network, "output_coding", "population"),  # how the output zone codes the classes (§8)
         "temperature": network.temperature,  # the evidence critic's temperature (§8)
         "clock": network.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [network.quash_rate, network.quash_k],  # the cycle quash (§6.11)
-        "flip": network.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
         "drive": network.drive,  # how a bit becomes spikes (§4.3)
         "rate": [network.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
         "pickiness": network.pickiness,  # the count read's line in spikes (§5.10, §9.5)
@@ -129,6 +124,11 @@ def across_of(data: dict) -> int:
 def read_checkpoint(path: str | Path) -> dict:
     data = json.loads(Path(path).read_text())
     if data.get("format") != FORMAT:
+        # a format-1 file may carry a non-identity permutation, and §5.2 has no permutation: a run scored against a
+        # scrambled zone would resume against an unscrambled one with no error at all, so refuse it by name
+        scrambled = data.get("permutation")
+        if scrambled is not None and list(scrambled) != sorted(scrambled):
+            raise ValueError(f"{path}: written under a permuted input zone, which §5.2 dropped -- its weights were scored against a scrambling this build cannot reproduce")
         raise ValueError(f"{path}: unknown checkpoint format {data.get('format')!r}")
     return data
 
@@ -179,7 +179,6 @@ def _restore_goo(data: dict) -> Goo:
         weight=None if data["random_weights"] else data["weight"],
         threshold=data["threshold"],
         seed=data["seed"],
-        permute=False,
         weight_range=tuple(data.get("weight_range", (-1.0, 1.0))),
         minimum_potential=data.get("minimum_potential", -1.0),
         scale_with_fan_in=data.get("scale_with_fan_in", True),
@@ -188,9 +187,6 @@ def _restore_goo(data: dict) -> Goo:
         wiring=wiring,
         scaling_factor=scaling_factor,
     )
-    goo.permutation = list(data["permutation"])
-    goo.ecc = _ecc_name(data)
-    goo.coding = data.get("coding", "complement")
     load_weights(goo, data)
     goo.epoch = data["epoch"]
     return goo
@@ -279,22 +275,14 @@ def _restore_clock(network, data: dict) -> None:
         network.schedule.signal(network.connections[connection_id], time)
     network.rule = data.get("rule", "local")  # a file written under a rule the specification dropped reads as local (§9.1)
     network.population = data.get("population", network.population)
-    network.output_coding = data.get("output_coding", "population")  # a population a class until September 16, 2026
     network.temperature = data.get("temperature", network.temperature)
     network.clock = data.get("clock", 0)
     network.pickiness = data.get("pickiness", network.pickiness)
     if data.get("quash"):
         network.quash_rate, network.quash_k = data["quash"]
-    network.flip = data.get("flip", network.flip)
     network.drive = data.get("drive", network.drive)
     if data.get("rate"):
         network.rate_on, Neuron.rate_tau = data["rate"]
     if data.get("input_rate"):
         network.input_rate, network.input_rate_off = data["input_rate"]
 
-
-def _ecc_name(data: dict) -> str | None:
-    value = data.get("ecc")
-    if value is True:
-        return "parity64"  # written when ecc was a flag and meant the (6, 4) code
-    return value or None

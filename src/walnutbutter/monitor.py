@@ -60,7 +60,6 @@ def main(
     threshold: float = GOO_THRESHOLD,
     seed: int | None = None,
     input_bits: Sequence[bool] | None = None,
-    permute: bool = True,
     weight_range: tuple[float, float] = WEIGHT_RANGE,
     minimum_potential: float = GOO_MINIMUM_POTENTIAL,
 ) -> Goo:
@@ -69,9 +68,9 @@ def main(
     `weight` is given to every connection, or None (the default) for random
     weights uniform between -1 and 1. `threshold` is given to every neuron.
     `input_bits` are the raw input bits (across / 2 of them); if None they
-    are drawn at random. They are complement-coded and, with `permute`,
-    scrambled by a permutation fixed for the run. `seed` makes the wiring,
-    the weights, the permutation and the random inputs all reproducible.
+    are drawn at random. They are complement-coded onto the input zone
+    (AUTHORITY.md §5.2). `seed` makes the wiring, the weights and the random
+    inputs all reproducible.
     Returning the network lets callers (and tests) inspect which neurons
     fired.
     """
@@ -81,7 +80,6 @@ def main(
         weight=weight,
         threshold=threshold,
         seed=seed,
-        permute=permute,
         weight_range=weight_range,
         minimum_potential=minimum_potential,
     )

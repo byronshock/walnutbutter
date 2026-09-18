@@ -141,48 +141,37 @@ def expected_outputs(network: Network, target: str = "reversed") -> list[bool]:
     return TARGETS[target](pattern)
 
 
-OUTPUT_CODINGS = ("population", "complement")  # how the output zone codes the classes (§8): a population of `population`
-# neurons a class, or that and then, in the same order, a population that should fire when the class is NOT the label --
-# fire-if-one groups then fire-if-zero groups, the input zone's complement coding turned around (Byron, September 16, 2026)
+def class_evidence(counts: Sequence[int], population: int) -> list[int]:
+    """The evidence for each class from the output zone's counts (AUTHORITY.md §5.11, §5.12).
 
-
-def class_evidence(counts: Sequence[int], population: int, output_coding: str = "population") -> list[int]:
-    """The evidence for each class from the output zone's counts (§8): the sum over its population, and under complement
-    coding that sum minus the sum over its fire-if-zero population -- a spike from a zero neuron is a spike against.
-
-    Under "population" the zone is C * population wide, class c owning group
-    c; under "complement" it is 2 * C * population wide, the C fire-if-one
-    groups first and then the C fire-if-zero groups in the same order, so
-    n_k = n_k^+ - n_k^-. Every engine reads the zone through this function.
+    The zone is complement-coded and coded no other way: for C classes and a
+    population of P in each half it is 2CP neurons, the C fire-if-one groups
+    first and then, in the same order, the C fire-if-zero groups. So
+    n_k = n_k^+ - n_k^-, and a spike from a fire-if-zero neuron is a spike
+    against. Every engine reads the zone through this function.
     """
-    if output_coding not in OUTPUT_CODINGS:
-        raise ValueError(f"unknown output coding {output_coding!r}; choose from {', '.join(OUTPUT_CODINGS)}")
-    per = population * (2 if output_coding == "complement" else 1)
+    per = population * 2
     if population < 1 or len(counts) % per:
-        raise ValueError(f"an output zone of {len(counts)} does not divide into classes of {population} under {output_coding} coding")
+        raise ValueError(f"an output zone of {len(counts)} does not divide into classes of {population} a half (§5.11)")
     classes = len(counts) // per
     ones = [sum(counts[c * population:(c + 1) * population]) for c in range(classes)]
-    if output_coding == "population":
-        return ones
     zeros = [sum(counts[(classes + c) * population:(classes + c + 1) * population]) for c in range(classes)]
     return [one - zero for one, zero in zip(ones, zeros)]
 
 
 def label_code(network: Network) -> list[bool]:
-    """The label as the output zone should show it: the label's fire-if-one group on and every other off; under complement
-    coding the fire-if-zero groups the other way round (§8)."""
+    """The label as the output zone should show it: its fire-if-one group on, every other off, and the
+    fire-if-zero groups the other way round (§5.11)."""
     if network.input_label is None:
-        raise ValueError("the label target needs a stream that carries labels (a dataset, §8)")
-    coding = getattr(network, "output_coding", "population")
-    per = network.population * (2 if coding == "complement" else 1)
-    classes = network.output_width() // per
+        raise ValueError("the label target needs a stream that carries labels (a dataset, §5.9)")
+    classes = network.output_width() // (network.population * 2)
     ones = [c == network.input_label for c in range(classes) for _ in range(network.population)]
-    return ones + [not on for on in ones] if coding == "complement" else ones
+    return ones + [not on for on in ones]
 
 
 def class_sums(network: Network) -> list[int]:
-    """The output zone's evidence per class this epoch, from the counts, under the network's output coding."""
-    return class_evidence(network.output_counts(), network.population, getattr(network, "output_coding", "population"))
+    """The output zone's evidence per class this epoch, from the counts (§5.11)."""
+    return class_evidence(network.output_counts(), network.population)
 
 
 def class_accuracy(network: Network, target: str = "label") -> float:
@@ -279,63 +268,9 @@ def accuracy(network: Network, target: str = "reversed") -> float:
 # --- reading the output row as a receiver would ------------------------------------
 
 
-def read_output_word(network: Network, target: str = "reversed") -> list[bool | None]:
-    """Undo the target's arrangement and the permutation, then resolve each complement pair.
-
-    The output row is what the network produced; the target says where each
-    coded bit was meant to land (reversed: place j shows coded bit
-    permutation[across-1-j]). Coded bit k and its complement k + half form a
-    pair: if exactly one of them fired, the bit is read; if both or neither
-    did, the bit is unreadable (None) and counts as an error for the code.
-    """
-    fired = output_fired(network)
-    width = len(fired)
-    if target == "reversed":
-        placed = fired[::-1]  # placed[i] is what place i of the input arrangement would show
-    elif target == "copy":
-        placed = fired
-    else:
-        raise ValueError(f"the output word can only be read for the reversed or copy target, not {target!r}")
-    coded = [False] * width
-    for i, k in enumerate(network.permutation):
-        coded[k] = placed[i]
-    half = width // 2
-    word: list[bool | None] = []
-    for k in range(half):
-        bit, complement = coded[k], coded[k + half]
-        word.append(bit if bit != complement else None)
-    return word
 
 
-def decoded_output(network: Network, target: str = "reversed") -> list[bool]:
-    """The data bits a receiver would decode from the output row, after error correction if a code is on.
 
-    Unreadable bits are taken as 0 before correction, so a single unreadable
-    or wrong bit is repaired by a correcting code.
-    """
-    word = [False if b is None else b for b in read_output_word(network, target)]
-    if network.code:
-        return network.code.decode(word)
-    return word
-
-
-def expected_data(network: Network) -> list[bool]:
-    """What the receiver should decode: the data bits when a code is on, else the raw input bits."""
-    if network.input_bits is None:
-        raise ValueError("no input pattern set")
-    return list(network.input_data if network.code else network.input_bits)
-
-
-def decoded_accuracy(network: Network, target: str = "reversed") -> float:
-    """Fraction of the corrected, decoded data bits that are right, 0 to 1."""
-    want = expected_data(network)
-    got = decoded_output(network, target)
-    return sum(a == b for a, b in zip(got, want)) / len(want)
-
-
-def decoded_exact(network: Network, target: str = "reversed") -> float:
-    """1 if the corrected, decoded data bits are all right, else 0."""
-    return 1.0 if decoded_output(network, target) == expected_data(network) else 0.0
 
 
 def population_vote(fired: Sequence[bool], population: int) -> list[bool]:
@@ -360,9 +295,7 @@ def population_accuracy(network: Network, target: str = "copy") -> float:
     desired input as follows: for each bit, award 0.25 points if the output
     bit matches the desired input." With four raw bits a quarter each, that
     is the fraction of raw bits right, in [0, 1] like every other critic, and
-    0.25 a bit falls out of there being four of them. Both the read and the
-    target are decoded the same way, so a flipped input (§4.3) is scored
-    against the clean code and any target arrangement works.
+    0.25 a bit falls out of there being four of them.
     """
     want = population_vote(expected_outputs(network, target), network.population)
     got = population_output(network, target)
@@ -388,8 +321,6 @@ def sustained(network: Network, target: str = "copy") -> float:
 CRITICS = {
     "row": accuracy,  # fraction of the output row matching the target, neuron by neuron
     "sustained": sustained,  # of the neurons the target says should be on, the fraction on: the forced neurons that sustained
-    "decoded": decoded_accuracy,  # fraction of data bits right after reading and error-correcting the row
-    "decoded-exact": decoded_exact,  # all data bits right after correction, or nothing
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
     "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
     "graded": graded_accuracy,  # the fraction of the other groups the label's group out-spikes (§8)

@@ -20,8 +20,8 @@ def quiet(monkeypatch):
 
 
 def mesh(rows=5, seed=1, quash=0.0, rule="local", delta=0.0):
-    grid = Goo(count=12 * rows, across=12, weight=None, seed=seed, permute=False)
-    grid.coding, grid.readout, grid.read = "population", "top", "fired"
+    grid = Goo(count=12 * rows, across=12, weight=None, seed=seed)
+    grid.readout, grid.read = "top", "fired"
     grid.drive, grid.quash_rate, grid.rule = "rate", quash, rule
     if delta:
         grid.set_delta(delta)  # §8.3: the reinforce rule refuses where the threshold decides

@@ -78,30 +78,30 @@ def test_the_stream_is_a_seeded_shuffle_with_the_labels_beside_it(tmp_path):
 
 
 def test_the_network_carries_the_label_and_the_class_critic_scores_it():
-    goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
-    goo.coding, goo.population, goo.read, goo.rule = "raw", 3, "count", "reinforce"
-    assert goo.output_width() == 6 and len(goo.output_row()) == 6 and len(goo.input_row()) == 4
-    assert len(goo.interior()) == 10 and goo.input_zone_is_apart() and repr(goo).endswith("4 in, 10 hidden, 6 out, zones apart, inputs onto outputs)")
-    patterns = [[True, False, True, False], [False, True, False, True]]
+    goo = Goo(count=26, across=4, outputs=12, seed=3, weight=None)
+    goo.population, goo.read, goo.rule = 3, "count", "reinforce"  # §5.11: 2CP = 2 classes * 3 a half
+    assert goo.output_width() == 12 and len(goo.output_row()) == 12 and len(goo.input_row()) == 4
+    assert len(goo.interior()) == 10 and goo.input_zone_is_apart()
+    patterns = [[True, False], [False, True]]  # §5.2: 4 places take 2 raw bits
     goo.use_input_stream(patterns, [1, 0])
     run_epoch(goo, verbose=False, rng=random.Random(1))
     assert goo.input_label == 1
-    assert label_code(goo) == [False, False, False, True, True, True]
+    assert label_code(goo) == [False] * 3 + [True] * 3 + [True] * 3 + [False] * 3
     run_epoch(goo, verbose=False, rng=random.Random(1))
-    assert goo.input_label == 0 and label_code(goo) == [True, True, True, False, False, False]
+    assert goo.input_label == 0 and label_code(goo) == [True] * 3 + [False] * 3 + [False] * 3 + [True] * 3
     run_epoch(goo, verbose=False, rng=random.Random(1))
     assert goo.input_label == 1  # round again
     # the critic, on counts set by hand: the label's group must out-spike every other, ties and silence lose
     outputs = goo.output_row()
-    for counts, label, want in (([1, 1, 0, 3, 0, 0], 1, 1.0), ([1, 1, 0, 3, 0, 0], 0, 0.0), ([1, 1, 1, 3, 0, 0], 1, 0.0),
-                                ([0, 0, 0, 0, 0, 0], 1, 0.0), ([0, 0, 0, 0, 0, 1], 1, 1.0)):
+    for counts, label, want in (([1, 1, 0, 3, 0, 0] + [0] * 6, 1, 1.0), ([1, 1, 0, 3, 0, 0] + [0] * 6, 0, 0.0), ([1, 1, 1, 3, 0, 0] + [0] * 6, 1, 0.0),
+                                ([0, 0, 0, 0, 0, 0] + [0] * 6, 1, 0.0), ([0, 0, 0, 0, 0, 1] + [0] * 6, 1, 1.0)):
         for neuron, c in zip(outputs, counts):
             neuron.spikes_at_reset, neuron.spikes = 0, c
         goo.input_label = label
         assert class_accuracy(goo) == want
     # the graded critic (§8): the fraction of the other classes the label's class out-spikes; a tie is not beaten
-    for counts, label, want in (([1, 1, 0, 3, 0, 0], 1, 1.0), ([1, 1, 0, 3, 0, 0], 0, 0.0), ([1, 1, 1, 3, 0, 0], 1, 0.0),
-                                ([0, 0, 0, 0, 0, 0], 1, 0.0)):
+    for counts, label, want in (([1, 1, 0, 3, 0, 0] + [0] * 6, 1, 1.0), ([1, 1, 0, 3, 0, 0] + [0] * 6, 0, 0.0), ([1, 1, 1, 3, 0, 0] + [0] * 6, 1, 0.0),
+                                ([0, 0, 0, 0, 0, 0] + [0] * 6, 1, 0.0)):
         for neuron, c in zip(outputs, counts):
             neuron.spikes_at_reset, neuron.spikes = 0, c
         goo.input_label = label
@@ -135,12 +135,12 @@ def test_the_evidence_critic_reads_the_class_sums_as_log_odds_at_a_temperature()
     """
     import math
     from walnutbutter.learning import evidence_reward, evidence_score
-    goo = Goo(count=24, across=4, outputs=10, seed=3, weight=None)
-    goo.coding, goo.population, goo.read, goo.rule = "raw", 1, "count", "reinforce"
-    goo.use_input_stream([[True, False, True, False]], [0])
+    goo = Goo(count=34, across=4, outputs=20, seed=3, weight=None)  # §5.11: 2CP = 2 * 10 * 1
+    goo.population, goo.read, goo.rule = 1, "count", "reinforce"
+    goo.use_input_stream([[True, False]], [0])  # §5.2: 4 places take 2 raw bits
     run_epoch(goo, verbose=False, rng=random.Random(1))
     counts = [7, 0, 0, 0, 1, 5, 3, 4, 0, 0]
-    for neuron, c in zip(goo.output_row(), counts):
+    for neuron, c in zip(goo.output_row(), counts + [0] * 10):  # the fire-if-zero half silent, so n_k = n_k^+
         neuron.spikes_at_reset, neuron.spikes = 0, c
     for temperature, label, want in ((1, 0, -0.19), (2, 0, -0.66), (3, 0, -1.02), (5, 0, -1.44), (3, 5, -1.68), (3, 1, -3.35),
                                      (0.5, 4, -12.02), (20, 1, -2.41)):
@@ -153,7 +153,7 @@ def test_the_evidence_critic_reads_the_class_sums_as_log_odds_at_a_temperature()
     for temperature in (0.5, 2.0, 1e6):
         goo.temperature = temperature
         assert evidence_score(goo) == pytest.approx(math.log(0.1))
-    assert evidence_reward([1000, 0, 0], 0, 0.01) == pytest.approx(0.0, abs=1e-12)  # a huge lead: no overflow, and certainty
+    assert evidence_reward([1000, 0, 0] + [0] * 6, 0, 0.01) == pytest.approx(0.0, abs=1e-12)  # a huge lead: no overflow, and certainty
     with pytest.raises(ValueError, match="positive temperature"):
         evidence_reward(counts, 0, 0.0)
     goo.input_label = None
@@ -171,12 +171,12 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
     pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
     rng = random.Random(4)
-    patterns = [[rng.random() < 0.5 for _ in range(8)] for _ in range(50)]
+    patterns = [[rng.random() < 0.5 for _ in range(4)] for _ in range(50)]  # §5.2: 8 places take 4 raw bits
     labels = [rng.randrange(2) for _ in range(50)]
 
     def make():
-        g = Goo(count=40, across=8, outputs=6, seed=3, weight=None)
-        g.coding, g.population, g.read, g.rule, g.drive = "raw", 3, "count", "reinforce", "rate"
+        g = Goo(count=46, across=8, outputs=12, seed=3, weight=None)  # §5.11: 2 classes * 3 a half
+        g.population, g.read, g.rule, g.drive = 3, "count", "reinforce", "rate"
         g.set_delta(0.455)
         g.use_input_stream(patterns, labels)
         return g
@@ -215,7 +215,6 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
     assert (problem.across, problem.outputs, problem.hidden_neurons, problem.population, problem.clock) == (395, 60, 199, 3, 3)
-    assert problem.output_coding == "complement"  # ten fire-if-one populations of three, then ten fire-if-zero (September 16, 2026)
     assert problem.goo is None  # the goo is inputs + hidden + outputs, 644, sized by the hidden count since September 16, 2026
     assert (problem.homeostasis, problem.unstick) == (0.0, 0.0)  # the hazard keeps nothing stuck; the un-sticking overshot
     from walnutbutter.cli import apply_problem, build_parser
@@ -228,8 +227,6 @@ def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     assert args.goo == 500 and args.hidden_neurons == 199  # --goo wins the sizing; the mismatch is refused when built
     args = build_parser().parse_args(["--problem", "mnist", "--unstick", "0.01"]); apply_problem(args)
     assert args.unstick == 0.01 and args.homeostasis == 0.0  # given on the command line, it is kept
-    assert (problem.target, problem.critic, problem.coding, problem.read, problem.data) == ("label", "evidence", "complement", "count", "mnist")
-    assert not problem.permute and problem.trained and problem.rule == "reinforce"
     assert dataset_stream(None, 1) is None
     with pytest.raises(ValueError, match="no dataset"):
         dataset_stream("cifar", 1)
@@ -254,8 +251,8 @@ def test_clock_neurons_lead_the_input_zone_and_fire_every_epoch():
     from walnutbutter.arrays import ArrayNetwork
 
     def make():
-        g = Goo(count=30, across=8, outputs=4, seed=3, weight=None, permute=False)
-        g.coding, g.clock, g.drive, g.read = "complement", 2, "rate", "count"
+        g = Goo(count=30, across=8, outputs=4, seed=3, weight=None)
+        g.clock, g.drive, g.read = 2, "rate", "count"
         return g
 
     goo = make()
@@ -302,10 +299,8 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
         pytest.skip("needs the mnist data and the Rust engine")
     from walnutbutter.cli import apply_problem, build_parser
     args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
-    goo = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
-              permute=False)
-    goo.coding, goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = "complement", args.population, 3, "count", "reinforce", "rate", 2.0
-    goo.output_coding = args.output_coding  # the problem's: complement, since September 16, 2026
+    goo = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
+    goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = args.population, 3, "count", "reinforce", "rate", 2.0
     goo.set_delta(0.455)
     direction = mnist.supervised_direction(goo)
     edges = [c for n in goo.all_neurons() for c in n.outgoing]
@@ -324,10 +319,8 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     assert [e["epoch"] for e in est] == [10, 20, 30, 40]
     assert all(e["corr_cum"] is None or -1.0 <= e["corr_cum"] <= 1.0 for e in est)
     assert all(0.0 <= e["sign_cum"] <= 1.0 for e in est) and est[-1]["corr_window"] is not None
-    goo2 = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4,
-               permute=False)
-    goo2.coding, goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = "complement", args.population, 3, "count", "reinforce", "rate", 2.0
-    goo2.output_coding = args.output_coding
+    goo2 = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
+    goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = args.population, 3, "count", "reinforce", "rate", 2.0
     goo2.set_delta(0.455)
     _, _, _, plain = fast.train(goo2, 10, lr=0.001, target="label", trace_every=5, patterns=patterns, labels=labels,
                                 eligibility="hebb", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence")
@@ -340,18 +333,15 @@ def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
     code is on/off for the label's groups and off/on for every other class's, and a zero neuron's supervised direction
     is its class's reversed."""
     import math
-    from walnutbutter.learning import OUTPUT_CODINGS, class_evidence, evidence_reward, evidence_score, label_code
-    assert OUTPUT_CODINGS == ("population", "complement")
-    assert class_evidence([1, 2, 0, 5, 0, 0], 3) == [3, 5] and class_evidence([1, 2, 0, 5, 0, 0], 1) == [1, 2, 0, 5, 0, 0]
-    # two classes of two, complement-coded: ones [1 2 | 0 5], zeros [0 1 | 4 0]
-    assert class_evidence([1, 2, 0, 5, 0, 1, 4, 0], 2, "complement") == [3 - 1, 5 - 4]
+    from walnutbutter.learning import class_evidence, evidence_reward, evidence_score, label_code
+    # two classes of two, complement-coded: ones [1 2 | 0 5], zeros [0 1 | 4 0] (§5.11)
+    assert class_evidence([1, 2, 0, 5, 0, 1, 4, 0], 2) == [3 - 1, 5 - 4]
+    assert class_evidence([1, 2, 0, 5, 0, 0], 3) == [3 - 5]
     with pytest.raises(ValueError, match="does not divide"):
-        class_evidence([1, 2, 3], 2, "complement")
-    with pytest.raises(ValueError, match="unknown output coding"):
-        class_evidence([1, 2], 1, "mirror")
+        class_evidence([1, 2, 3], 2)
     goo = Goo(count=24, across=4, outputs=12, seed=3, weight=None)  # three classes: 2 fire-if-one, 2 fire-if-zero each
-    goo.coding, goo.population, goo.output_coding, goo.read, goo.rule = "raw", 2, "complement", "count", "reinforce"
-    goo.use_input_stream([[True, False, True, False]], [1])
+    goo.population, goo.read, goo.rule = 2, "count", "reinforce"
+    goo.use_input_stream([[True, False]], [1])
     run_epoch(goo, verbose=False, rng=random.Random(1))
     assert label_code(goo) == [False, False, True, True, False, False] + [True, True, False, False, True, True]
     outputs = goo.output_row()
@@ -371,10 +361,10 @@ def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
         neuron.spikes = 4
     assert evidence_score(goo) == pytest.approx(math.log(1 / 3))
     # the supervised direction: a fire-if-zero neuron of class k takes -(P(pixel | k) - P(pixel))
-    ff = Goo(count=445, across=395, outputs=50, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4, permute=False)
-    ff.coding, ff.population, ff.clock, ff.output_coding = "complement", 5, 3, "population"
-    cc = Goo(count=455, across=395, outputs=60, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4, permute=False)
-    cc.coding, cc.population, cc.clock, cc.output_coding = "complement", 3, 3, "complement"
+    ff = Goo(count=445, across=395, outputs=50, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
+    ff.population, ff.clock = 5, 3
+    cc = Goo(count=455, across=395, outputs=60, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
+    cc.population, cc.clock = 3, 3
     from walnutbutter.mnist import supervised_direction
     edges = [c for n in cc.all_neurons() for c in n.outgoing]
     try:
@@ -405,19 +395,13 @@ def test_the_mnist_problem_is_complement_coded_on_the_outputs_and_the_engines_ag
     from walnutbutter.persistence import checkpoint, restore
     from walnutbutter.problems import PROBLEMS
     p = PROBLEMS["mnist"]
-    assert (p.population, p.outputs, p.output_coding, p.lr) == (3, 60, "complement", 0.002)
     args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)
-    assert (args.population, args.outputs, args.output_coding) == (3, 60, "complement")
-    args = build_parser().parse_args(["--problem", "mnist", "--output-coding", "population", "--population", "5", "--outputs", "50"]); apply_problem(args)
-    assert (args.population, args.output_coding, args.outputs, args.goo) == (5, "population", 50, 395 + 199 + 50)  # the earlier layout, on request
     goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None)
-    goo.coding, goo.population, goo.output_coding, goo.read, goo.rule = "raw", 1, "complement", "count", "reinforce"
+    goo.population, goo.read, goo.rule = 1, "count", "reinforce"
     data = checkpoint(goo, tmp_path / "c.json")
-    assert data["output_coding"] == "complement"
+    assert data["population"] == 1  # §5.11 fixes the coding, so only the population is a checkpoint field
     back, _ = restore(tmp_path / "c.json")
-    assert back.output_coding == "complement"
     from walnutbutter.arrays import ArrayNetwork
-    assert ArrayNetwork(goo).output_coding == "complement"
     if fast.available():
         import importlib.util
         from pathlib import Path
@@ -429,7 +413,6 @@ def test_the_mnist_problem_is_complement_coded_on_the_outputs_and_the_engines_ag
         except FileNotFoundError:
             pytest.skip("the MNIST files are not fetched")
         grid, cli = rs.grid_of("mnist", {"hidden_neurons": 0.0, "seed": 1, "threshold": 0.6, "temperature": 2.0}, "hazard", True, -4.0)
-        assert grid.output_coding == "complement" and grid.outputs == 60 and grid.population == 3 and len(grid.all_neurons()) == 455
         grid.use_input_stream(patterns, labels)
         teacher = Teacher(grid, seed=1, rule="reinforce", eligibility="hazard", target="label", critic="evidence", lr=cli.lr,
                           homeostasis=0.0, unstick=0.0)

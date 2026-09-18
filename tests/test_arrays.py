@@ -60,10 +60,8 @@ def rates(grid) -> np.ndarray:
 
 def test_wrapping_copies_the_mesh_exactly():
     mesh = Goo(count=GOO_COUNT, across=ACROSS, weight=None, seed=1)
-    mesh.use_ecc(False)
     net = ArrayNetwork(mesh)
     assert net.across == 8 and len(net) == GOO_COUNT and len(net.weight) == len(mesh.connections)
-    assert net.permutation == mesh.permutation and net.seed == 1
     assert np.array_equal(weights(net), weights(mesh))
     assert [net.neurons_list[i].name for i in net.input_index] == [n.name for n in mesh.input_row()]
     assert [net.neurons_list[i] for i in net.output_index] == [mesh.get_neuron_at(c, 0) for c in range(8)]
@@ -83,17 +81,6 @@ def test_both_engines_draw_the_same_inputs_and_fire_the_same_neurons_wave_by_wav
     assert net.epoch == mesh.epoch == 50
 
 
-
-def test_the_decoded_critics_agree_on_a_hamming_mesh():
-    mesh = Goo(count=84, across=14, weight=None, seed=2)
-    mesh.use_ecc()
-    twin = Goo(count=84, across=14, weight=None, seed=2)
-    twin.use_ecc()
-    net = ArrayNetwork(twin)
-    for critic in ("row", "decoded", "decoded-exact"):
-        run_epoch(mesh, verbose=False)
-        run_epoch(net, verbose=False)
-        assert reward(net, critic=critic) == reward(mesh, critic=critic)
 
 
 def test_carry_over_keeps_the_same_potentials_within_rounding():

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
 from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
-from .inputs import CODES, DEFAULT_CODE, parse_bits
+from .inputs import parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
@@ -163,22 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="raw input bits, one per half place, e.g. 1011 for 8 across (default: random)",
     )
     parser.add_argument(
-        "--ecc",
-        nargs="?",
-        const=DEFAULT_CODE,
-        default=None,
-        choices=sorted(CODES),
-        metavar="CODE",
-        help="encode the 4 data bits with an error-correcting code before complement coding: hamming74 "
-        "(the default with bare --ecc; corrects single errors; 14 across) or parity64 (detects only; "
-        "12 across). Sets --across to fit unless given.",
-    )
-    parser.add_argument(
-        "--no-permute",
-        action="store_true",
-        help="lay the complement-coded bits on the input zone in order instead of scrambling them",
-    )
-    parser.add_argument(
         "--positive-weights",
         "--positive_weights",
         action="store_true",
@@ -310,14 +294,6 @@ def build_parser() -> argparse.ArgumentParser:
         "September 16, 2026; --outputs 50 --population 5 --output-coding population is its earlier layout",
     )
     parser.add_argument(
-        "--output-coding",
-        choices=("population", "complement"),
-        default=None,
-        help="how the output zone codes the classes (AUTHORITY.md §8): a population of --population neurons a class, or "
-        "complement -- those fire-if-one populations and then, in the same order, as many fire-if-zero populations, "
-        "twice the width, the class's evidence being one sum minus the other (default: the problem's)",
-    )
-    parser.add_argument(
         "--drive",
         choices=("forced", "rate"),
         default=None,
@@ -351,14 +327,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=INPUT_RATE_OFF,
         metavar="PER_MS",
         help=f"the driving rate for a bit-0 neuron (default: {INPUT_RATE_OFF:g}/ms, silence)",
-    )
-    parser.add_argument(
-        "--flip",
-        type=float,
-        default=None,
-        metavar="P",
-        help=f"corrupt the input (AUTHORITY.md §4.3): flip each coded bit with this probability before the row is forced, "
-        f"and score the read against the clean pattern (default: the problem's, {FLIP:g} where it corrupts; 0 = off)",
     )
     parser.add_argument(
         "--quash-k",
@@ -559,7 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--load-weights",
         metavar="FILE",
-        help="start from a checkpoint: rebuilds its network (count, wiring, seed, permutation) and loads its weights",
+        help="start from a checkpoint: rebuilds its network (count, wiring, seed) and loads its weights",
     )
     return parser
 
@@ -615,7 +583,7 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.input_rate = rate_for_cv(args.cv, args.refractory) if args.refractory > 0 else INPUT_RATE
     args.cv = cv_for_rate(args.input_rate, args.refractory)  # and --input-rate, if given, sets the CV it implies
     if args.across is None:
-        args.across = 2 * CODES[args.ecc].code_bits if args.ecc else problem.across
+        args.across = problem.across
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
     if not problem.trained:
         args.homeostasis, args.unstick = 0.0, 0.0  # nothing outside the network moves a threshold, whichever rule runs (§6.7)
@@ -637,20 +605,15 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.drive = problem.drive if problem.drive is not None else INPUT_DRIVE
     if args.population is None:
         args.population = problem.population if problem.population is not None else POPULATION
-    if args.output_coding is None:
-        args.output_coding = problem.output_coding  # how the output zone codes the classes (§8)
-    if args.flip is None:
-        args.flip = problem.flip if problem.flip is not None else 0.0
     if args.interval is None:
         args.interval = problem.interval if problem.interval is not None else INTERVAL
-    args.readout, args.coding = problem.readout, problem.coding
+    args.readout = problem.readout
     if args.read_window is None:
         args.read_window = problem.read_window
     if args.read is None:
         args.read = problem.read  # --read overrides what the problem asks for
     if args.read == "window" and args.read_window is None:
         args.read_window = READ_WINDOW
-    args.no_permute = args.no_permute or not problem.permute
     if args.outputs is None:
         args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8), unless --outputs
     args.clock = problem.clock  # clock neurons at the front of the input zone, always driven (§4.3)
@@ -697,7 +660,6 @@ def _run(args: argparse.Namespace) -> int:
                 args.rule = args.given_rule  # --rule if it was given, else the problem's
                 apply_problem(args)
                 print(f"problem: {args.problem} (from the checkpoint)", file=sys.stderr)
-            args.ecc = _ecc_from_checkpoint(data)
             args.threshold = data["threshold"]
             args.minimum_potential = data.get("minimum_potential", -1.0)
             args.weight = None if data["random_weights"] else data["weight"]
@@ -720,7 +682,6 @@ def _run(args: argparse.Namespace) -> int:
             weight=args.weight,
             threshold=args.threshold,
             seed=seed,
-            permute=not args.no_permute,
             weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
             minimum_potential=args.minimum_potential,
         )
@@ -764,7 +725,7 @@ def _run(args: argparse.Namespace) -> int:
                     return 2
                 grid = Goo(
                     count=args.goo, across=args.across, weight=args.weight, threshold=args.threshold, seed=seed,
-                    permute=not args.no_permute, weight_range=settings["weight_range"],
+                    weight_range=settings["weight_range"],
                     minimum_potential=args.minimum_potential,
                     scale_with_fan_in=args.scale_with_fan_in is not False,
                     projection=args.projection, outputs=args.outputs, wiring=args.wiring,
@@ -790,7 +751,7 @@ def _run(args: argparse.Namespace) -> int:
             if args.eligibility is None:  # the eligibility follows the neuron (§1.3)
                 args.eligibility = "hazard" if grid.hazard else ELIGIBILITY
             grid.problem = args.problem
-            grid.readout, grid.read, grid.read_window, grid.coding = args.readout, args.read, args.read_window, args.coding
+            grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
             grid.clock = args.clock
             if args.clock:
                 print(f"clock neurons: the first {args.clock} input neurons are driven every epoch whatever the pattern "
@@ -800,7 +761,6 @@ def _run(args: argparse.Namespace) -> int:
             grid.rate_on = args.rate_on
             grid.pickiness = args.pickiness
             grid.population = args.population
-            grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
             grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
             if args.data is not None:
@@ -821,7 +781,6 @@ def _run(args: argparse.Namespace) -> int:
                       f"period are dropped, so a bit-1 neuron fires every {isi:.2f} ms on average "
                       f"({1000.0 / isi:.0f} Hz, {args.interval / isi:.1f} spikes an epoch), at a coefficient of "
                       f"variation of {args.cv:.2f} against a Poisson train's 1", file=sys.stderr)
-            grid.flip = args.flip
             if not PROBLEMS[args.problem].trained:
                 print(
                     f"problem {args.problem}: {PROBLEMS[args.problem].description}. Epochs {args.interval:g} ms apart; "
@@ -830,22 +789,6 @@ def _run(args: argparse.Namespace) -> int:
                     "nothing outside the network trains it",
                     file=sys.stderr,
                 )
-            if args.ecc:
-                try:
-                    grid.use_ecc(args.ecc)
-                except ValueError as exc:
-                    print(f"error: {exc}", file=sys.stderr)
-                    return 2
-                code = CODES[args.ecc]
-                print(
-                    f"input: {code.data_bits} data bits -> {code.name} ({code.code_bits}, {code.data_bits}) code, "
-                    f"{'corrects' if code.corrects_single_errors else 'detects'} single errors -> complement code "
-                    f"-> {2 * code.code_bits} across",
-                    file=sys.stderr,
-                )
-            if not args.no_permute or loaded:
-                laid = "coded" if grid.coding == "complement" else "raw"
-                print(f"input permutation: place i along the input zone shows {laid} bit {grid.permutation}", file=sys.stderr)
             if args.rule == "local":
                 grid.rule = args.rule
                 print(f"rule: local — nothing pays at the read (§9.1); "
@@ -974,14 +917,12 @@ def _seed_worker(job: dict) -> dict:
     settings = job["settings"]
     grid = Goo(
         count=job["goo"], across=settings["across"], weight=settings["weight"], threshold=settings["threshold"],
-        seed=seed, permute=settings["permute"], weight_range=settings["weight_range"],
+        seed=seed, weight_range=settings["weight_range"],
         minimum_potential=settings["minimum_potential"],
         scale_with_fan_in=job.get("scale_with_fan_in") is not False,
         projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
         wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
     )
-    if job.get("ecc"):
-        grid.use_ecc(job["ecc"])
     Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
@@ -991,16 +932,13 @@ def _seed_worker(job: dict) -> dict:
     grid.problem = job.get("problem")
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
-    grid.coding = job.get("coding", "complement")
     grid.clock = job.get("clock", 0)
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
-    grid.flip = job.get("flip", 0.0)
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.rate_on = job.get("rate_on", RATE_ON)
     grid.pickiness = job.get("pickiness", ROW_CRITIC_PICKINESS_IN_SPIKES)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
-    grid.output_coding = job.get("output_coding", "population")  # how the output zone codes the classes (§8)
     grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job.get("data") is not None:
@@ -1046,7 +984,6 @@ def _run_seeds(args: argparse.Namespace) -> int:
         across=args.across,
         weight=args.weight,
         threshold=args.threshold,
-        permute=not args.no_permute,
         weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
     )
@@ -1076,18 +1013,18 @@ def _run_seeds(args: argparse.Namespace) -> int:
                 save = str(Path(args.save_weights).with_suffix("")) + f"-seed{seed}.json"
             Path(save).parent.mkdir(parents=True, exist_ok=True)
         jobs.append({"seed": seed, "epochs": args.epochs, "settings": settings, "teacher": teacher_kwargs,
-                     "save": save, "goo": args.goo, "ecc": args.ecc, "engine": args.engine or "objects",
+                     "save": save, "goo": args.goo, "engine": args.engine or "objects",
                      "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau, "isi_factor": args.isi_factor,
-                     "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
-                     "quash": (args.quash, args.quash_k), "flip": args.flip,
+                     "readout": args.readout, "read": args.read, "read_window": args.read_window,
+                     "quash": (args.quash, args.quash_k),
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "pickiness": args.pickiness, "delta": args.delta,
-                     "population": args.population, "output_coding": args.output_coding, "temperature": args.temperature,
+                     "population": args.population, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":

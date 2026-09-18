@@ -22,22 +22,11 @@ def test_main_fires_the_input_zone_and_returns_the_network(capsys):
 
 
 def test_main_complement_codes_the_input():
-    grid = main(count=18, across=6, weight=1.0, input_bits=[True, False, True], permute=False)
+    grid = main(count=18, across=6, weight=1.0, input_bits=[True, False, True])
     assert grid.input_coded == [True, False, True, False, True, False]
     assert grid.input_pattern == grid.input_coded
     assert len(grid.waves[0].fired) == 3
 
-
-def test_main_permutes_the_coded_input_with_a_fixed_permutation(capsys):
-    grid = main(count=32, across=8, weight=1.0, seed=1, input_bits=[True, True, False, False])
-    assert grid.input_coded == [True, True, False, False, False, False, True, True]
-    assert sorted(grid.permutation) == list(range(8)) and grid.permutation != list(range(8))
-    assert grid.input_pattern == [grid.input_coded[i] for i in grid.permutation]
-    first_permutation = list(grid.permutation)
-    run_epoch(grid)
-    assert grid.permutation == first_permutation  # the same scramble every epoch
-    assert grid.input_pattern == [grid.input_coded[i] for i in grid.permutation]
-    assert sum(grid.input_pattern) == 4
 
 
 def test_run_epoch_requires_even_columns_and_the_right_bit_count(capsys):
@@ -67,7 +56,7 @@ def test_run_epoch_resets_the_mesh_and_presents_a_new_input(capsys):
 
 def test_run_epoch_clears_every_neuron_before_firing(capsys, monkeypatch):
     monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
-    grid = main(count=18, across=6, weight=1.0, seed=1, permute=False)
+    grid = main(count=18, across=6, weight=1.0, seed=1)
     fired_before = {n.name: n.fired_in_wave for n in grid.all_neurons()}
     run_epoch(grid, bits=[False, True, False])  # a specific, different input
     assert grid.waves[0].fired == grid.input_neurons()
@@ -98,15 +87,13 @@ def test_cli_runs_and_returns_zero(capsys):
     captured = capsys.readouterr()
     assert captured.out.count("fired in wave 0.") >= 4  # half of the 8-place input zone, plus any neuron the exploration noise put over threshold
     assert "of 60 neurons fired" in captured.err  # the default goo, §4.1
-    assert "input permutation:" in captured.err
 
 
 def test_cli_input_option_sets_the_pattern(capsys):
-    assert cli_main(["--headless", "-v", "--across", "6", "--goo", "18", "--weight", "1", "--input", "110", "--no-permute"]) == 0
+    assert cli_main(["--headless", "-v", "--across", "6", "--goo", "18", "--weight", "1", "--input", "110"]) == 0
     captured = capsys.readouterr()
     assert "epoch 1 at 0 ms: input 110 -> coded 110001 -> input zone 110001" in captured.out
     assert captured.out.count("fired in wave 0.") >= 3  # the three forced, plus any neuron the exploration noise put over threshold
-    assert "input permutation:" not in captured.err
 
 
 @pytest.mark.parametrize("bad", [["--input", "10"], ["--input", "1x1"], ["--across", "5", "--goo", "15"]])

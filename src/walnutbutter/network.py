@@ -34,7 +34,7 @@ def escape_scale(count: int) -> float:
     return math.sqrt(ESCAPE_REFERENCE_COUNT / count) if count > 0 else 1.0
 from .local import quash
 from .exploration import hazard_draws
-from .inputs import CODES, DEFAULT_CODE, Code, complement_code
+from .inputs import complement_code
 from .neuron import Neuron
 from .clock import before, slack
 from .propagation import Schedule, Wave
@@ -71,8 +71,7 @@ class Network:
         self.input_pattern: list[bool] | None = None  # one bit per place in the input zone: what is forced
         self.target_pattern: list[bool] | None = None  # the clean pattern the read is scored against, before any flips (§4.3)
         self.input_bits: list[bool] | None = None  # the raw bits before complement coding
-        self.input_coded: list[bool] | None = None  # the complement-coded bits before permutation
-        self.permutation: list[int] = list(range(across))  # place i in the input zone shows coded bit permutation[i]
+        self.input_coded: list[bool] | None = None  # the complement-coded bits, which are the pattern itself (§5.2)
         self.input_stream: list[list[bool]] | None = None  # raw-bit patterns to present in order, in place of fresh
         # draws (§4.5); None draws from the network's own stream, as it always did
         self.input_at = 0  # how far through that stream the run has got
@@ -94,16 +93,13 @@ class Network:
         self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
         # the single-spike rule). A Teacher with that eligibility switches it on, in whichever engine (centre)
         self.readout = "top"  # what is read as the output: the output zone, or "input" (the inputs are the outputs)
-        self.coding = "complement"  # how raw bits reach the input row: "complement" (bits then their negations), "raw"
         # (as they are), "population" (each bit repeated `population` times) or "population-complement" (both, in that
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
-        self.output_coding = "population"  # how the output zone codes the classes (§8): a population a class, or "complement"
         # -- fire-if-one populations then, in the same order, fire-if-zero ones (Byron, September 16, 2026; learning.OUTPUT_CODINGS)
         self.temperature = TEMPERATURE  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
         self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
         # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
-        self.flip = 0.0  # probability each bit of the coded, permuted pattern is flipped before the row is forced (§4.3); off until asked
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
         self.input_rate = INPUT_RATE  # per ms: what a bit-1 neuron fires at under rate drive
         self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
@@ -114,8 +110,6 @@ class Network:
         self.read_window: float | None = None  # the window for read == "window"
         self.rate_on = RATE_ON  # Hz: the rate a target-on output is driven to, and what output_levels divides by (§4.3)
         self.pickiness = ROW_CRITIC_PICKINESS_IN_SPIKES  # spikes: the count read's line between off and on (§5.10, §9.5)
-        self.ecc: str | None = None  # name of the error-correcting code applied before complement coding, if any
-        self.input_data: list[bool] | None = None  # the raw data bits when ecc is on
 
     def all_neurons(self) -> Iterable[Neuron]:
         """Every neuron, in a stable order. Subclasses override if `neurons` is not a list."""
@@ -291,86 +285,44 @@ class Network:
         time = self.next_time() if time is None else float(time)
         if self.epoch and before(time, self.horizon):
             raise ValueError(f"input time {time} is before the schedule has already run to, {self.horizon}")
+        # §5.2: the pattern presented is the pattern the read is scored against -- nothing corrupts an input on the way in
         self.target_pattern = pattern
-        self.input_pattern = [bit != (self._rng.random() < self.flip) for bit in pattern] if self.flip else list(pattern)
+        self.input_pattern = list(pattern)
         self.input_time = time
         for neuron, bit in zip(self.input_row(), pattern):
             neuron.should_fire = bit  # what the neuron should do, not what it was forced with; the learning rule
             # reverses its sign for a neuron that should not fire
 
-    @property
-    def code(self) -> Code | None:
-        return CODES[self.ecc] if self.ecc else None
-
     def raw_bit_count(self) -> int:
-        """How many raw bits an input takes: half the count across (complement coding), all of it (raw), or the code's data bits.
+        """How many raw bits an input takes: half the input zone, less the clock neurons (AUTHORITY.md §5.2).
 
-        Clock neurons (§4.3) are input neurons too, but their bit is always 1
-        and no raw bit reaches them: they come off the width first.
+        Clock neurons (§5.3) are input neurons too, but their bit is always 1
+        and no raw bit reaches them: they come off the width first. An odd
+        remainder is refused rather than rounded.
         """
         width = self.input_width() - self.clock
-        if self.coding in ("raw", "population", "population-complement"):
-            if self.code:
-                raise ValueError(f"an error-correcting code needs complement coding, not {self.coding}")
-            if self.coding == "raw":
-                return width
-            if self.coding == "population-complement":
-                if width % 2:
-                    raise ValueError(f"complement coding needs an even number of input neurons, got {width}")
-                half = width // 2
-                if half % self.population:
-                    raise ValueError(
-                        f"doubling into complement coding needs {2 * self.population} input neurons per raw bit, got {width}"
-                    )
-                return half // self.population
-            if width % self.population:
-                raise ValueError(f"population coding needs a multiple of {self.population} input neurons, got {width}")
-            return width // self.population
         if width % 2:
             raise ValueError(f"complement coding needs an even number of input neurons, got {width}")
-        if self.code:
-            if width // 2 != self.code.code_bits:
-                raise ValueError(f"{self.code.name} needs {2 * self.code.code_bits} input neurons, got {width}")
-            return self.code.data_bits
         return width // 2
 
-    def use_ecc(self, code: str | bool | None = DEFAULT_CODE) -> None:
-        """Encode raw data bits with a named code before complement coding (True means the default, Hamming (7, 4))."""
-        if code is True:
-            code = DEFAULT_CODE
-        if code is False:
-            code = None
-        if code is not None and code not in CODES:
-            raise ValueError(f"unknown code {code!r}; choose from {', '.join(CODES)}")
-        self.ecc = code
-        self.raw_bit_count()  # validates the count across
 
     def set_input_bits(self, bits, time: float | None = None) -> None:
-        """Set the input from raw bits: (ecc-encode them,) complement-code them, then permute.
+        """Set the input from raw bits: complement-code them onto the input zone (AUTHORITY.md §5.2).
 
-        Without ecc the raw bits number half the count across. With ecc they are
-        the 4 data bits, encoded to 7 before complement coding fills 14 places.
-        Place i in the input zone receives coded bit permutation[i].
+        k raw bits become 2k coded bits on 2k input neurons, so exactly half
+        the zone is driven whatever the raw bits are. The clock neurons of
+        §5.3 lead the zone, their bit always 1. Place i of the zone shows
+        place i of the coded pattern: there is no permutation.
         """
         bits = [bool(b) for b in bits]
         wanted = self.raw_bit_count()
         if len(bits) != wanted:
             raise ValueError(f"expected {wanted} input bits for {self.input_width()} input neurons, got {len(bits)}")
-        word = self.code.encode(bits) if self.code else bits
-        if self.coding == "raw":
-            coded = list(word)
-        elif self.coding == "population":
-            coded = [bit for bit in word for _ in range(self.population)]  # each bit fills its own patch of the row
-        elif self.coding == "population-complement":
-            # repeated first, then the whole run followed by its negation (§4.3): 1001 -> 11000011 -> 1100001100111100
-            coded = complement_code([bit for bit in word for _ in range(self.population)])
-        else:
-            coded = complement_code(word)
-        coded = [True] * self.clock + coded  # the clock neurons lead the input zone, always on (§4.3)
-        self.set_input([coded[i] for i in self.permutation], time)
-        self.input_data = bits if self.code else None
-        self.input_bits = word  # the bits that were complement-coded: the codeword with ecc, the raw bits without
+        coded = [True] * self.clock + complement_code(bits)
+        self.set_input(coded, time)
+        self.input_bits = bits
         self.input_coded = coded
+
 
     def new_random_input(self, time: float | None = None) -> list[bool]:
         """Set the next input: the next pattern of an attached stream, or fresh raw bits.

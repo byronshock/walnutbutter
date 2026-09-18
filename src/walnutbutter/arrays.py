@@ -73,21 +73,17 @@ class ArrayNetwork(Network):
         self.mesh = mesh
         self.across, self.rows = mesh.across, mesh.rows
         self._init_network(mesh.across, mesh.weight_range)
-        self.permutation = list(mesh.permutation)
-        self.ecc = mesh.ecc
         self.epoch = mesh.epoch
         self.time, self.interval, self.input_time = mesh.time, mesh.interval, mesh.input_time
         self.horizon = mesh.horizon
-        self.readout, self.read, self.read_window, self.coding = mesh.readout, mesh.read, mesh.read_window, mesh.coding
+        self.readout, self.read, self.read_window = mesh.readout, mesh.read, mesh.read_window
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
-        self.output_coding = getattr(mesh, "output_coding", "population")  # how the output zone codes the classes (§8)
         self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
         self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore_rng = mesh.explore_rng
         self.rate_on = mesh.rate_on
         self.pickiness = mesh.pickiness  # spikes: the count read's line (§5.10, §9.5)
-        self.flip = mesh.flip
         self.rule = mesh.rule
         self.seed = mesh.seed
         self.threshold = mesh.threshold
@@ -96,7 +92,7 @@ class ArrayNetwork(Network):
         self._rng.setstate(mesh._rng.getstate())  # the same input sequence as the mesh would draw
         self.input_stream, self.input_at = mesh.input_stream, mesh.input_at  # and the same attached stream (§4.5)
         self.input_labels, self.input_label = mesh.input_labels, mesh.input_label  # with its labels, when a dataset gave them (§8)
-        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_events"):
             setattr(self, name, getattr(mesh, name))
 
         neurons = list(mesh.all_neurons())
@@ -620,7 +616,7 @@ class ArrayNetwork(Network):
             for connection in self.neurons_list[i].outgoing:
                 if connection.is_active:
                     mesh.schedule.signal(connection, time)
-        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_data", "input_events"):
+        for name in ("input_pattern", "target_pattern", "input_bits", "input_coded", "input_events"):
             setattr(mesh, name, getattr(self, name))
         mesh._rng.setstate(self._rng.getstate())
         mesh.input_stream, mesh.input_at = self.input_stream, self.input_at

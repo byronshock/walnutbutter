@@ -36,16 +36,11 @@ class Problem:
     read_window: float | None = None  # the window for read == "window"
     target: str | None = None  # what the output should show (None: --target)
     critic: str | None = None  # how the read is scored (None: --critic)
-    coding: str = "complement"  # how raw bits reach the input zone (§4.3): complement, raw, population, population-complement
     population: int | None = None  # neurons per raw bit where the coding repeats it (None: constants.POPULATION)
-    output_coding: str = "population"  # how the output zone codes the classes (§8, learning.OUTPUT_CODINGS): a population a
-    # class, or "complement" -- fire-if-one populations then fire-if-zero ones (mnist; Byron, September 16, 2026)
-    permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
     quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
     hebb: bool = False  # run leaky Hebb (§6.12) alongside whatever else this problem runs
     drive: str | None = None  # how a bit becomes spikes (§4.3): "forced" or "rate" (None: --drive, else constants.INPUT_DRIVE)
-    flip: float | None = None  # corrupt the input: flip each coded bit with this probability (§4.3); None means no corruption
     outputs: int | None = None  # the width of the output zone when it differs from the input's (goo, §3.4); None: across
     clock: int = 0  # clock neurons (§4.3): input neurons at the front of the input zone whose bit is always 1
     goo: int | None = None  # the goo this problem is posed on: --goo defaults to this many neurons (None: the grid unless --goo)
@@ -72,8 +67,7 @@ PROBLEMS: dict[str, Problem] = {
         "first-class citizens of the population' (Byron, same day), and on goo a permutation of the input zone is only "
         "a relabelling of identically wired neurons. Reversal with the target set to copy and the permutation off; the "
         "task the goo comparisons of AUTHORITY.md §3.4 are posed on",
-        ACROSS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, permute=False,
-        read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
+        ACROSS, trained=True, target="copy", critic="row", rule="reinforce", quash=False, read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
         # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
     "mnist": Problem(
@@ -92,8 +86,7 @@ PROBLEMS: dict[str, Problem] = {
         "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule "
         "at LR 0.002 (Byron, September 16, 'default LR to 0.002 for this task'); the train split in a seeded shuffle, "
         "cycling (mnist.stream)",
-        3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, permute=False,
-        read="count", coding="complement", population=3, outputs=60, output_coding="complement", clock=3, hidden_neurons=199,
+        3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, read="count", population=3, outputs=60, clock=3, hidden_neurons=199,
         data="mnist", homeostasis=0.0, unstick=0.0, lr=0.002,
     ),
 }
