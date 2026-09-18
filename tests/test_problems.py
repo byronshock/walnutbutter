@@ -19,37 +19,35 @@ def quiet(monkeypatch):
 
 
 def test_the_problems_and_the_default():
-    assert set(PROBLEMS) == {"reversal", "copy", "sustain_inputs", "population_copy", "mnist",
-                             "population_denoise", "shallow_copy", "shallow_not", "doubled_copy",
-                             "reaching_copy"}
+    # §9.1 carries one rule that pays at the read and §5.2 one coding, so the seven problems posed on the
+    # external teacher and on a dropped coding went with them
+    assert set(PROBLEMS) == {"reversal", "copy", "mnist"}
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"
     # copy (Byron, September 14, 2026): eight complement-coded input neurons, eight outputs, place for place, unpermuted
     copy = PROBLEMS["copy"]
     assert (copy.across, copy.coding, copy.target, copy.critic, copy.rule) == (8, "complement", "copy", "row", "reinforce")
     assert copy.trained and not copy.permute and not copy.quash
-    assert PROBLEMS["reversal"].trained and not PROBLEMS["sustain_inputs"].trained
-    sustain = PROBLEMS["sustain_inputs"]
-    assert sustain.across == 4 and sustain.coding == "raw"  # the 16 four-bit inputs as they are on 4 neurons
-    assert (sustain.readout, sustain.read, sustain.target, sustain.critic) == ("input", "again", "copy", "row")
-    assert sustain.interval is None  # every problem takes INTERVAL now, swept to 35 ms (§4.2)
+    assert PROBLEMS["reversal"].trained
+    assert all(p.rule == "reinforce" for p in PROBLEMS.values())  # §9.1: the one rule that pays at the read
+    assert all(p.coding == "complement" for p in PROBLEMS.values())  # §5.2
+    assert all(p.interval is None for p in PROBLEMS.values())  # every problem takes INTERVAL (§4.2)
 
 
 def test_apply_problem_settles_interval_target_readout_and_training():
-    args = build_parser().parse_args(["--problem", "sustain_inputs"])
+    args = build_parser().parse_args(["--problem", "copy"])
     apply_problem(args)
-    assert args.interval == C.INTERVAL == 35.0 and args.target == "copy" and args.readout == "input" and args.read == "again"
-    assert args.critic == "row" and args.coding == "raw" and args.across == 4
-    assert args.learn and args.homeostasis == 0 and args.unstick == 0  # scored, never trained from outside
-    args = build_parser().parse_args(["--problem", "sustain_inputs", "--interval", "7"])
+    assert args.interval == C.INTERVAL == 35.0 and args.target == "copy" and args.readout == "top"
+    assert args.critic == "row" and args.coding == "complement" and args.across == 8
+    args = build_parser().parse_args(["--problem", "copy", "--interval", "7"])
     apply_problem(args)
     assert args.interval == 7.0  # an explicit interval wins
     args = build_parser().parse_args([])
     apply_problem(args)
     assert args.interval == C.INTERVAL and args.readout == "top" and args.read == "fired" and args.target == "reversed"
     assert args.coding == "complement"
-    args = build_parser().parse_args(["--problem", "sustain_inputs", "--rule", "reinforce"])
-    apply_problem(args)  # the reinforce rule may be asked for on any problem (§6.7, Byron, September 13, 2026)
-    assert args.rule == "reinforce" and args.homeostasis == 0 and args.unstick == 0
+    args = build_parser().parse_args(["--problem", "copy", "--rule", "local"])
+    apply_problem(args)  # §9.1: a run may have none, and then the local rules are the whole of the learning
+    assert args.rule == "local"
 
 
 def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
@@ -71,33 +69,6 @@ def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
     grid.read = "fired"
     assert grid.output_fired() == [n.has_fired for n in grid.input_row()]  # the plain read: fired this epoch
 
-
-def test_raw_coding_lays_the_bits_down_as_they_are():
-    from walnutbutter.persistence import checkpoint, restore
-    grid = Goo(count=12, across=4, weight=1.0, seed=2, permute=False)
-    grid.coding = "raw"
-    assert grid.raw_bit_count() == 4
-    grid.set_input_bits([True, False, False, True])
-    assert grid.input_pattern == [True, False, False, True] and grid.input_coded == grid.input_bits == [True, False, False, True]
-    grid.set_input_bits([False, False, False, False])  # nothing forced is a legal input now
-    assert grid.input_neurons() == [] and sum(grid.input_pattern) == 0
-    seen = {tuple(grid.new_random_input()) for _ in range(300)}
-    assert len(seen) == 16 and all(len(bits) == 4 for bits in seen)  # all sixteen four-bit patterns
-    odd = Goo(count=6, across=3)
-    odd.coding = "raw"
-    assert odd.raw_bit_count() == 3  # raw coding has no evenness requirement
-    grid.coding = "complement"
-    assert grid.raw_bit_count() == 2
-    grid.coding = "raw"
-    grid.use_ecc(False)
-    with pytest.raises(ValueError):
-        grid.use_ecc()  # a code needs complement coding
-    grid.ecc = None
-    import tempfile, os
-    with tempfile.TemporaryDirectory() as folder:
-        path = os.path.join(folder, "raw.json")
-        assert checkpoint(grid, path)["coding"] == "raw"
-        assert restore(path)[0].coding == "raw"
 
 
 def test_both_engines_agree_on_raw_inputs():
@@ -161,31 +132,6 @@ def test_both_engines_read_the_same_outputs():
         assert mesh.output_fired() == net.output_fired()
 
 
-def test_sustain_inputs_is_scored_traced_and_checkpointed(tmp_path, capsys):
-    save, trace = tmp_path / "s.json", tmp_path / "s.csv"
-    assert cli_main(["--headless", "--problem", "sustain_inputs", "--seed", "3", "--epochs", "12",
-                     "--save-weights", str(save)]) == 0
-    err = capsys.readouterr().err
-    assert "-> coded" not in err
-    assert "problem sustain_inputs" in err and "Epochs 35 ms apart" in err and "by the row critic, on meaning spiked again after the input" in err
-    assert "shows raw bit" in err
-    assert "teaching copy" in err and "rule: teacher" in err and f"tracing every epoch to {trace}" in err
-    data = json.loads(save.read_text())
-    assert data["across"] == 4 and data["epoch"] == 12 and data["problem"] == "sustain_inputs" and data["interval"] == 35.0
-    assert data["coding"] == "raw" and data["learning"]["target"] == "copy" and data["learning"]["critic"] == "row"
-    assert data["learning"]["rule"] == "teacher"
-    lines = trace.read_text().splitlines()
-    assert lines[0] == "epoch,time_ms,dopamine,expected,score" and len(lines) == 13
-    epoch, time_ms, dopamine, expected, score = lines[-1].split(",")
-    assert epoch == "12" and float(time_ms) == 11 * 35.0 and float(dopamine) >= 0 and float(expected) >= 0 and 0 <= float(score) <= 1
-    assert cli_main(["--headless", "--load-weights", str(save), "--epochs", "3", "--no-save"]) == 0
-    err = capsys.readouterr().err
-    assert "problem: sustain_inputs (from the checkpoint)" in err and "teaching copy" in err and "tracing" not in err
-    assert cli_main(["--headless", "--problem", "sustain_inputs", "--seeds", "2", "--seed", "1", "--epochs", "3", "--no-save"]) == 0
-    assert cli_main(["--headless", "--problem", "sustain_inputs", "--rule", "reinforce", "--epochs", "3", "--no-save"]) == 0
-    err = capsys.readouterr().err  # §6.7: the rule runs on an untrained problem, keeping no dopamine pool and so no decay
-    assert "rule: reinforce (hazard eligibility" in err and "no weight decay" in err
-
 
 def test_reversal_is_unchanged(tmp_path, capsys):
     save = tmp_path / "r.json"
@@ -195,119 +141,8 @@ def test_reversal_is_unchanged(tmp_path, capsys):
     assert not save.with_suffix(".csv").exists()
 
 
-def test_the_external_teacher_scores_the_read_and_pays_the_eligibility():
-    from walnutbutter.dopamine import Dopamine, apply_teacher
-    from walnutbutter.learning import RULES, teacher_score
-
-    assert RULES[0] == "teacher" and C.RULE == "teacher" and C.TEACHER_CREDIT is None  # None: 1/n, so the score spans [-1, 1]
-    grid = Goo(count=12, across=4, weight=1.0, permute=False, scaling_factor=0.5)  # the bits land where they are
-    grid.coding, grid.readout, grid.read, grid.rule = "raw", "input", "again", "teacher"
-    grid.dopamine = Dopamine(lr=0.1)
-    grid.set_input_bits([True, False, True, False])
-    row = grid.input_row()
-
-    def score_with(on):  # what the teacher would say if these input neurons read as on
-        for neuron, is_on in zip(row, on):
-            neuron.fired_at = grid.time + 1.0 if is_on else None
-        return teacher_score(grid)
-
-    assert score_with([True, False, True, False]) == 1.0  # all four right
-    assert score_with([False, True, False, True]) == -1.0  # all four wrong
-    assert score_with([True, False, True, True]) == 0.5  # three right, one wrong
-    assert score_with([True, True, True, True]) == 0.0  # two and two
-    assert score_with([False, False, True, False]) == 0.5
-    assert sorted({score_with([a, b, c, d]) for a in (0, 1) for b in (0, 1) for c in (0, 1) for d in (0, 1)}) == [-1.0, -0.5, 0.0, 0.5, 1.0]
-
-    # the trace: a refire earns, the teacher pays, the trace clears
-    into = next(c for c in grid.connections.values() if c.target is row[0])
-    into.weight, into.eligibility = 0.5, 2.0
-    assert apply_teacher(grid, 0.5, 0.1) == 1 and into.weight == pytest.approx(0.5 + 0.1 * 0.5 * 2.0)
-    assert into.eligibility == 0.0  # cleared, so an epoch's credit never carries into the next
-    into.eligibility = 2.0
-    assert apply_teacher(grid, 0.0, 0.1) == 0 and into.eligibility == 0.0  # a zero score still clears the trace
 
 
-def test_the_teacher_rule_runs_end_to_end_and_both_engines_agree():
-    np = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-    from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.dopamine import Dopamine
-
-    def make():
-        grid = Goo(count=24, across=4, weight=None, seed=7)
-        grid.coding, grid.readout, grid.read, grid.interval, grid.rule = "raw", "input", "again", 20.0, "teacher"
-        grid.dopamine = Dopamine(lr=0.05)
-        return grid
-
-    mesh, net = make(), ArrayNetwork(make())
-    a, b = Teacher(mesh, seed=1, target="copy", critic="row", rule="teacher"), Teacher(net, seed=1, target="copy", critic="row", rule="teacher")
-    before = [c.weight for c in mesh.connections.values()]
-    for _ in range(60):
-        assert a.epoch(verbose=False) == b.epoch(verbose=False)
-        assert a.last_signal == b.last_signal and a.last_signal in (-1.0, -0.5, 0.0, 0.5, 1.0)
-        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
-    assert a.moved == b.moved > 0 and [c.weight for c in mesh.connections.values()] != before
-    assert all(c.eligibility == 0.0 for c in mesh.connections.values()) and not net.eligibility.any()
-    assert "teaching copy" in a.status() and "synapses moved" in a.status()
-
-
-def test_adaline_corrects_mistakes_only_and_scales_by_what_each_synapse_delivered():
-    from walnutbutter.dopamine import Dopamine
-    from walnutbutter.learning import RULES, adaline_errors, apply_adaline
-
-    assert "adaline" in RULES
-    grid = Goo(count=12, across=4, weight=1.0, permute=False, scaling_factor=0.5)
-    grid.coding, grid.readout, grid.read, grid.rule = "raw", "input", "again", "adaline"
-    grid.dopamine = Dopamine(lr=0.1)
-    grid.set_input_bits([True, False, True, False])
-    row = grid.input_row()
-    for neuron, on in zip(row, [True, True, False, False]):  # 0 right, 1 wrong (on, should be off), 2 wrong (off, should be on), 3 right
-        neuron.fired_at = grid.time + 1.0 if on else None
-    assert adaline_errors(grid) == [0.0, -1.0, 1.0, 0.0]
-
-    into = {}
-    for place, neuron in enumerate(row):
-        c = next(c for c in grid.connections.values() if c.target is neuron)
-        c.weight, c.eligibility = 0.5, 2.0
-        into[place] = c
-    elsewhere = next(c for c in grid.connections.values() if c.target not in row)
-    elsewhere.weight, elsewhere.eligibility = 0.5, 2.0
-
-    assert apply_adaline(grid, adaline_errors(grid), 0.1) == 2  # only the two neurons read wrongly
-    assert into[0].weight == into[3].weight == 0.5  # read correctly: nothing moves
-    assert into[1].weight == pytest.approx(0.5 + 0.1 * -1.0 * 2.0)  # it fired and should not have: weakened
-    assert into[2].weight == pytest.approx(0.5 + 0.1 * 1.0 * 2.0)  # it should have fired: strengthened
-    assert elsewhere.weight == 0.5  # not a scored neuron: the mesh behind them is an untrained reservoir
-    assert all(c.eligibility == 0.0 for c in grid.connections.values())  # the trace is always cleared
-
-
-def test_adaline_runs_end_to_end_and_both_engines_agree():
-    np = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-    from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.dopamine import Dopamine
-
-    def make():
-        grid = Goo(count=24, across=4, weight=None, seed=11)
-        grid.coding, grid.readout, grid.read, grid.interval, grid.rule = "raw", "input", "again", 20.0, "adaline"
-        grid.dopamine = Dopamine(lr=0.05, decay=0.0)  # no forgetting: only ADALINE moves a weight here
-        return grid
-
-    mesh, net = make(), ArrayNetwork(make())
-    kw = dict(seed=2, target="copy", critic="row", rule="adaline", homeostasis=0, unstick=0)  # only ADALINE moves anything
-    a, b = Teacher(mesh, **kw), Teacher(net, **kw)
-    before = [c.weight for c in mesh.connections.values()]
-    for _ in range(40):  # the engines part company at epoch 58 on this seed, when a potential lands within rounding of a threshold
-        assert a.epoch(verbose=False) == b.epoch(verbose=False)
-        assert a.mistakes == b.mistakes and 0 <= a.mistakes <= 4
-        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
-    assert a.moved == b.moved > 0 and [c.weight for c in mesh.connections.values()] != before
-    assert all(c.eligibility == 0.0 for c in mesh.connections.values()) and not net.eligibility.any()
-    assert "correcting copy" in a.status() and "wrong" in a.status()
-    row = set(mesh.input_row())  # only the scored neurons' incoming weights moved
-    for connection, was in zip(mesh.connections.values(), before):
-        if connection.target not in row:
-            assert connection.weight == was
 
 
 def test_population_coding_fills_three_neurons_per_bit():
@@ -326,26 +161,10 @@ def test_population_coding_fills_three_neurons_per_bit():
         odd.raw_bit_count()
 
 
-def test_the_teacher_score_spans_minus_one_to_one_whatever_the_zone():
-    from walnutbutter.learning import teacher_score
-    grid = Goo(count=120, across=12, weight=1.0, permute=False)
-    grid.coding, grid.read = "population", "fired"
-    grid.set_input_bits([True, False, False, True])
-    want = list(grid.input_pattern)
-
-    def score_with(correct: int) -> float:
-        for place, (neuron, bit) in enumerate(zip(grid.output_row(), want)):
-            neuron.has_fired = bit if place < correct else not bit
-        return teacher_score(grid)
-
-    assert score_with(12) == pytest.approx(1.0) and score_with(0) == pytest.approx(-1.0)
-    assert score_with(6) == pytest.approx(0.0)  # six of twelve right is a zero
-    assert score_with(9) == pytest.approx(0.5) and score_with(3) == pytest.approx(-0.5)
-
 
 def test_quashing_weakens_the_synapses_that_carried_a_cycle():
     import math
-    from walnutbutter.dopamine import quash
+    from walnutbutter.local import quash
     from walnutbutter.propagation import Wave
 
     a, b, idle = Neuron("a"), Neuron("b"), Neuron("idle")
@@ -394,52 +213,6 @@ def test_population_copy_runs_and_both_engines_quash_identically():
     assert np.abs(after).sum() < np.abs(before).sum()  # quashing only ever pulls a weight toward zero
 
 
-def test_population_denoise_reads_the_input_zone_against_the_clean_code():
-    denoise, copy = PROBLEMS["population_denoise"], PROBLEMS["population_copy"]
-    assert denoise.flip == C.FLIP == pytest.approx(1 / 12) and copy.flip is None
-    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute", "trained"):
-        assert getattr(denoise, same) == getattr(copy, same)  # the same network, read somewhere else
-    assert (denoise.readout, denoise.read) == ("input", "again") and (copy.readout, copy.read) == ("top", "fired")
-    args = build_parser().parse_args(["--problem", "population_denoise"])
-    apply_problem(args)
-    assert args.flip == pytest.approx(1 / 12) and args.readout == "input" and args.read == "again"
-    assert args.across == 12 and args.quash == C.QUASH_RATE
-    args = build_parser().parse_args(["--problem", "population_denoise", "--flip", "0"])
-    apply_problem(args)
-    assert args.flip == 0.0  # an explicit flip wins
-    args = build_parser().parse_args(["--problem", "population_copy"])
-    apply_problem(args)
-    assert args.flip == 0.0  # every other problem presents its input uncorrupted
-
-
-def test_a_flip_corrupts_what_is_forced_but_not_what_is_scored():
-    from walnutbutter.learning import expected_outputs, teacher_score
-
-    def grid_with(flip):
-        grid = Goo(count=120, across=12, weight=1.0, permute=False, seed=3)
-        grid.coding, grid.readout, grid.read, grid.flip = "population", "input", "again", flip
-        return grid
-
-    clean = grid_with(0.0)
-    clean.set_input_bits([True, False, False, True])
-    assert clean.input_pattern == clean.target_pattern == [True] * 3 + [False] * 6 + [True] * 3
-    assert [n.should_fire for n in clean.input_row()] == clean.target_pattern
-
-    every = grid_with(1.0)  # every bit flips: the forced row is the complement of the target
-    every.set_input_bits([True, False, False, True])
-    assert every.input_pattern == [not bit for bit in every.target_pattern]
-    assert [n.should_fire for n in every.input_row()] == every.target_pattern  # what it should do, not what it was forced with
-    assert expected_outputs(every, "copy") == every.target_pattern
-    for neuron in every.input_row():  # a network that carries the corruption through reads the presented pattern
-        neuron.has_fired, neuron.fired_at = True, 1.0
-    every.input_time, every.time = 0.0, 0.0
-    assert teacher_score(every, "copy") == pytest.approx(0.0)  # ...and every one of the twelve is then wrong
-
-    some, wrong = grid_with(1 / 12), 0  # about one neuron in twelve
-    for _ in range(2000):
-        some.new_random_input()
-        wrong += sum(a != b for a, b in zip(some.input_pattern, some.target_pattern))
-    assert 0.06 < wrong / (2000 * 12) < 0.11
 
 
 def test_no_flip_draws_nothing_from_the_stream():
@@ -455,49 +228,6 @@ def test_no_flip_draws_nothing_from_the_stream():
     assert [grid.new_random_input() for _ in range(20)] == bits(0.0)  # flip 0 leaves an older run bit for bit
 
 
-def test_population_denoise_runs_and_both_engines_flip_identically():
-    np = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-    from walnutbutter.arrays import ArrayNetwork
-
-    def make():
-        grid = Goo(count=120, across=12, weight=None, seed=5, permute=False)
-        grid.coding, grid.readout, grid.read, grid.interval = "population", "input", "again", 20.0
-        grid.quash_rate, grid.quash_k, grid.flip = 0.02, 0.2, 1 / 12
-        return grid
-
-    mesh, net = make(), ArrayNetwork(make())
-    assert net.flip == mesh.flip
-    corrupted = 0
-    for _ in range(30):
-        run_epoch(mesh, verbose=False)
-        run_epoch(net, verbose=False)
-        assert mesh.input_pattern == net.input_pattern and mesh.target_pattern == net.target_pattern
-        assert net.sign[net.input_index].tolist() == [1.0 if bit else -1.0 for bit in mesh.target_pattern]
-        assert np.allclose([c.weight for c in mesh.connections.values()], net.weight, atol=1e-12)
-        corrupted += sum(a != b for a, b in zip(mesh.input_pattern, mesh.target_pattern))
-    assert corrupted  # thirty epochs of twelve bits at one in twelve: some of them flipped
-
-
-def test_shallow_copy_is_population_copy_one_hop_wide():
-    shallow, deep = PROBLEMS["shallow_copy"], PROBLEMS["population_copy"]
-    for same in ("across", "interval", "coding", "critic", "target", "rule", "quash", "permute",
-                 "readout", "read", "trained", "flip"):
-        assert getattr(shallow, same) == getattr(deep, same)
-    args = build_parser().parse_args(["--problem", "shallow_copy"])
-    apply_problem(args)
-    assert args.across == 12 and args.readout == "top" and args.read == "fired"
-    args = build_parser().parse_args(["--problem", "shallow_copy", "--goo", "48"])
-    apply_problem(args)
-    assert args.goo == 48  # an explicit count still wins
-
-    grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
-    top, bottom = set(grid.output_row()), set(grid.input_row())
-    assert len(top) == len(bottom) == 12 and not (top & bottom)  # two rows, and they are different rows
-    assert len(list(grid.all_neurons())) == 24
-    reaches = sum(1 for c in grid.connections.values() if c.source in bottom and c.target in top)
-    feeds_back = sum(1 for c in grid.connections.values() if c.source in top and c.target in bottom)
-    assert reaches and not feeds_back  # one hop from input to output; §4.5 keeps the outputs apart, so nothing feeds back
 
 
 def test_rate_drive_makes_a_bit_a_firing_rate_not_a_mandated_spike():
@@ -560,11 +290,11 @@ def test_rate_drive_runs_and_both_engines_draw_the_same_train():
 
 def test_a_problem_and_the_command_line_choose_the_drive():
     """The real default, deliberately not under conftest's forced_input: no problem overrides it."""
-    args = build_parser().parse_args(["--problem", "shallow_copy"])
+    args = build_parser().parse_args(["--problem", "copy"])
     apply_problem(args)
     assert args.drive == C.INPUT_DRIVE == "rate"  # no unified wave front at time zero (§4.3)
     assert all(p.drive is None for p in PROBLEMS.values())
-    args = build_parser().parse_args(["--problem", "shallow_copy", "--drive", "forced", "--input-rate", "0.2"])
+    args = build_parser().parse_args(["--problem", "copy", "--drive", "forced", "--input-rate", "0.2"])
     apply_problem(args)
     assert args.drive == "forced" and args.input_rate == 0.2
 
@@ -646,33 +376,6 @@ def test_a_problem_can_carry_its_own_learning_rate():
     assert args.lr == LR
 
 
-def test_shallow_not_is_shallow_copy_with_the_target_complemented():
-    from walnutbutter.learning import TARGETS, accuracy, teacher_score
-
-    assert TARGETS["complement"]([True, False, True]) == [False, True, False]
-    a, b = PROBLEMS["shallow_not"], PROBLEMS["shallow_copy"]
-    for same in ("across", "interval", "coding", "critic", "rule", "quash", "permute",
-                 "readout", "read", "trained", "flip", "drive", "hebb"):
-        assert getattr(a, same) == getattr(b, same), same
-    assert (a.target, b.target) == ("complement", "copy")
-
-    grid = Goo(count=36, across=12, weight=1.0, permute=False)
-    grid.coding, grid.readout, grid.read = "population", "top", "fired"
-    grid.set_input_bits([True, False, False, True])  # 1001 -> 111000000111
-    for neuron, on in zip(grid.output_row(), grid.input_pattern):
-        neuron.has_fired = on  # a perfect copy
-    assert accuracy(grid, "copy") == pytest.approx(1.0)
-    assert accuracy(grid, "complement") == pytest.approx(0.0)  # ...is exactly the wrong answer here
-    assert teacher_score(grid, "complement", "row") == pytest.approx(-1.0)
-    for neuron in grid.output_row():
-        neuron.has_fired = not neuron.has_fired
-    assert accuracy(grid, "complement") == pytest.approx(1.0)
-    assert teacher_score(grid, "complement", "row") == pytest.approx(1.0)
-
-    for neuron in grid.output_row():  # silence: right on the six the complement wants off, wrong on the six it wants on
-        neuron.has_fired = False
-    assert accuracy(grid, "complement") == pytest.approx(0.5)  # the same trivial floor every other problem has
-
 
 def test_the_complement_is_what_excitation_alone_cannot_reach():
     """§8: an output whose whole input group is silent receives no signal, so no weight can drive it."""
@@ -731,17 +434,6 @@ def test_doubled_copy_fires_exactly_half_the_row_and_scrambles_it():
 
 
 
-
-def test_the_doubled_copy_problem_settles_its_geometry():
-    args = build_parser().parse_args(["--problem", "doubled_copy"])
-    apply_problem(args)
-    assert args.across == 16
-    assert args.coding == "population-complement" and args.population == 2
-    assert not args.no_permute and args.target == "copy" and args.readout == "top"
-    assert PROBLEMS["doubled_copy"].population == 2 and C.POPULATION == 3  # the problem's, not the constant's
-    args = build_parser().parse_args(["--problem", "doubled_copy", "--population", "3"])
-    apply_problem(args)
-    assert args.population == 3  # and the command line still wins
 
 
 def test_the_input_stream_is_the_same_whatever_the_network_is():

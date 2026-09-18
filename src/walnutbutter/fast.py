@@ -63,7 +63,7 @@ def flatten(network):
     return neurons, index, source, target, weight, active
 
 
-def build(network, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_tau=SYNAPSE_TAU,
+def build(network, *, quash_rate=0.0, quash_k=QUASH_K, synapse_tau=SYNAPSE_TAU,
           weight_range=WEIGHT_RANGE, earn=False, sigma=0.0, explore_rng=None):
     """An Engine carrying this network's topology and state, ready to run epochs.
 
@@ -85,7 +85,7 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, hebb_rate=0.0, synapse_ta
             raise ValueError("exploration or escape noise needs a stream: pass explore_rng, the random.Random the other engines use")
         engine.set_explore_state(list(explore_rng.getstate()[1]))
     low, high = weight_range
-    engine.set_rules(quash_rate, quash_k, hebb_rate, synapse_tau, low, high, earn, sigma)
+    engine.set_rules(quash_rate, quash_k, synapse_tau, low, high, earn, sigma)
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
     engine.set_isi_factor(bool(Neuron.isi_factor), Neuron.target_isi)  # §0.2: every charge weighed by the ISI factor
@@ -224,7 +224,7 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
     engine, neurons, index = build(
         network,
         quash_rate=network.quash_rate, quash_k=network.quash_k,
-        hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau,
+        synapse_tau=network.synapse_tau,
         weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline") or network.tally,
         sigma=sigma, explore_rng=teacher.rng if teacher is not None else None,
     )
@@ -330,7 +330,7 @@ def benchmark(network, epochs=200, bits=None):
     if available():
         engine, neurons, index = build(
             network, quash_rate=network.quash_rate, quash_k=network.quash_k,
-            hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau,
+            synapse_tau=network.synapse_tau,
             weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline"),
         )
         row = network.input_row()
@@ -428,7 +428,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
 
     engine, neurons, index = build(
         network, quash_rate=network.quash_rate, quash_k=network.quash_k,
-        hebb_rate=network.hebb_rate, synapse_tau=network.synapse_tau, weight_range=network.weight_range,
+        synapse_tau=network.synapse_tau, weight_range=network.weight_range,
         sigma=sigma, explore_rng=explore_rng, earn=eligibility == "count_hebb",  # the tally of §6.7's epoch form
     )
     row = network.output_row()

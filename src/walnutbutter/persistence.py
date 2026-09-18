@@ -16,7 +16,6 @@ from pathlib import Path
 from .constants import GOO_SCALING_FACTOR
 from .goo import Goo, scaled_projection
 from .network import Network
-from .dopamine import Dopamine
 from .neuron import Neuron
 
 FORMAT = 1
@@ -47,7 +46,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "clock": network.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [network.quash_rate, network.quash_k],  # the cycle quash (§6.11)
         "flip": network.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
-        "hebb": network.hebb_rate,  # leaky Hebb (§6.12)
         "synapse_tau": network.synapse_tau,  # the leak of the trace on a synapse (§6.12)
         "drive": network.drive,  # how a bit becomes spikes (§4.3)
         "explore": network.explore,  # when the exploration draw is taken (§6.1)
@@ -95,8 +93,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "traces": [[network.connections[i].trace, network.connections[i].trace_at] for i in range(1, len(network.connections) + 1)],
         "notes": [network.connections[i].noted for i in range(1, len(network.connections) + 1)],  # B_ij, each open arrival's note (§6.7)
         "pending": [[time, connection.id] for time, connection in network.schedule.pending()],
-        "dopamine": None if network.dopamine is None else network.dopamine.state(),
-        "rule": network.rule,  # which rule the schedule's hook serves: dopamine, or teacher (eligibility for the read)
+        "rule": network.rule,  # which rule pays at the read: "reinforce", or "local" for none (§9.1)
     }
     data["count"] = network.count  # goo's whole topology: no positions to record and nothing drawn to verify
     data["scale_with_fan_in"] = network.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
@@ -245,7 +242,7 @@ def resume_teacher(teacher, data: dict) -> None:
 
 
 def _restore_clock(network, data: dict) -> None:
-    """Continue the clock: time, horizon, each neuron's potential and spikes, the synapse stamps, the signals in flight, the dopamine."""
+    """Continue the clock: time, horizon, each neuron's potential and spikes, the synapse stamps, the signals in flight."""
     network.time = data.get("time", 0.0)
     network.interval = data.get("interval", network.interval)
     network.horizon = data.get("horizon", network.time)
@@ -287,9 +284,7 @@ def _restore_clock(network, data: dict) -> None:
     network.schedule.clear()
     for time, connection_id in data.get("pending", []):
         network.schedule.signal(network.connections[connection_id], time)
-    if data.get("dopamine"):
-        network.dopamine = Dopamine.from_state(data["dopamine"])
-    network.rule = data.get("rule", "dopamine")
+    network.rule = data.get("rule", "local")  # a file written under a rule the specification dropped reads as local (§9.1)
     network.population = data.get("population", network.population)
     network.output_coding = data.get("output_coding", "population")  # a population a class until September 16, 2026
     network.temperature = data.get("temperature", network.temperature)
@@ -298,7 +293,6 @@ def _restore_clock(network, data: dict) -> None:
     if data.get("quash"):
         network.quash_rate, network.quash_k = data["quash"]
     network.flip = data.get("flip", network.flip)
-    network.hebb_rate = data.get("hebb", network.hebb_rate)
     network.synapse_tau = data.get("synapse_tau", network.synapse_tau)
     network.drive = data.get("drive", network.drive)
     network.explore = data.get("explore", network.explore)

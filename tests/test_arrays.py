@@ -10,7 +10,7 @@ pytest.importorskip("scipy")
 
 from walnutbutter.arrays import ArrayNetwork  # noqa: E402
 from walnutbutter.cli import cli_main
-from walnutbutter.constants import ACROSS, GOO_COUNT
+from walnutbutter.constants import ACROSS, ESCAPE_DELTA, GOO_COUNT
 from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher, accuracy, reward, stuck_neurons
 from walnutbutter.monitor import run_epoch
@@ -23,10 +23,13 @@ def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 
 
-def pair(seed=3, count=GOO_COUNT, across=ACROSS, **kwargs):
+def pair(seed=3, count=GOO_COUNT, across=ACROSS, delta=0.0, **kwargs):
     """The same network twice: one run by objects, one by arrays."""
     mesh = Goo(count=count, across=across, weight=None, seed=seed, **kwargs)
     twin = Goo(count=count, across=across, weight=None, seed=seed, **kwargs)
+    if delta:  # §8.3: the rule that pays at the read needs the decision to be a draw
+        mesh.set_delta(delta)
+        twin.set_delta(delta)
     return mesh, ArrayNetwork(twin)
 
 
@@ -104,8 +107,8 @@ def test_the_count_hebb_eligibility_moves_both_engines_identically():
     """§6.7's epoch form of the centred Hebbian rule (September 16, 2026; count_hebb since September 17): the tally of what
     each synapse delivered, every neuron's expected count and the weights agree between the engines, to the bit -- the
     rule is integers and one moving average."""
-    mesh, net = pair(seed=5)
-    kw = dict(seed=7, eligibility="count_hebb", homeostasis=0.01, unstick=0.1)
+    mesh, net = pair(seed=5, delta=ESCAPE_DELTA)
+    kw = dict(seed=7, eligibility="count_hebb", rule="reinforce", homeostasis=0.01, unstick=0.1)
     a, b = Teacher(mesh, **kw), Teacher(net, **kw)
     assert mesh.tally and net.tally and a.sigma == b.sigma == 0.0
     before = list(weights(mesh))

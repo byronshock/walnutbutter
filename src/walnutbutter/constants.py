@@ -133,11 +133,10 @@ READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only coun
 # --- the problem ------------------------------------------------------------------
 PROBLEM = "reversal"  # what the network is asked to do and how it is watched (problems.PROBLEMS)
 
-# --- learning: dopamine (AUTHORITY.md §6) --------------------------------------------
-RULE = "teacher"  # which learning rule runs (learning.RULES): teacher (an external teacher scores the read, Byron, September 12, 2026),
-# dopamine (the student as its own teacher), or the reinforce rule factored out below
-TEACHER_CREDIT = None  # credit per neuron in the teacher's score; None normalises it to span [-1, 1] whatever the zone's size
-# (Byron's 0.25 is 1/4, the four-input zone; twelve outputs give 1/12, so six right is zero)
+# --- learning: the rule that pays at the read (AUTHORITY.md §9.1) --------------------
+RULE = "local"  # which rule pays at the read (learning.RULES): "reinforce", the one rule the specification carries,
+# or "local" for none -- §9.1, "a run may have none, in which case the local rules are the whole of the learning".
+# Every problem the specification carries names its own, so this is the library's default and not a run's
 POPULATION = 3  # neurons per raw bit under population coding (Byron, September 13, 2026): 1001 -> 111000000111
 FLIP = 1.0 / 12.0  # the probability a problem that corrupts its input flips each coded bit with (Byron, September 13, 2026,
 # reading the input zone back): a network built in the library does not flip until it is asked to; 0 = off
@@ -154,23 +153,11 @@ SYNAPSE_TAU = 10.0  # ms: the leak of the eligibility trace on a synapse (§6.12
 # decouple them). It governs leaky_hebb and the reinforce rule's leaky eligibility alike.
 LEAKY_ELIGIBILITY = False  # append the leaky trace of §6.12 to the reinforce rule's chain, so the global reward reaches
 # each synapse in proportion to what it was still contributing (Byron, September 13, 2026); off keeps the pre-alpha's rule
-HEBB_RATE = 0.01  # the rate a problem that runs leaky_hebb uses: a firing neuron potentiates each synapse that still
-# had charge in it by this much times the synapse's leaky trace (Byron, September 13, 2026). A starting value, to be
-# swept. Like the quash it composes with whatever else runs, and a network built in the library leaves it off; 0 = off.
 LR = 0.03  # learning rate, both rules
 SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential; 0 switches it off
 EXPLORE = "wave"  # when that draw is taken (AUTHORITY.md §6.1): "wave", afresh before every firing decision, so a
 # neuron's xi is the perturbation it actually decided under (Byron, September 13, 2026), or "epoch", once at the
 # input's moment, which is the pre-alpha's and what §6.7's baseline was measured with
-DOPAMINE_RELEASE_ALPHA = 2.0  # shape of the gamma density of the amount a refire releases against its delay past the refractory period (Byron, September 12, 2026)
-DOPAMINE_RELEASE_THETA = 1.0  # ms: its scale; the release peaks at (alpha - 1) * theta past the end of the refractory period
-DOPAMINE_TAU = 20.0  # ms: decay of the global dopamine value
-DOPAMINE_EXPECTATION_TAU = 600_000.0  # ms (10 minutes): the exponential window of the expected dopamine trace (Byron, September 12, 2026)
-DOPAMINE_EXPECTATION_START = 0.0  # where the expected dopamine trace starts; a high start holds early learning back (Byron, same day)
-DOPAMINE_ORDER = "release-first"  # at a refire, release before the weight update, or update-first (dopamine.ORDERS)
-DOPAMINE_PUNISH = True  # an input neuron whose bit is 0 has the sign of its update reversed when it refires (Byron, September 12, 2026)
-DOPAMINE_PUNISH_GAIN = 2.0  # and that reversed update is this many times as large as a reward (Byron, September 12, 2026, 'for now')
-WEIGHT_DECAY = 1e-4  # every weight moves toward 0 by this fraction each epoch: synapses that forget on their own (Byron, same day, 'for now')
 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the output zone should show, derived from the input zone (learning.TARGETS)

@@ -16,7 +16,7 @@ import random
 from typing import Iterable
 
 from .constants import (
-    ESCAPE_REFERENCE_COUNT, EXPLORE, HEBB_RATE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
+    ESCAPE_REFERENCE_COUNT, EXPLORE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
     QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, SYNAPSE_TAU, THRESHOLD_FAN_IN,
 )
 
@@ -32,7 +32,7 @@ def escape_scale(count: int) -> float:
     """
     import math
     return math.sqrt(ESCAPE_REFERENCE_COUNT / count) if count > 0 else 1.0
-from .dopamine import MODES, apply_teacher, leaky_hebb, learn, quash
+from .local import quash
 from .exploration import gaussians, hazard_draws
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
@@ -84,19 +84,17 @@ class Network:
         self.input_time: float | None = None  # when the pending input arrives
         self.horizon = 0.0  # the time the schedule has run to: the next input may not come before it
         self.schedule = Schedule()  # signals in flight, across epochs
-        self.dopamine = None  # a dopamine.Dopamine when the dopamine or teacher rule runs (set by whoever builds the run)
         self.quash_rate = 0.0  # a refire weakens its contributing synapses by this fraction of their weight (§6.11); off until asked
         self.quash_k = QUASH_K  # per ms: the quash falls off with the delay since the previous spike
-        self.hebb_rate = 0.0  # leaky Hebb (§6.12): a firing neuron potentiates its gated synapses by this much times
-        # their leaky trace. Like the quash it composes with whatever rule pays the read; off until asked.
-        self.synapse_tau = SYNAPSE_TAU  # the leak of that trace, the synapse's own and no longer the neuron's (§6.12)
+        self.synapse_tau = SYNAPSE_TAU  # the leak of the trace the reinforce chain's leaky option appends (§8.13; it
+        # goes with that option and has no other reader now leaky Hebb has left under §10.2)
         self.explore = EXPLORE  # when the exploration draw is taken (§6.1): every wave, or once per epoch
         self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
         self.explore_rng = None  # the stream it comes from
         self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
         self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N), the count's scaling of every hazard (§5.2), once set_delta ran
-        self.rule = "dopamine"  # how the schedule's hook serves learning: "dopamine" (the refires move the weights), "teacher"
-        # (they earn eligibility for the read) or "adaline" (every synapse counts what it delivered, §6.10)
+        self.rule = "local"  # which rule pays at the read: "reinforce", or "local" for none, in which case the local
+        # rules of §10 are the whole of the learning (§9.1: "a run may have none")
         self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
         # the x_ij of the count_hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
         self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
@@ -304,7 +302,7 @@ class Network:
         self.input_time = time
         for neuron, bit in zip(self.input_row(), pattern):
             neuron.should_fire = bit  # what the neuron should do, not what it was forced with; the learning rule
-            # reverses its sign for a neuron that should not fire (dopamine.py)
+            # reverses its sign for a neuron that should not fire
 
     @property
     def code(self) -> Code | None:
@@ -492,38 +490,22 @@ class Network:
             self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                  trace=self.rule == "adaline" or self.tally, explore=self.explorer())
-        self.forget()
+                                  trace=self.tally, explore=self.explorer())
         return waves
 
     def _everyone(self) -> list[Neuron]:
         neurons = self.all_neurons()
         return neurons if isinstance(neurons, list) else list(neurons)
 
-    def forget(self) -> None:
-        """Synapses that forget on their own: every weight moves toward zero by the dopamine rule's decay, once per epoch."""
-        if self.dopamine is not None and self.dopamine.decay > 0.0:
-            keep = 1.0 - self.dopamine.decay
-            for connection in self.connections.values():
-                connection.weight *= keep
-
     def _on_wave(self, wave: Wave) -> None:
-        """After a wave has fired, the local rules run in order and then whatever pays the read.
+        """After a wave has fired, the local rules run (AUTHORITY.md §10).
 
-        They compose (Byron, September 13, 2026: "there is not a neuron
-        training rule. There are multiple compatible training rules"): the
-        quash weakens what carried a cycle, leaky Hebb potentiates what
-        carried the spike, and the rule of §6.9-6.10 pays at the read. The
-        quash goes first, so a potentiation this wave is not discounted the
-        moment it is made; only the quash depends on the weight, so no other
-        order matters.
+        The specification carries the quash alone (§10.2), so there is one
+        of them. It is local — the neuron's own spikes and the stamps on its
+        own synapses — lazy, and off until a run asks for it.
         """
         if self.quash_rate:
             quash(wave, self.quash_rate, self.quash_k, self.weight_range)
-        if self.hebb_rate:
-            leaky_hebb(wave, self.hebb_rate, self.synapse_tau, Neuron.hop(), self.weight_range)
-        if self.dopamine is not None:
-            learn(self.dopamine, wave, self.weight_range, mode=MODES.get(self.rule, "apply"))
 
     def total_spikes(self) -> int:
         return sum(neuron.spikes for neuron in self.all_neurons())
@@ -548,7 +530,7 @@ class Network:
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                 trace=self.rule == "adaline" or self.tally, explore=self.explorer())
+                                 trace=self.tally, explore=self.explorer())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -558,7 +540,7 @@ class Network:
         """
         for neuron in self.all_neurons():
             neuron.reset(discharge)
-        if self.rule in ("teacher", "adaline") or self.tally:
+        if self.tally:
             for connection in self.connections.values():
                 connection.eligibility = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
         if self.traced:

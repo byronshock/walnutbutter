@@ -145,7 +145,7 @@ def test_the_reinforce_rule_still_runs_and_moves_weights():
     before = [c.weight for c in grid.connections.values()]
     teacher = Teacher(grid, target="all-off", lr=0.1, seed=2, rule="reinforce")
     rewards = [teacher.epoch(verbose=False) for _ in range(200)]
-    assert all(0.0 <= r <= 1.0 for r in rewards) and grid.dopamine is None
+    assert all(0.0 <= r <= 1.0 for r in rewards)
     assert [c.weight for c in grid.connections.values()] != before
     assert all(-1.0 <= c.weight <= 1.0 for c in grid.connections.values())
 
@@ -177,7 +177,8 @@ def test_teacher_validates_tracks_and_reports():
 def test_teacher_with_seed_is_reproducible():
     def run(seed):
         grid = Goo(count=32, across=8, weight=None, seed=1)
-        teacher = Teacher(grid, target="copy", seed=seed)
+        grid.set_delta(ESCAPE_DELTA)  # §8.3: the rule that pays at the read needs the decision to be a draw
+        teacher = Teacher(grid, target="copy", seed=seed, rule="reinforce")
         for _ in range(30):
             teacher.epoch(verbose=False)
         return [c.weight for c in grid.connections.values()]
@@ -289,6 +290,7 @@ def test_teacher_homeostasis_reduces_stuck_neurons():
 
 def test_teacher_validates_homeostasis_and_reports_it():
     grid = main(count=32, across=8, seed=1)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the rule that pays at the read needs the decision to be a draw
     with pytest.raises(ValueError):
         Teacher(grid, homeostasis=-0.1)
     with pytest.raises(ValueError):
@@ -296,9 +298,9 @@ def test_teacher_validates_homeostasis_and_reports_it():
     teacher = Teacher(grid, homeostasis=0.01, target_rate=0.4, seed=1)
     teacher.step()
     assert "homeostasis 0.01 toward 0.4" in teacher.status() and "stuck" not in teacher.status()
-    default = Teacher(grid, seed=1)
+    default = Teacher(grid, seed=1, rule="reinforce")
     default.step()
-    assert "homeostasis 1e-06 toward 0.5" in default.status() and "sigma 0.1" in default.status()
+    assert "homeostasis 1e-06 toward 0.5" in default.status() and "sigma 0" in default.status()
     assert default.homeostasis == 1e-6 and default.target_rate == 0.5
     off = Teacher(grid, seed=1, homeostasis=0)
     off.step()

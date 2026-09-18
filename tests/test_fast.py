@@ -19,10 +19,10 @@ def quiet(monkeypatch):
     monkeypatch.setattr(Neuron, "verbose", False)
 
 
-def mesh(rows=5, seed=1, quash=0.0, hebb=0.0, rule="teacher", delta=0.0):
+def mesh(rows=5, seed=1, quash=0.0, rule="local", delta=0.0):
     grid = Goo(count=12 * rows, across=12, weight=None, seed=seed, permute=False)
     grid.coding, grid.readout, grid.read = "population", "top", "fired"
-    grid.drive, grid.quash_rate, grid.hebb_rate, grid.rule = "rate", quash, hebb, rule
+    grid.drive, grid.quash_rate, grid.rule = "rate", quash, rule
     if delta:
         grid.set_delta(delta)  # §8.3: the reinforce rule refuses where the threshold decides
     return grid
@@ -53,10 +53,10 @@ def test_the_edge_order_is_the_object_engine_s_push_order():
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
 def test_it_agrees_with_the_object_engine_bit_for_bit():
-    for quash, hebb in ((0.0, 0.0), (0.02, 0.0), (0.0, 0.01), (0.02, 0.01)):
-        grid = mesh(quash=quash, hebb=hebb)
+    for quash in (0.0, 0.02):  # §10.2: the quash is the one local rule the specification carries
+        grid = mesh(quash=quash)
         parted = fast.compare(grid, epochs=40)
-        assert parted == [], f"quash {quash}, hebb {hebb}: {parted}"
+        assert parted == [], f"quash {quash}: {parted}"
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")

@@ -1,9 +1,9 @@
-"""The Teacher: scores a trained problem's output every epoch, and runs the reinforce rule when asked.
+"""The Teacher: scores the output zone every epoch, and pays the one rule that pays at the read.
 
-Two rules exist (AUTHORITY.md §6). The default, **dopamine**, lives in
-dopamine.py and runs inside the schedule as neurons refire; under it the
-Teacher only scores and reports. The **reinforce** rule of the pre-alpha,
-factored out behind `rule="reinforce"`, is the rest of this module.
+AUTHORITY.md §9.1: at most one rule pays at the read, and the specification
+carries one — the **reinforce** rule, which is the rest of this module. A run
+may have none (`rule="local"`), in which case the local rules of §10 are the
+whole of the learning.
 
 The output zone -- the last `outputs` neurons in index order (AUTHORITY.md
 §4.3) -- is the network's output. For each epoch a target pattern is
@@ -91,13 +91,11 @@ import math
 import random
 from typing import Callable, Sequence
 
-from .constants import TEACHER_CREDIT  # noqa: F401  (the teacher's credit per input neuron)
 from .constants import (
     BASELINE_RATE, COUNT_MEMORY, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA,
     STUCK_ABOVE, STUCK_BELOW,
     TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
-from .dopamine import Dopamine, apply_teacher
 from .monitor import run_epoch
 from .network import Network
 from .neuron import Neuron
@@ -113,7 +111,7 @@ TARGETS: dict[str, Target] = {
     "label": None,  # the label's population code over the output zone (§8, mnist): expected_outputs reads it off the network
 }
 
-RULES = ("teacher", "adaline", "dopamine", "reinforce", "local")  # which rule pays at the read (AUTHORITY.md §6); "local"
+RULES = ("reinforce", "local")  # which rule pays at the read (AUTHORITY.md §9.1); "local"
 # means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
 # are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
 ELIGIBILITIES = ("perturb", "wrong_hebb", "hebb", "count_hebb", "hazard")  # wrong_hebb: the +-1 by whether the target fired;
@@ -373,59 +371,8 @@ def population_accuracy(network: Network, target: str = "copy") -> float:
     return sum(1 for a, b in zip(got, want) if a == b) / len(want)
 
 
-def teacher_score(network: Network, target: str = "copy", critic: str = "row") -> float:
-    """The external teacher's score for the read (AUTHORITY.md §6.10), in [-1, 1] for a four-neuron input zone.
-
-    Byron, September 12, 2026: +0.25 for a forced-input neuron that
-    sustains, +0.25 for an input neuron whose input is zero and does not
-    fire, and -0.25 for each of those read wrongly, so four inputs give
-    -1, -0.5, 0, 0.5 or 1. That 0.25 is 1/4, so the credit is TEACHER_CREDIT
-    when one is set and 1/n otherwise: the score spans [-1, 1] for a zone of
-    any size, and twelve outputs score 0 when six are right (Byron,
-    September 13, 2026).
-    """
-    if TEACHER_CREDIT is None:
-        return 2.0 * CRITICS[critic](network, target) - 1.0
-    levels = output_levels(network)  # a credit fixed by hand only makes sense neuron by neuron, so the row form stands
-    want = expected_outputs(network, target)
-    return TEACHER_CREDIT * sum(1.0 - 2.0 * abs(level - float(w)) for level, w in zip(levels, want))
 
 
-def adaline_errors(network: Network, target: str = "copy") -> list[float]:
-    """The error at each output neuron, desired minus actual (AUTHORITY.md §6.10).
-
-    +1 for a neuron that should have been on and was not, -1 for one that
-    was on and should not have been, 0 for one read correctly. A correct
-    epoch therefore moves nothing: ADALINE corrects mistakes only.
-    """
-    levels = output_levels(network)
-    want = expected_outputs(network, target)
-    return [float(w) - level for level, w in zip(levels, want)]
-
-
-def apply_adaline(network: Network, errors, lr: float) -> int:
-    """Widrow-Hoff at the read: every synapse into output neuron j moves by lr * error_j * what it delivered. Returns synapses moved.
-
-    The eligibility trace is the presynaptic activity the target integrated
-    this epoch (propagation.Schedule.run with `trace`), so a synapse that
-    delivered nothing moves by nothing. Only the scored neurons' incoming
-    weights learn; the rest of the network is an untrained reservoir. The trace
-    is cleared either way, so an epoch's activity never counts twice.
-    """
-    if arrays(network):
-        return network.apply_adaline(errors, lr)
-    error = {neuron: e for neuron, e in zip(output_row(network), errors)}
-    low, high = network.weight_range
-    moved = 0
-    for connection in network.connections.values():
-        if connection.eligibility:
-            step = lr * error.get(connection.target, 0.0) * connection.eligibility
-            if step:
-                weight = connection.weight + step
-                connection.weight = low if weight < low else high if weight > high else weight
-                moved += 1
-            connection.eligibility = 0.0
-    return moved
 
 
 def sustained(network: Network, target: str = "copy") -> float:
@@ -692,14 +639,14 @@ def reinforce(
 
 
 class Teacher:
-    """Runs epochs with exploration noise and scores them; under the reinforce rule, also reinforces every connection.
+    """The teacher of AUTHORITY.md §9: it stands outside the network, reads the output zone once an epoch,
+    scores it, pays the one rule that pays at the read, and keeps its book.
 
-    Use `teacher.epoch()` in place of `run_epoch(network)`: it injects the
-    exploration noise before the epoch and, with `rule="reinforce"`, applies
-    the update after it. With the default `rule="dopamine"` the network
-    learns by itself as it runs (a Dopamine is attached to the network if it
-    has none) and the Teacher scores, keeps the firing rates, homeostasis
-    and un-sticking, and reports.
+    Use `teacher.epoch()` in place of `run_epoch(network)`. With
+    `rule="reinforce"` it applies the update of §8 after the epoch; with
+    `rule="local"` it pays nothing and the local rules of §10 are the whole
+    of the learning (§9.1: "a run may have none"). Either way it keeps the
+    firing rates, homeostasis and un-sticking in §9.2's order, and reports.
     """
 
     def __init__(
@@ -725,9 +672,7 @@ class Teacher:
         if rule not in RULES:
             raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
         self.rule = rule
-        if rule != "reinforce" and getattr(network, "dopamine", None) is None:
-            network.dopamine = Dopamine(lr=lr)
-        network.rule = rule if rule != "reinforce" else "dopamine"  # the reinforce rule leaves the schedule's hook alone
+        network.rule = rule
         if target not in TARGETS:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
         if critic not in CRITICS:
@@ -781,12 +726,12 @@ class Teacher:
         self._trace = None  # a text file the per-epoch trace is written to (see trace_to)
 
     def trace_to(self, path) -> None:
-        """Write one line per epoch to `path` (CSV, appended): epoch, time, dopamine, expected, score."""
+        """Write one line per epoch to `path` (CSV, appended): epoch, time, baseline, score."""
         import os
         new = not os.path.exists(path) or os.path.getsize(path) == 0
         self._trace = open(path, "a", buffering=1)
         if new:
-            self._trace.write("epoch,time_ms,dopamine,expected,score\n")
+            self._trace.write("epoch,time_ms,baseline,score\n")
 
     def close_trace(self) -> None:
         if self._trace is not None:
@@ -804,14 +749,7 @@ class Teacher:
         if self.baseline is None:
             self.baseline = reward
         advantage = reward - self.baseline
-        self.last_signal = teacher_score(self.network, self.target, self.critic) if self.rule == "teacher" else None
-        if self.rule == "teacher":
-            self.moved += apply_teacher(self.network, self.last_signal, self.lr)  # the teacher pays the epoch's eligibility
-        elif self.rule == "adaline":
-            errors = adaline_errors(self.network, self.target)
-            self.mistakes = sum(abs(e) for e in errors)  # how many output neurons were read wrongly this epoch
-            self.moved += apply_adaline(self.network, errors, self.lr)
-        elif self.rule == "reinforce":
+        if self.rule == "reinforce":
             reinforce(self.network, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
         update_rates(self.network)
         homeostasis(self.network, self.homeostasis, self.target_rate)
@@ -819,13 +757,7 @@ class Teacher:
         self.baseline += self.baseline_rate * (reward - self.baseline)
         self.epochs += 1
         if self._trace is not None:
-            pool = self.network.dopamine
-            level, expected = ("", "") if pool is None else (f"{pool.peek(self.network.horizon):.6g}", f"{pool.expected():.6g}")
-            if self.rule == "teacher":
-                level, expected = f"{self.last_signal:+g}", f"{self.moved}"  # the teacher's signal, and synapses moved to date
-            elif self.rule == "adaline":
-                level, expected = f"{self.mistakes:g}", f"{self.moved}"  # output neurons read wrongly, and synapses moved to date
-            self._trace.write(f"{self.network.epoch},{self.network.time:g},{level},{expected},{reward:.6g}\n")
+            self._trace.write(f"{self.network.epoch},{self.network.time:g},{self.baseline:.6g},{reward:.6g}\n")
         self.total_reward += reward
         self.last_reward = reward
         if self.average is None:
@@ -856,16 +788,11 @@ class Teacher:
         return entry
 
     def status(self) -> str:
-        verb = {"dopamine": "scoring", "teacher": "teaching", "adaline": "correcting"}.get(self.rule, "learning")
+        verb = "scoring" if self.rule == "local" else "learning"
         if self.average is None:
             return f"{verb} {self.target}: no epochs yet"
-        if self.rule == "teacher":
-            signal = "none yet" if self.last_signal is None else f"{self.last_signal:+g}"
-            settings = f"signal {signal}, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
-        elif self.rule == "adaline":
-            settings = f"{self.mistakes:g} wrong, {self.moved:,} synapses moved, lr {self.lr:g}, sigma {self.sigma:g}"
-        elif self.rule == "dopamine":
-            settings = f"{self.network.dopamine.status()}, sigma {self.sigma:g}"
+        if self.rule == "local":
+            settings = "nothing pays at the read (§9.1); the local rules are the whole of it"
         else:
             settings = f"{self.eligibility}{' + leaky trace' if self.leaky else ''}, lr {self.lr:g}, sigma {self.sigma:g}"
         if self.critic != "row":

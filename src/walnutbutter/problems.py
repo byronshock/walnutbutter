@@ -76,68 +76,6 @@ PROBLEMS: dict[str, Problem] = {
         read="count",  # Byron, September 14, 2026: count the epoch's spikes, estimate the rate, threshold it (§4.3). On
         # goo the zones never project onto each other (§3.4), so the copy has to cross the interior
     ),
-    "sustain_inputs": Problem(
-        "sustain_inputs",
-        "the 16 four-bit inputs laid down as they are on 4 neurons (no complement coding, so 0000 forces nothing and "
-        "1111 forces all four); an input is forced, the mesh reverberates for one epoch, and the same neurons are read "
-        "(the inputs are the outputs): on if they spiked again after the input's moment. The score "
-        "is the fraction of the four whose read state matches the pattern: the forced ones on, the others off. "
-        "Scored by the Teacher, not trained by it: the neurons learn by dopamine (AUTHORITY.md §6, §8)",
-        4, trained=False, readout="input", read="again", target="copy", critic="row", coding="raw",
-        rule="teacher", quash=False,
-    ),
-    "population_copy": Problem(
-        "population_copy",
-        "population coding (Byron, September 13, 2026): the 4 raw bits each fill three neurons of a 12-wide input zone, "
-        "so 1001 lands as 111000000111, and the output zone should show the same code. The teacher scores "
-        "the output zone in [-1, 1], six of twelve right being zero. Cycles are quashed (§6.11): a refire weakens the "
-        "synapses that contributed to it",
-        12, trained=False, readout="top", read="fired", target="copy", critic="row",
-        coding="population", permute=False, rule="teacher", quash=True,
-    ),
-    "shallow_copy": Problem(
-        "shallow_copy",
-        "population_copy shrunk to the smallest network that still has an input row and an output row (Byron, "
-        "September 13, 2026): twelve across, TWO rows, the four raw bits population-coded onto the bottom and the top "
-        "read as fired this epoch. 24 neurons and 215 connections against 120 and 2,195, and the task is one hop wide: "
-        "a rule that can learn anything should learn this, and one that cannot will not be rescued by depth. The floor "
-        "the rules are measured against (AUTHORITY.md §8)",
-        12, trained=False, readout="top", read="fired", target="copy", critic="row",
-        coding="population", permute=False, rule="teacher", quash=True,
-    ),
-    "shallow_not": Problem(
-        "shallow_not",
-        "shallow_copy, only NOT (Byron, September 14, 2026): the same 12-wide population-coded input on the same grid, "
-        "read the same way, but the output zone should show the COMPLEMENT of the code. Where copy can be had by excitation "
-        "alone, this asks a neuron to fire because nothing told it to: silence propagates no signal, so no weight on any "
-        "incoming connection can drive an output whose whole input group is quiet. The only thing in the system that "
-        "turns silence into a spike is the bored-neuron threshold of §5.4, calibrated at 200 ms against a 35 ms epoch "
-        "(AUTHORITY.md §8)",
-        12, trained=False, readout="top", read="fired", target="complement", critic="row",
-        coding="population", permute=False, rule="teacher", quash=True,
-    ),
-    "doubled_copy": Problem(
-        "doubled_copy",
-        "the four raw bits doubled, complement-coded and scrambled (Byron, September 14, 2026): 1001 becomes 11000011, "
-        "then 1100001100111100, then a consistent random permutation spreads those 16 bits over a 16-wide input row, and "
-        "the output zone should show the same code. Every input fires exactly half the zone whatever the "
-        "bits, and the permutation leaves adjacency carrying nothing, so neither total activity nor position is a clue "
-        "(AUTHORITY.md §8)",
-        16, trained=False, readout="top", read="fired", target="copy", critic="row",
-        coding="population-complement", population=2, permute=True, rule="teacher", quash=True,
-    ),
-    "reaching_copy": Problem(
-        "reaching_copy",
-        "doubled_copy's inputs on a shallower, denser grid (Byron, September 14, 2026): the same sixteen coded and "
-        "permuted bits, copied to the top of a FIVE-row grid wired to REACH 5. The task is a copy — output place i "
-        "against input place i, the permutation scrambling what the input zone is shown rather than what the output zone "
-        "must answer. Four hex steps separate the bottom row from the top, which is inside the reach, so every input "
-        "neuron synapses directly onto the neuron above it and all sixteen routes are one hop: the mesh stops being a "
-        "depth to relay through. What it costs is density (80 neurons, 3,122 local connections, mean out-degree 39 "
-        "against 13.1 at reach 2) (AUTHORITY.md §8)",
-        16, trained=False, readout="top", read="fired", target="copy", critic="row",
-        coding="population-complement", population=2, permute=True, rule="teacher", quash=True,
-    ),
     "mnist": Problem(
         "mnist",
         "the MNIST digits (Byron, September 15, 2026: 'a new task, with its own data folder: mnist'): each 28 x 28 image "
@@ -157,15 +95,5 @@ PROBLEMS: dict[str, Problem] = {
         3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", quash=False, permute=False,
         read="count", coding="complement", population=3, outputs=60, output_coding="complement", clock=3, hidden_neurons=199,
         data="mnist", homeostasis=0.0, unstick=0.0, lr=0.002,
-    ),
-    "population_denoise": Problem(
-        "population_denoise",
-        "population_copy's network read somewhere else (Byron, September 13, 2026): the same 12-wide, 10-row grid, the "
-        "same population coding, the same teacher and the same quash, but each of the twelve coded bits is flipped with "
-        "probability 1/12 on the way in, and it is the INPUT zone that is read back, on meaning spiked again after the "
-        "input's moment. The score is against the CLEAN code, so the network is asked to repair its input: 0 for silence, "
-        "0.833 for carrying the corruption through faithfully, 1 only for correcting it (AUTHORITY.md §4.3, §8)",
-        12, trained=False, readout="input", read="again", target="copy", critic="row",
-        coding="population", permute=False, rule="teacher", quash=True, flip=FLIP,
     ),
 }

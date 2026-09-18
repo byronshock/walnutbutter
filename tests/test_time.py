@@ -154,18 +154,17 @@ def test_the_clock_survives_a_checkpoint(tmp_path, clock):
     path = tmp_path / "clock.json"
     data = checkpoint(grid, path, teacher)
     assert data["time"] == 32.0 and data["horizon"] == 36.0 and data["interval"] == 4.0
-    assert data["refractory"] == 5.0 and data["refractory_hops"] == 3.0 and data["learning"]["rule"] == "teacher"
+    assert data["refractory"] == 5.0 and data["refractory_hops"] == 3.0 and data["learning"]["rule"] == "local"
     assert len(data["potentials"]) == len(data["fired_at"]) == len(data["previous_fired_at"]) == len(data["spikes"]) == 24
     assert len(data["last_signal"]) == len(grid.connections) == len(data["weights"])
     assert data["pending"] == [[t, c.id] for t, c in grid.schedule.pending()] and data["pending"]  # signals in flight at the horizon
-    assert data["dopamine"] == grid.dopamine.state() and data["dopamine"]["releases"] > 0
     restored, _ = restore(path)
     assert restored.time == 32.0 and restored.horizon == 36.0 and restored.next_time() == 36.0
     assert [n.fired_at for n in restored.all_neurons()] == [n.fired_at for n in grid.all_neurons()]
     assert [n.spikes for n in restored.all_neurons()] == [n.spikes for n in grid.all_neurons()]
     assert [c.last_signal for c in restored.connections.values()] == [c.last_signal for c in grid.connections.values()]
     assert [(t, c.id) for t, c in restored.schedule.pending()] == [(t, c.id) for t, c in grid.schedule.pending()]
-    assert restored.dopamine.state() == grid.dopamine.state()
+    assert restored.rule == grid.rule
     run_epoch(grid, bits=[True, False, True], verbose=False)
     run_epoch(restored, bits=[True, False, True], verbose=False)
     assert [n.fired_in_wave for n in restored.all_neurons()] == [n.fired_in_wave for n in grid.all_neurons()]

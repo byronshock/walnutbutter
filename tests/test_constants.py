@@ -6,7 +6,6 @@ import pytest
 
 from walnutbutter import constants as C
 from walnutbutter.cli import build_parser
-from walnutbutter.dopamine import Dopamine
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.network import Network
 from walnutbutter.goo import Goo
@@ -24,9 +23,7 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.epsilon == C.WEIGHT_EPSILON
     assert (args.threshold, args.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)
     assert (args.interval, args.refractory, args.refractory_hops) == (None, C.REFRACTORY, C.REFRACTORY_HOPS)  # the problem's, else INTERVAL
-    assert args.rule is None and C.RULE == "teacher"  # the problem's rule, else the constant
-    assert (args.dopamine_tau, args.release_alpha, args.release_theta, args.order) == (
-        C.DOPAMINE_TAU, C.DOPAMINE_RELEASE_ALPHA, C.DOPAMINE_RELEASE_THETA, C.DOPAMINE_ORDER)
+    assert args.rule is None and C.RULE == "local"  # the problem's rule, else the constant (§9.1)
     assert args.problem == C.PROBLEM
     assert (args.target, args.late) == (C.TARGET, C.LATE)
     assert args.eligibility is None and C.ELIGIBILITY == "perturb"  # follows the neuron: hazard under escape noise (§1.3)
@@ -107,11 +104,9 @@ def test_the_teacher_and_the_rule_read_the_constants():
     r = defaults_of(reinforce)
     assert (r["lr"], r["sigma"], r["eligibility"], r["late"]) == (C.LR, C.SIGMA, C.ELIGIBILITY, C.LATE)
     assert d["rule"] == C.RULE
-    p = defaults_of(Dopamine)
-    assert (p["tau"], p["release_alpha"], p["release_theta"], p["order"], p["lr"]) == (
-        C.DOPAMINE_TAU, C.DOPAMINE_RELEASE_ALPHA, C.DOPAMINE_RELEASE_THETA, C.DOPAMINE_ORDER, C.LR)
-    assert p["expectation_tau"] == C.DOPAMINE_EXPECTATION_TAU == build_parser().parse_args([]).expectation_tau
-    assert p["punish"] == C.DOPAMINE_PUNISH and not build_parser().parse_args([]).no_punish
-    assert (p["punish_gain"], p["decay"]) == (C.DOPAMINE_PUNISH_GAIN, C.WEIGHT_DECAY)
-    assert p["expectation_start"] == C.DOPAMINE_EXPECTATION_START == build_parser().parse_args([]).expectation_start
-    assert (build_parser().parse_args([]).punish_gain, build_parser().parse_args([]).weight_decay) == (C.DOPAMINE_PUNISH_GAIN, C.WEIGHT_DECAY)
+    # §9.1 carries one rule that pays at the read and one local rule; the eight dopamine constants,
+    # TEACHER_CREDIT, HEBB_RATE and WEIGHT_DECAY all left with the rules they belonged to
+    for gone in ("DOPAMINE_TAU", "DOPAMINE_RELEASE_ALPHA", "DOPAMINE_RELEASE_THETA", "DOPAMINE_ORDER",
+                 "DOPAMINE_EXPECTATION_TAU", "DOPAMINE_EXPECTATION_START", "DOPAMINE_PUNISH",
+                 "DOPAMINE_PUNISH_GAIN", "WEIGHT_DECAY", "HEBB_RATE", "TEACHER_CREDIT"):
+        assert not hasattr(C, gone), gone

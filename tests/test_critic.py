@@ -139,7 +139,7 @@ def test_the_rate_read_estimates_hz_over_an_exponential_window():
 
 def test_the_rate_read_grades_the_score_and_leaves_a_boolean_read_alone():
     from walnutbutter.goo import Goo
-    from walnutbutter.learning import accuracy, adaline_errors, teacher_score
+    from walnutbutter.learning import accuracy
 
     grid = Goo(count=12, across=4, weight=1.0, permute=False)
     grid.coding, grid.readout = "raw", "top"
@@ -150,18 +150,14 @@ def test_the_rate_read_grades_the_score_and_leaves_a_boolean_read_alone():
     for neuron, on in zip(grid.output_row(), [True, True, False, False]):
         neuron.has_fired = on
     assert grid.output_levels() == [1.0, 1.0, 0.0, 0.0]
-    assert teacher_score(grid, "copy") == pytest.approx(1.0) and accuracy(grid, "copy") == pytest.approx(1.0)
+    assert accuracy(grid, "copy") == pytest.approx(1.0)
 
     grid.read = "rate"
     for neuron, rate in zip(grid.output_row(), [200.0, 100.0, 0.0, 400.0]):
         neuron.rate_level, neuron.rate_at = rate, 20.0
     assert grid.output_levels() == [1.0, 0.5, 0.0, 1.0]  # clipped at saturation
     assert grid.output_fired() == [True, True, False, True]  # half of saturation reads as on
-    # want 1100: credits +1 (saturated), 0 (halfway), +1 (silent), -1 (saturated when it should be silent)
-    assert teacher_score(grid, "copy") == pytest.approx((1.0 + 0.0 + 1.0 - 1.0) / 4)
     assert accuracy(grid, "copy") == pytest.approx((1.0 + 0.5 + 1.0 + 0.0) / 4)
-    assert teacher_score(grid, "copy") == pytest.approx(2 * accuracy(grid, "copy") - 1)  # still S = 2R - 1
-    assert adaline_errors(grid, "copy") == pytest.approx([0.0, 0.5, 0.0, -1.0])
 
 
 def test_the_rate_read_is_bit_identical_across_the_engines():
@@ -169,7 +165,7 @@ def test_the_rate_read_is_bit_identical_across_the_engines():
     pytest.importorskip("scipy")
     from walnutbutter.arrays import ArrayNetwork
     from walnutbutter.goo import Goo
-    from walnutbutter.learning import teacher_score
+    from walnutbutter.learning import accuracy
     from walnutbutter.monitor import run_epoch
     from walnutbutter.neuron import Neuron
 
@@ -187,7 +183,7 @@ def test_the_rate_read_is_bit_identical_across_the_engines():
         run_epoch(mesh, verbose=False)
         run_epoch(net, verbose=False)
         assert mesh.output_rates() == net.output_rates()  # exactly, not approximately
-        assert teacher_score(mesh, "copy") == teacher_score(net, "copy")
+        assert accuracy(mesh, "copy") == accuracy(net, "copy")
         seen.update(round(level, 6) for level in mesh.output_levels())
     assert len(seen - {0.0, 1.0}) > 3  # the read is genuinely graded, not a bit in disguise
 
@@ -204,44 +200,3 @@ def test_the_majority_vote_reads_a_population_code():
     assert population_vote([True, False, True, False, False, False], 3) == [True, False]
 
 
-def test_the_kinder_teacher_scores_a_quarter_a_bit_and_forgives_one_neuron():
-    from walnutbutter.goo import Goo
-    from walnutbutter.learning import population_accuracy, population_output, teacher_score
-
-    grid = Goo(count=36, across=12, weight=1.0, permute=False)
-    grid.coding, grid.readout, grid.read = "population", "top", "fired"
-    grid.set_input_bits([True, False, False, True])  # 1001 -> 111000000111
-
-    def read(pattern):
-        for neuron, on in zip(grid.output_row(), pattern):
-            neuron.has_fired = on
-        return population_accuracy(grid, "copy")
-
-    assert read([True] * 3 + [False] * 6 + [True] * 3) == pytest.approx(1.0)  # every bit right: four quarters
-    kind = [True, True, False] + [False] * 6 + [True, False, True]  # one neuron wrong in each on-group
-    assert read(kind) == pytest.approx(1.0)  # ...and the majority still carries it: this is the kindness
-    assert population_output(grid, "copy") == [True, False, False, True]
-    assert read([False] * 12) == pytest.approx(0.5)  # silence gets the two zero bits: two quarters
-    assert read([True] * 12) == pytest.approx(0.5)  # so does saturation, by the other two
-    assert read([False] * 9 + [True] * 3) == pytest.approx(0.75)  # three of four bits
-    assert read([False] * 3 + [True] * 6 + [False] * 3) == pytest.approx(0.0)  # every bit inverted
-
-    grid.rule = "teacher"
-    assert teacher_score(grid, "copy", "population") == pytest.approx(-1.0)  # the signal stays 2R - 1
-    read(kind)
-    assert teacher_score(grid, "copy", "population") == pytest.approx(1.0)
-
-
-def test_the_teacher_signal_still_matches_the_row_critic_exactly():
-    """teacher_score is now 2R - 1 through whichever critic runs; for the row critic that is what it always was."""
-    from walnutbutter.goo import Goo
-    from walnutbutter.learning import accuracy, teacher_score
-
-    grid = Goo(count=36, across=12, weight=1.0, permute=False)
-    grid.coding, grid.readout, grid.read = "population", "top", "fired"
-    grid.set_input_bits([True, False, False, True])
-    for correct in range(13):
-        for place, (neuron, want) in enumerate(zip(grid.output_row(), grid.input_pattern)):
-            neuron.has_fired = want if place < correct else not want
-        assert teacher_score(grid, "copy", "row") == pytest.approx(2 * accuracy(grid, "copy") - 1)
-    assert teacher_score(grid, "copy", "row") == pytest.approx(1.0)

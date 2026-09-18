@@ -205,7 +205,6 @@ pub struct Engine {
     rate_tau: f64,
     quash_rate: f64,
     quash_k: f64,
-    hebb_rate: f64,
     synapse_tau: f64,
     weight_low: f64,
     weight_high: f64,
@@ -305,7 +304,6 @@ impl Engine {
             rate_tau,
             quash_rate: 0.0,
             quash_k: 0.2,
-            hebb_rate: 0.0,
             synapse_tau: 10.0,
             weight_low: -1.0,
             weight_high: 1.0,
@@ -326,7 +324,6 @@ impl Engine {
         &mut self,
         quash_rate: f64,
         quash_k: f64,
-        hebb_rate: f64,
         synapse_tau: f64,
         weight_low: f64,
         weight_high: f64,
@@ -342,7 +339,6 @@ impl Engine {
         self.sigma = sigma;
         self.quash_rate = quash_rate;
         self.quash_k = quash_k;
-        self.hebb_rate = hebb_rate;
         self.synapse_tau = synapse_tau;
         self.weight_low = weight_low;
         self.weight_high = weight_high;
@@ -775,9 +771,6 @@ impl Engine {
             if self.quash_rate != 0.0 {
                 self.quash(time, &fired);
             }
-            if self.hebb_rate != 0.0 {
-                self.leaky_hebb(time, &fired);
-            }
             waves.push((time, fired));
         }
         waves
@@ -849,13 +842,6 @@ impl Engine {
         }
         self.threshold = thresholds;
         Ok(())
-    }
-    /// Every weight moves toward zero by `decay` (§6.8), once an epoch.
-    fn forget(&mut self, decay: f64) {
-        if decay > 0.0 {
-            let keep = 1.0 - decay;
-            self.weight.iter_mut().for_each(|w| *w *= keep);
-        }
     }
 }
 
@@ -1154,31 +1140,6 @@ impl Engine {
                     let w = self.weight[edge] * (1.0 - factor);
                     self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
                 }
-            }
-        }
-    }
-
-    /// §6.12: a neuron that fires potentiates the synapses that still had charge in it.
-    fn leaky_hebb(&mut self, time: f64, fired: &[u32]) {
-        for &n in fired {
-            let i = n as usize;
-            let previous = self.previous_fired_at[i];
-            let (lo, hi) = (self.in_start[i] as usize, self.in_start[i + 1] as usize);
-            for k in lo..hi {
-                let edge = self.in_edges[k] as usize;
-                if !self.active[edge] || self.last_signal[edge] == f64::NEG_INFINITY {
-                    continue;
-                }
-                if previous > f64::NEG_INFINITY && self.last_signal[edge] <= previous {
-                    continue; // nothing carried since its previous spike
-                }
-                let step = self.hebb_rate
-                    * (-(time - self.last_signal[edge] + self.hop) / self.synapse_tau).exp();
-                if step == 0.0 {
-                    continue;
-                }
-                let w = self.weight[edge] + step;
-                self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
             }
         }
     }

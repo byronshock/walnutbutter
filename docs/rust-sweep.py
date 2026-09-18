@@ -175,7 +175,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     grid.interval, grid.drive = args.interval, args.drive
     grid.input_rate, grid.input_rate_off = args.input_rate, args.input_rate_off
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
-    grid.hebb_rate, grid.synapse_tau, grid.flip = args.hebb, args.synapse_tau, args.flip
+    grid.synapse_tau, grid.flip = args.synapse_tau, args.flip
     grid.rule = "reinforce"
     grid.set_delta(args.delta)  # escape noise (§5.2), once the thresholds are the container's
     return grid, args
@@ -210,7 +210,7 @@ def _save_network(engine, grid, report: dict, path) -> None:
 
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
-                    "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k", "hebb_rate",
+                    "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k",
                     "synapse_tau", "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
 
 
