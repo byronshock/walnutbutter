@@ -366,8 +366,8 @@ line unless told `verbose=False`.
 progress report and on exit, by default to `runs/<date>-<time>-seed<seed>.json`
 (the path is printed at the start; `runs/` is ignored by git). `--save-weights FILE`
 chooses the file, `--no-save` skips it. A checkpoint holds: every weight by connection ID, plus
-the mesh size, omega, threshold, seed, input permutation, epoch count and
-the learning statistics. `--load-weights FILE` rebuilds that exact mesh from
+the count, the wiring rule, threshold, seed, input permutation, epoch count and
+the learning statistics. `--load-weights FILE` rebuilds that exact network from
 the stored seed and settings, restores the weights, and carries on counting
 epochs and accuracy to date from where the file left off. The sequence of
 random inputs starts afresh, so a resumed run is not epoch-for-epoch

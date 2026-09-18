@@ -136,7 +136,7 @@ def main() -> int:
     try:
         fast.train(grid, args.epochs, lr=cli.lr, target="label", trace_every=0, patterns=patterns, labels=labels,
                    eligibility=args.eligibility, seed=explore_seed, homeostasis=0.0, unstick=0.0, critic="evidence",
-                   probe=probe, probe_every=1, reference_weights=reference, epoch_offset=offset)
+                   probe=probe, probe_every=1, reference_weights=reference, epoch_offset=offset, baseline=baseline)
     except KeyboardInterrupt:
         print(f"\nstopped at epoch {offset + state['epoch']:,}", flush=True)
         save(state["engine"], state["book"], state["epoch"])

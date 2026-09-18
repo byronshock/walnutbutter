@@ -32,9 +32,10 @@ network differs. Comparisons across arms are therefore paired epoch by epoch.
 saved at the end of that sweep's run of it: the checkpoint's weights, thresholds, clock,
 spike times, widths and expectations, the input stream advanced to the epoch it reached,
 `--epochs` more epochs from there, the estimator still measured against the first
-start's weights, and the trace and record continued from the earlier ones. Not a resume to
-the bit: the exploration stream starts afresh (seed + 1,000,000) and the reward baseline
-from the first resumed epoch. `--population`, `--outputs` and `--output-coding`, fixed for the
+start's weights, and the trace and record continued from the earlier ones. The reinforcement
+baseline is carried over (§9.3). Still not a resume to the bit, which §12.11 requires: the
+exploration stream starts afresh (seed + 1,000,000) and no checkpoint carries a generator's
+state. `--population`, `--outputs` and `--output-coding`, fixed for the
 sweep, rebuild an arm under a layout the problem no longer defaults to.
 
 The ISI factor of §0.2 weighs every charge of hebb and hazard, on by default; `--isi-factor off`

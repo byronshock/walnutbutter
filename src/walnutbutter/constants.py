@@ -4,10 +4,9 @@ These are the defaults the constructors, the neuron's clock, the Teacher and
 the command line all read from: change a value here and every path follows.
 They are the physics of the substance (what a neuron needs to fire, how fast
 it leaks, how learning moves a weight) and the shape of the default network.
-Lattice geometry (cell spacing, row spacing, the guaranteed radius of a
-column) is not tunable and stays with the lattice that owns it; the format
-fallbacks for old checkpoints stay in persistence.py, because they record
-what those files meant when they were written, not what the default is now.
+The format fallbacks for old checkpoints stay in persistence.py, because they
+record what those files meant when they were written, not what the default is
+now.
 
 The clock values live here but run from `Neuron.refractory` and
 `Neuron.refractory_hops`, the class attributes the command line sets (and
@@ -128,13 +127,6 @@ ROW_CRITIC_PICKINESS_IN_SPIKES = 2  # the count read's line, in spikes (AUTHORIT
 # parameter, ROW_CRITIC_PICKINESS_IN_SPIKES. It should be an integer, probably 1 or 2", and "An epoch is going to be
 # 35 ms at pickiness 2"). Two is chosen against the escape hazard's rest rate: lower reads background as signal, and it
 # travels with INTERVAL 35 ms rather than alone (§9.5)
-_TEACHER_THRESHOLD_WAS = 14.3  # Hz: the line the rate read used until then (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
-# times each neuron fired in the epoch. ESTIMATE the firing rate based on the count. If the firing rate estimate exceeds
-# TEACHER_THRESHOLD, the output neuron is 1. Otherwise it is zero"). The rate is the epoch's count over its length, so
-# at 35 ms one spike is 28.6 Hz: 14.3 is the middle of the one-spike band, halfway between no spike and one, so an
-# output is on if it fired at all this epoch and the line sits as far from both edges as it can (Byron, the same day,
-# setting it to mean one spike -- not for the score it yields; the sweep of §4.3 is a measurement of one synapse). It
-# was 40, two spikes, from the read's first hour.
 READ_WINDOW = 5.0  # ms: the window of the "window" read -- a bit, but only counting spikes this recently before the
 # epoch's end (Byron, September 14, 2026, going forward with bit reading and a five-millisecond window)
 
