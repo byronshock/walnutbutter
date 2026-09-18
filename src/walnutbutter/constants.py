@@ -122,7 +122,13 @@ RATE_TAU = 5.0  # ms: the exponential window the read estimates a firing rate ov
 RATE_ON = 200.0  # Hz: the rate an output the target says should be on is driven to. 200 Hz is 1/REFRACTORY, the fastest
 # the absolute refractory period allows: FOR NOW the teacher aims at saturation, not at a middling set point (§6.9).
 RATE_OFF = 0.0  # Hz: and one that should be off is driven to silence.
-TEACHER_THRESHOLD = 14.3  # Hz: the "count" read (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
+ROW_CRITIC_PICKINESS_IN_SPIKES = 2  # the count read's line, in spikes (AUTHORITY.md §5.10, §9.5): an output neuron is
+# **on** for the row critic when its count for the epoch is at least this, an integer. It replaced the 14.3 Hz rate line
+# on September 17, 2026, so the read no longer changes meaning with the epoch's length (Byron: "The row critic needs a
+# parameter, ROW_CRITIC_PICKINESS_IN_SPIKES. It should be an integer, probably 1 or 2", and "An epoch is going to be
+# 35 ms at pickiness 2"). Two is chosen against the escape hazard's rest rate: lower reads background as signal, and it
+# travels with INTERVAL 35 ms rather than alone (§9.5)
+_TEACHER_THRESHOLD_WAS = 14.3  # Hz: the line the rate read used until then (AUTHORITY.md §4.3; Byron, September 14, 2026: "COUNT the number of
 # times each neuron fired in the epoch. ESTIMATE the firing rate based on the count. If the firing rate estimate exceeds
 # TEACHER_THRESHOLD, the output neuron is 1. Otherwise it is zero"). The rate is the epoch's count over its length, so
 # at 35 ms one spike is 28.6 Hz: 14.3 is the middle of the one-spike band, halfway between no spike and one, so an

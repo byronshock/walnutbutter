@@ -88,7 +88,7 @@ class ArrayNetwork(Network):
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
         self.rate_on = mesh.rate_on
-        self.teacher_threshold = mesh.teacher_threshold  # Hz: the count read's line (§4.3)
+        self.pickiness = mesh.pickiness  # spikes: the count read's line (§5.10, §9.5)
         self.flip = mesh.flip
         self.rule = mesh.rule
         self.tally = getattr(mesh, "tally", False)  # count what each synapse delivers: the count_hebb eligibility's x_ij (§6.7)
@@ -563,8 +563,8 @@ class ArrayNetwork(Network):
             return (fired_at > self.time + slack(self.time)).tolist()
         if self.read == "window" and self.read_window is not None:
             return (fired_at + slack_v(fired_at) >= self.horizon - self.read_window).tolist()
-        if self.read == "count":  # §4.3: the epoch's count as a rate, against TEACHER_THRESHOLD
-            return [hz >= self.teacher_threshold for hz in self.output_counts_hz()]
+        if self.read == "count":  # §5.10: the count itself, against the row critic's pickiness (§9.5)
+            return [n >= self.pickiness for n in self.output_counts()]
         return (self.fired_wave[self.output_index] >= 0).tolist()
 
     def output_counts_hz(self) -> list[float]:

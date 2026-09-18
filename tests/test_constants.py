@@ -34,7 +34,7 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
     assert (args.lr, args.sigma, args.homeostasis, args.target_rate) == (C.LR, C.SIGMA, C.HOMEOSTASIS, C.TARGET_RATE)
     assert (args.unstick, args.unstick_target) == (C.UNSTICK, C.UNSTICK_TARGET)
-    assert args.teacher_threshold == C.TEACHER_THRESHOLD and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
+    assert args.pickiness == C.ROW_CRITIC_PICKINESS_IN_SPIKES == 2 and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
 
 def test_the_two_memories_and_the_five_eligibilities():

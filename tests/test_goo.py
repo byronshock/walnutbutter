@@ -142,27 +142,23 @@ def test_both_engines_see_the_scaled_axis():
 
 
 
-def test_the_count_read_counts_the_epochs_spikes_and_thresholds_the_rate():
-    from walnutbutter.constants import TEACHER_THRESHOLD
+def test_the_count_read_counts_the_epochs_spikes_and_takes_the_pickiness_as_its_line():
+    """§5.10: the read is the count itself; §9.5 puts the line at ROW_CRITIC_PICKINESS_IN_SPIKES, an integer."""
+    from walnutbutter.constants import ROW_CRITIC_PICKINESS_IN_SPIKES
     goo = Goo(count=20, across=4, seed=1, permute=False)
     goo.read = "count"
-    assert goo.teacher_threshold == TEACHER_THRESHOLD == 14.3  # the middle of the one-spike band at 35 ms
+    assert goo.pickiness == ROW_CRITIC_PICKINESS_IN_SPIKES == 2  # spikes, not hertz: the epoch's length does not enter
     run_epoch(goo, bits=[True, False], verbose=False)
-    per_ms = 1000.0 / goo.interval
-    for neuron, hz, on in zip(goo.output_row(), goo.output_counts_hz(), goo.output_fired()):
-        assert hz == neuron.epoch_spikes * per_ms and on == (hz >= 14.3)
-    # at 35 ms one spike is 28.6 Hz and reads on; none reads off: the line sits halfway between them
+    for neuron, n, on in zip(goo.output_row(), goo.output_counts(), goo.output_fired()):
+        assert n == neuron.epoch_spikes and on == (n >= 2)
     a, b = goo.output_row()[0], goo.output_row()[1]
-    a.spikes_at_reset, a.spikes = 10, 10
-    b.spikes_at_reset, b.spikes = 10, 11
+    a.spikes_at_reset, a.spikes = 10, 11  # one spike: below the line
+    b.spikes_at_reset, b.spikes = 10, 12  # two: on it
     assert goo.output_fired()[:2] == [False, True]
-    goo.teacher_threshold = 42.9  # the middle of the two-spike band: one spike now reads off, two on
-    b.spikes = 12
-    assert goo.output_fired()[:2] == [False, True]
-    a.spikes = 11
-    assert goo.output_fired()[0] is False
-    goo.teacher_threshold = TEACHER_THRESHOLD
-    a.spikes = 10  # back to none for a and one for b: the one-spike read the levels below are asserted against
+    goo.pickiness = 1  # one spike now reads on
+    assert goo.output_fired()[:2] == [True, True]
+    goo.pickiness = ROW_CRITIC_PICKINESS_IN_SPIKES
+    a.spikes = 10  # back to none for a and two for b: the read the levels below are asserted against
     assert goo.output_levels()[:2] == [0.0, 1.0]  # a bit, as the row critic wants it
     goo.reset()
     assert a.epoch_spikes == b.epoch_spikes == 0  # the next epoch starts its count afresh
@@ -196,9 +192,9 @@ def test_copy_is_read_by_count_and_the_threshold_reaches_the_command_line(tmp_pa
     from walnutbutter.problems import PROBLEMS
     assert PROBLEMS["copy"].read == "count"
     save = tmp_path / "count.json"
-    assert cli_main(["--problem", "copy", "--goo", "--teacher-threshold", "60", "--headless", "--epochs", "3", "--seed", "1",
+    assert cli_main(["--problem", "copy", "--goo", "--pickiness", "3", "--headless", "--epochs", "3", "--seed", "1",
                      "--save-weights", str(save)]) == 0
-    assert json.loads(save.read_text())["teacher_threshold"] == 60.0
+    assert json.loads(save.read_text())["pickiness"] == 3
     assert cli_main(["--load-weights", str(save), "--headless", "--epochs", "2", "--no-save"]) == 0
 
 

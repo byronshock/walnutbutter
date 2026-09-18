@@ -106,11 +106,10 @@ def sync_explore(engine, explore_rng) -> None:
 
 
 def _outputs_on(engine, network, out) -> list[bool]:
-    """The read (§4.3) from the engine's arrays: fired this epoch, or the count read's rate against TEACHER_THRESHOLD."""
+    """The read (§5.10) from the engine's arrays: fired this epoch, or the count against the pickiness (§9.5)."""
     if network.read == "count":
         counts = engine.epoch_spike_counts()
-        per_ms = 1000.0 / network.interval
-        return [counts[i] * per_ms >= network.teacher_threshold for i in out]
+        return [counts[i] >= network.pickiness for i in out]
     if network.read == "fired":
         fired = engine.fired_this_epoch()
         return [fired[i] for i in out]

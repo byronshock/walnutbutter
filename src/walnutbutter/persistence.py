@@ -52,7 +52,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "drive": network.drive,  # how a bit becomes spikes (§4.3)
         "explore": network.explore,  # when the exploration draw is taken (§6.1)
         "rate": [network.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
-        "teacher_threshold": network.teacher_threshold,  # the count read's line in Hz (§4.3)
+        "pickiness": network.pickiness,  # the count read's line in spikes (§5.10, §9.5)
         "input_rate": [network.input_rate, network.input_rate_off],  # per ms, under rate drive
         "input_cells": network.input_cells,  # an input zone given explicitly, or None for the first `across` neurons
         "problem": getattr(network, "problem", None),  # what the run was asked to do (problems.PROBLEMS)
@@ -295,7 +295,7 @@ def _restore_clock(network, data: dict) -> None:
     network.output_coding = data.get("output_coding", "population")  # a population a class until September 16, 2026
     network.temperature = data.get("temperature", network.temperature)
     network.clock = data.get("clock", 0)
-    network.teacher_threshold = data.get("teacher_threshold", network.teacher_threshold)
+    network.pickiness = data.get("pickiness", network.pickiness)
     if data.get("quash"):
         network.quash_rate, network.quash_k = data["quash"]
     network.flip = data.get("flip", network.flip)

@@ -17,7 +17,7 @@ from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, HEBB_RATE, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
-    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, TEACHER_THRESHOLD,
+    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
     SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, ISI_FACTOR, DOPAMINE_EXPECTATION_START, DOPAMINE_EXPECTATION_TAU, DOPAMINE_ORDER, DOPAMINE_PUNISH_GAIN, DOPAMINE_RELEASE_ALPHA, DOPAMINE_RELEASE_THETA,
     DOPAMINE_TAU, ELIGIBILITY, WEIGHT_DECAY, HOMEOSTASIS, INTERVAL, LATE, LR,
     MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, SIGMA, TARGET, TARGET_RATE,
@@ -325,18 +325,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="what the teacher reads at the end of an epoch (AUTHORITY.md §4.3): fired this epoch, spiked again after "
         "the input's moment, fired within the read window, rate (the exponential-window firing-rate estimate scored "
-        "against RATE_ON and RATE_OFF), or count: the epoch's spikes counted, a rate estimated from the count, and the "
-        "neuron on if that exceeds --teacher-threshold (default: the problem's)",
+        "against RATE_ON and RATE_OFF), or count: the epoch's spikes counted and the neuron on if that count is at "
+        "least --pickiness (default: the problem's)",
     )
     parser.add_argument(
-        "--teacher-threshold",
-        "--teacher_threshold",
-        dest="teacher_threshold",
-        type=float,
-        default=TEACHER_THRESHOLD,
-        metavar="HZ",
-        help=f"the count read's line between off and on, in Hz (default: {TEACHER_THRESHOLD:g}, the middle of the "
-        f"one-spike band: at a 35 ms epoch one spike is 28.6 Hz and reads on, none reads off; 42.9 would mean two)",
+        "--pickiness",
+        "--row-critic-pickiness-in-spikes",
+        dest="pickiness",
+        type=int,
+        default=ROW_CRITIC_PICKINESS_IN_SPIKES,
+        metavar="SPIKES",
+        help=f"the count read's line between off and on, in spikes (default: {ROW_CRITIC_PICKINESS_IN_SPIKES}, §9.5). "
+        f"An integer, and a count rather than a rate, so the read does not change meaning with the epoch's length; it "
+        f"is chosen against the escape hazard's rest rate and travels with INTERVAL rather than alone",
     )
     parser.add_argument(
         "--read-window",
@@ -928,7 +929,7 @@ def _run(args: argparse.Namespace) -> int:
             grid.hebb_rate, grid.synapse_tau = args.hebb, args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
             grid.explore, grid.rate_on = args.explore, args.rate_on
-            grid.teacher_threshold = args.teacher_threshold
+            grid.pickiness = args.pickiness
             grid.population = args.population
             grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
             grid.temperature = args.temperature  # the evidence critic's (§8)
@@ -1154,7 +1155,7 @@ def _seed_worker(job: dict) -> dict:
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
     grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
-    grid.teacher_threshold = job.get("teacher_threshold", TEACHER_THRESHOLD)
+    grid.pickiness = job.get("pickiness", ROW_CRITIC_PICKINESS_IN_SPIKES)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
     grid.output_coding = job.get("output_coding", "population")  # how the output zone codes the classes (§8)
     grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
@@ -1251,7 +1252,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
-                     "teacher_threshold": args.teacher_threshold, "delta": args.delta,
+                     "pickiness": args.pickiness, "delta": args.delta,
                      "population": args.population, "output_coding": args.output_coding, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})

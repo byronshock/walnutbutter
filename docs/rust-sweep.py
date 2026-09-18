@@ -72,7 +72,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "delta": "--delta",  # escape noise (§5.2): the decision's width in starting thresholds; --eligibility hazard learns by it
     "threshold": "--threshold",  # THRESHOLD, quoted per THRESHOLD_FAN_IN incoming synapses; goo scales it (§5.2)
     "minimum_potential": "--minimum-potential",  # the floor; or derive it from the threshold with --floor-ratio
-    "teacher_threshold": "--teacher-threshold",  # the count read's line, in Hz (§4.3)
+    "pickiness": "--pickiness",  # the count read's line, in spikes (§5.10, §9.5)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
     "hidden_neurons": "--hidden-neurons",  # goo's hidden count, the goo being inputs + hidden + outputs (§8, mnist)
     "temperature": "--temperature",  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
@@ -170,7 +170,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
     grid.temperature = args.temperature  # the evidence critic's (§8)
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
-    grid.teacher_threshold = args.teacher_threshold  # the count read's line (§4.3)
+    grid.pickiness = args.pickiness  # the count read's line, in spikes (§5.10, §9.5)
     grid.interval, grid.drive = args.interval, args.drive
     grid.input_rate, grid.input_rate_off = args.input_rate, args.input_rate_off
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
@@ -204,7 +204,7 @@ def _save_network(engine, grid, report: dict, path) -> None:
     checkpoint(grid, path)
 
 
-RESUMED_SETTINGS = ("readout", "read", "read_window", "teacher_threshold", "interval", "drive", "input_rate", "input_rate_off",
+RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
                     "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k", "hebb_rate",
                     "synapse_tau", "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
 
@@ -328,7 +328,7 @@ def run_arm(job: tuple) -> dict:
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
-              "read": grid.read, "teacher_threshold": grid.teacher_threshold,  # what "on" meant at the read (§4.3)
+              "read": grid.read, "pickiness": grid.pickiness,  # what "on" meant at the read (§5.10, §9.5)
               "critic": args.critic, "problem": problem, "lr": args.lr,  # the rate the arm ran at, swept or the problem's own
               "output_coding": grid.output_coding, "population": grid.population, "outputs": getattr(grid, "outputs", None),
               "resumed_from": resume_from, "epoch_offset": offset, "epochs_run": epochs,  # a continuation: from where, and how far
