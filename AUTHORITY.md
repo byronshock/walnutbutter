@@ -282,8 +282,10 @@ $$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t^{\text{fired}}, \qquad t^{
 and the neuron's spike count rises by one. Nothing any synapse delivered is still in the potential, so every incoming synapse's trace $x_{ij}$ goes to zero with it. Under the accumulator the spike is the moment the learning rule settles every open arrival; under the leak the entries were posted at each decision and the spike only clears the traces (§8.11, §8.12). The neuron is then refractory (§2.5).
 *Byron and Cedric, from the beginning [RECORD §0, §5.2]. The memory of the spike before last is the record's, stated there without a date; the quash reads it (§10.1).*
 
-**2.5 The refractory period.** A neuron that fired at $t^{\text{fired}}$ is refractory while $t < t^{\text{fired}} + \text{REFRACTORY}$, REFRACTORY = 5 ms. While refractory it ignores every signal, does not integrate it, cannot be forced by the drive, and makes no firing decision. A hop is longer than the period by LAG (§3.2), so a signal sent to a neuron that fired in the same wave arrives just after that neuron recovers, never as it recovers. *Engines:* the comparison allows the clock's slack (§3.4) — the test is `now + slack(now) < t_fired + REFRACTORY` — so a spike returning the instant the period ends finds the neuron recovered rather than a hair short of it, and the three engines recover the same neuron at the same wave. Without that slack, floating-point arithmetic would decide whether a two-hop return refires the neuron.
-*Byron and Cedric, from the beginning [RECORD §0, §5.3].*
+**2.5 The refractory period.** A neuron that fired at $t^{\text{fired}}$ is refractory while $t < t^{\text{fired}} + \text{REFRACTORY}$, REFRACTORY = 5 ms. While refractory it ignores every signal, does not integrate it, cannot be forced by the drive, and makes no firing decision. This clause and §6.12's resumption of the hazard are the whole of what reads $t^{\text{fired}}$: since §7.4 there is no third reader, and the interval between a neuron's own spikes is read by the quash alone (§10.1, a non-default). What a refractory neuron does about firing is §6.12; what it does about a signal that reaches it is §8.13.
+
+The period is shorter than a hop by LAG (§3.2), so every signal a spike generates is delivered after its sender has itself recovered, and a signal sent to a neuron that fired in the same wave arrives just after that neuron recovers, never as it recovers. No arrival is on the boundary to begin with. *Engines:* the comparison allows the clock's slack all the same (§3.4) — the test is `now + slack(now) < t_fired + REFRACTORY` — because the times being compared are each the end of a chain of clock arithmetic and neither is exact; the slack is what makes the three engines recover the same neuron at the same wave rather than a hair either side of it.
+*Byron and Cedric, from the beginning [RECORD §0, §5.3]. The clause read, until September 18, 2026, that without the slack "floating-point arithmetic would decide whether a two-hop return refires the neuron" — true of the 2.5 ms hop the code still runs, where two hops landed exactly on the wall, and not of the hop this file specifies, under which no whole number of hops equals the period at all (§3.2).*
 
 **2.6 The rate memory.** After every epoch, each neuron the drive did not force in that epoch moves its rate memory toward what it did:
 
@@ -312,13 +314,23 @@ with LAG $= 0.1$ ms, and there is no other delay: the time in signalling is
 carried by the hop alone. It is a delay and not a decay — a signal arrives
 whole, one hop after it was sent (§0.3).
 
-The LAG is why the delivery is never on a boundary. Take a neuron that fires
-in the same wave as one that projects onto it: the sender's signal is due at
-$t + h$ and the target recovers at $t + \text{REFRACTORY}$, so the signal
-arrives LAG after the target can take it, and no delivery is ever decided by
-which side of a rounding error it fell on. Without the LAG that arrival would
-land exactly at the end of the refractory period and the clock's slack (§3.4)
-would settle it.
+**The hop is longer than the refractory period, and that is the content of
+the LAG.** A whole number of hops is never a refractory period. A signal that
+has travelled $k$ connections is delivered $k\,h$ after the spike that
+generated it, and a neuron that fired in that same wave is recovered
+REFRACTORY after, so the arrival falls $k\,h - \text{REFRACTORY}$ past that
+neuron's wall — 0.1 ms at one hop, 5.2 ms at two, 10.3 ms at three, and never
+zero. A neuron's own spike reaches it again only round a cycle, and §4.4 gives
+it no cycle shorter than two connections, so its own earliest return is at
+$2h = 10.2$ ms, 5.2 ms past its wall.
+
+The one-hop case is the tight one and is what the LAG is for. Without the LAG
+that arrival would land exactly at the end of the target's refractory period,
+and the clock's slack (§3.4) — a tolerance for rounding, not a rule about
+neurons — would decide whether the signal was taken or dropped. With it, no
+delivery is ever settled by which side of a rounding error it fell on. What
+§2.5 and §6.12 say about arrivals and refires is this arithmetic and no
+other.
 *The hop is Byron's, September 11, 2026. Fixed directly, and named, by Byron,
 September 17, 2026: "I no longer want to specify REFRACTORY_HOPS. I want to
 specify $h$ directly as TIME_CONSTANT_OF_TRANSMISSION." It was
@@ -328,7 +340,10 @@ convenience when we were working on an integer hex grid." There a trip had a
 length in cells, so counting the refractory period in hops measured how far a
 spike could travel before its neuron recovered. Goo has no distance (§4.2),
 every projection is one hop, and the count has nothing to count [RECORD §1.2,
-§4.1].*
+§4.1]. The 5.1 ms is REFRACTORY + LAG and is nothing else: TARGET_ISI was also
+5.1 ms and is gone with §7.4, and the two must not be read back into one
+another — LAG is 0.1 ms because a tenth of a millisecond is enough to keep a
+delivery off a boundary, not because any interval was being aimed at.*
 
 **3.3 A wave is everything at one time.** The queue is a time-ordered
 schedule of signals and stimuli, not a per-hop loop, and a wave is the batch
@@ -779,8 +794,10 @@ $$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t_{\text{fired}}, \qquad t_{
 so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps its last two spike times, its outgoing signals being scheduled one hop later (§3.5). $t_{\text{fired}}$ is what §2.5 reads the refractory period from and nothing else reads; the gap back to $t_{\text{prev}}$ is read by the quash alone (§10.1, a non-default). No rule in force reads the interval since a neuron's last spike at a decision (§7.4).
 *The record's firing rule, standing since the project began. [RECORD §5.2]*
 
-**6.12 A refractory neuron makes no decision.** The refractory period is §2.5's. While it runs the neuron ignores every signal, cannot be forced, and makes no firing decision; its hazard resumes at the period's end, which is where §6.5's $\Delta t$ then runs from. A neuron may fire any number of times, the period permitting: a spike sent around a two-way loop returns after two hops (§3.2), well clear of the period, and may refire the neuron.
-*Byron and Cedric, from the beginning: this is a feedback control mechanism and a computational feature of the system. [RECORD §0, §5.3, §4.4]*
+**6.12 A refractory neuron makes no decision.** The refractory period and what it suspends are §2.5's. What this section adds is where the hazard picks up: it resumes at the period's end, which is where §6.5's $\Delta t$ then runs from, so the suspension costs the neuron no accumulated exposure and buys it none.
+
+A neuron may fire any number of times, the period permitting, and the hop is what permits it. Its own spike comes back to it only round a cycle, and §4.4 gives it none shorter than a reciprocal pair, so the earliest return is two hops — $2h = 10.2$ ms, a clear 5.2 ms past the wall (§3.2). Another neuron's spike, sent in the same wave, arrives LAG past the wall, which is the tightest arrival there is. Either may refire the neuron, and neither is the clock's accident: under this hop no arrival ever lands on a refractory boundary at all. Nothing scores a refire as such: since §7.4 no rule in force reads how long a neuron waited between its own spikes, and a refire is paid exactly as any other spike is, by what §8.4 posts at the decisions that led to it.
+*Byron and Cedric, from the beginning: this is a feedback control mechanism and a computational feature of the system. [RECORD §0, §5.3, §4.4]. The clause said, until September 18, 2026, that the two-hop return was "the return the shaping function pays most for"; with §7.4 out, no return is paid more than another.*
 
 ## 7. Exploration
 
@@ -795,7 +812,17 @@ so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps 
 
 **7.4 No shaping function.** What a decision posts is what §8.4 gives it and
 nothing else. No factor weighs an entry by the time since the neuron's own
-last spike, and no rule of this file reads that interval at all.
+last spike, and no rule in force reads that interval at all.
+
+What the system still has of a neuron's own timing is the refractory period
+and the hop, and neither is a learning signal: §2.5 suspends the neuron for
+REFRACTORY and reads $t^{\text{fired}}$ for nothing else, §3.2 delivers every
+signal one hop later, and §6.12 lets a spike come back and refire the neuron
+without that refire being worth more or less than any other spike. A neuron's
+interspike interval is an outcome of those three and of the weights; it is not
+a quantity the rule aims at, and the one clause that reads it — the quash,
+§10.1 — is a non-default and reads it to punish a tight loop, not to set a
+rate.
 
 *Byron, September 18, 2026, taking it out: "I want to factor out shaping. I
 don't understand it. A fundamental principle of this project is that we ONLY
