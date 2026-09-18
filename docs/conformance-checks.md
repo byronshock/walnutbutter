@@ -110,9 +110,9 @@ same wrong value, which A.0 forbids on its own.
 
 ---
 
-## B. Rules the specification does not carry
+## B. Rules the specification does not carry — **done, September 17, 2026**
 
-**B3. §9.1 — one rule pays at the read, and it is not the one that runs.** The
+**B3. ~~§9.1 — one rule pays at the read, and it is not the one that runs.~~ Done.** The
 clause: *"At most one of them runs... The specification carries one of each:
 the reinforce rule pays at the read, the quash is local."* The code carries
 five rules, and `RULE` defaults to `"teacher"`. Live and outside the file:
@@ -126,7 +126,7 @@ five rules, and `RULE` defaults to `"teacher"`. Live and outside the file:
 - **the per-epoch weight decay** (WEIGHT_DECAY, `network.py`, `arrays.py`,
   `lib.rs::forget`) — a third.
 
-**B4. §8.3 — three of five eligibilities leave.** `hazard` and `hebb` survive;
+**B4. ~~§8.3 — three of five eligibilities leave.~~ Done.** `hazard` and `hebb` survive;
 `perturb`, `wrong_hebb` and `count_hebb` do not. The map found **117 sites**.
 The clause settles which `hebb` survives: §8.4's table gives credit 1 and
 expectation $\hat p_j$ **per decision**, which is the code's `hebb`
@@ -142,7 +142,7 @@ block draws **before** the hazard uniforms from the same stream. Deleting SIGMA
 deletes $n + (n \bmod 2)$ uniforms per wave, so every `--no-learn` run with a
 width lands on different spikes.
 
-**B5. §5.2 — complement coding only, *and there is no permutation*.** The
+**B5. ~~§5.2 — complement coding only, *and there is no permutation*.~~ Done.** The
 clause is three removals, not one: the dropped codings (raw, population,
 population-complement), the error-correcting codes and the input flips, and
 **the permutation itself** — *"Place $i$ of the input zone shows place $i$ of
@@ -293,3 +293,13 @@ so it is not reintroduced.
 - **§12.4** — the Rust extension is rebuilt, and `fast.compare` agrees with the
   object engine on `copy` and `mnist`, each under hazard and hebb, at the new
   count read and pickiness 2.
+- **§9.1, §8.3, §5.2 — the three deletions.** One rule pays at the read and one
+  local rule; two eligibilities; complement coding and no permutation. About
+  4,000 lines out across three commits, the Rust engine rebuilt at each, the
+  suite green and the engines compared at each. Seven of the ten problems went
+  with them — each was posed on the external teacher *and* on a dropped coding —
+  leaving `reversal`, `copy` and `mnist`. `improved_sustain` had gone already.
+
+What the tree still owes is Group A (the clock, the shaping function and TAU),
+Group C (the reads and the two non-defaults), Group D (resume and checkpoints),
+Group E (the register) and Group F.
