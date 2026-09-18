@@ -5,6 +5,10 @@ on it. They are **not licence terms**: nothing here restricts what the
 licence grants, and no one needs permission from us to use the work. They
 are what we mean it for, written down so that it is never in doubt.
 
+## walnutbutter is free
+
+Intelligence itself is a property of nature. You needn't pay to use it. You may if that's important to you.
+
 ## The energy it runs on
 
 Just like the original, walnutbutter must be run sustainably on non-fission
