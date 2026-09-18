@@ -51,9 +51,9 @@ unclaimed list leaves PROBLEM open.*
 
 ---
 
-## A. The clock, the shaping function and the neuron's default
+## A. The clock and the neuron's default
 
-*These four move every number the project has measured. They belong together
+*These move every number the project has measured. They belong together
 in one re-timing, followed by a re-measurement of mnist — not one at a time.*
 
 **A1. §3.2 — the hop is half what the file says.** The file fixes
@@ -73,27 +73,21 @@ quantity under a similar name — the refractory period divided by the hop, not
 the connections a spike travels. The value coincides at 2; the meaning does
 not. A.0 wants one home for every value in the register.
 
-**A3. §7.4 — TARGET_ISI is derived, and the code's is the superseded one.**
-The register fixes TARGET_ISI = 10.2 ms, **derived** as HOPS × (REFRACTORY +
-LAG), and the clause says plainly that it "is not a knob of its own" and that
-"what a sweep varies is therefore one of those three and not the target
-itself". `constants.py` holds 5.1 as a free constant, and `rust/src/lib.rs:300`
-carries the same stale default.
+**A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~
+Dissolved — Byron took the shaping function out, September 18, 2026.** The
+register's derived TARGET_ISI = 10.2 ms and the code's free 5.1 disagreed; the
+constant is gone from both.
 
-**A4. §7.4 — the shaping function's negative region never runs.** The file
-gives
-
-$$f = \frac{3u - 1}{1 + u^3}, \qquad u = \frac{t - R}{I - R},$$
-
-anchored at $f(R) = -1$ at the refractory wall. All three engines compute
-$u = t/I$ instead (`neuron.py:20`, `arrays.py:391`, `rust/src/lib.rs:103`) —
-the first anchoring, which the file's own provenance note says put the $-1$ and
-the zero crossing at $t = 0$ and $t = 1.70$ ms, "both inside the refractory
-period, so no decision ever reached them and the factor was a positive discount
-only. The wall anchor is what makes the negative region live." The three
-engines agree with each other and all three disagree with the file. This is
-precisely what the commit *"The shaping function re-anchored at the refractory
-wall"* changed in the file and not in the code.
+**A4. ~~§7.4 — the shaping function's negative region never runs.~~
+Dissolved with it.** The file anchored $f$ at $-1$ at the refractory wall and
+all three engines computed the superseded $u = t/I$, so the negative region no
+decision ever reached was still the one that ran. The discrepancy was real and
+is what sent the question back to Byron; what came back was that the mechanism
+goes. *Byron, September 18, 2026: "I want to factor out shaping. I don't
+understand it. A fundamental principle of this project is that we ONLY INCLUDE
+MECHANICS WE UNDERSTAND."* §7.4 now says there is no shaping function and no
+rule reads the interval since a neuron's own last spike; the code says the
+same, in all three engines.
 
 **A5. Appendix A — TAU is ∞, and the code leaks by default.** The register:
 *"TAU | ∞ | the potential does not leak: the evidence accumulator. 2 ms is the
@@ -236,12 +230,13 @@ The Appendix A diff was run row by row. **Everything not listed below matches**
 |---|---|---|
 | TAU | ∞ | 2.0 |
 | TOLERANCE | 10⁻¹² | 1e-9 |
-| TARGET_ISI | 10.2 ms, derived | 5.1, free |
 | LAG | 0.1 ms | absent |
-| HOPS | 2 | absent (REFRACTORY_HOPS is another quantity) |
-| TIME_CONSTANT_OF_TRANSMISSION | 5.1 ms, derived | absent |
-| EARLY_ARRIVAL_PUNISHMENT_FACTOR | −1 | a bare literal in three engines |
+| TIME_CONSTANT_OF_TRANSMISSION | 5.1 ms | absent |
 | ELIGIBILITY | hazard | "perturb" |
+
+*TARGET_ISI, HOPS and EARLY_ARRIVAL_PUNISHMENT_FACTOR left this table with the
+shaping function on September 18, 2026 (A3, A4): the register no longer carries
+them and neither does the code.*
 
 In the code and in no row of the register: COUNT_MEMORY, SIGMA, EXPLORE,
 LEAKY_ELIGIBILITY, FLIP, READ_WINDOW, BORED_AFTER, TEACHER_CREDIT, RATE_ON,

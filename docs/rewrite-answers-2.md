@@ -378,3 +378,40 @@ parallel form wants regular ones.
 *That closes the second round: 21 confirmations, 8 decisions, 6 readings, and
 4b. What remains is the attribution pass — the clauses Byron has now confirmed
 still say "Claude's reading, to be corrected in a word".*
+
+---
+
+## The third round, September 18, 2026: the shaping function goes
+
+**§7.4 — the shaping function. Withdrawn** (September 18, 2026):
+
+> *"I want to factor out shaping. I don't understand it. A fundamental
+> principle of this project is that we ONLY INCLUDE MECHANICS WE UNDERSTAND.
+> We don't invent something that's not there, although we are abstracting the
+> neuron as much as possible while keeping what it does."*
+
+This reverses D3 and D5 of the second round, the re-anchoring of the factor at
+the refractory wall, and the whole of the timing thread of September 17 and 18
+— TARGET_ISI, MARGIN, REFRACTORY_HOPS, PEAK_HOPS,
+EARLY_ARRIVAL_PUNISHMENT_FACTOR. None of those constants survives. LAG stays:
+it is §3.2's and belongs to the hop, not to the factor.
+
+*What was measured before the decision.* Two findings of the same morning are
+the evidence, and both say the clause did not describe the mechanism:
+
+1. **$f$ is a signed learning rate, not a set point.** It enters §8.4 only as
+   a multiplier. No term anywhere depends on $t$ alone, so wherever the reward
+   gradient is flat the factor multiplies zero and exerts no pressure — and a
+   saturating neuron, which is exactly what the set point was for, is where
+   the gradient is flattest.
+2. **On a negative-advantage epoch it reinforces what it was meant to
+   punish.** The advantage is a reward minus a running baseline (§9.3) and is
+   negative about as often as positive. A wall-hugging spike then takes
+   $f < 0$ times $A < 0$ and is reinforced.
+
+The mechanism was 'unlearn from the early decisions', and the file said 'aim
+the interval'. Byron's principle settles which one goes.
+
+**Left open, and Byron's:** §0.12's deterministic drive and §9.13's rate
+teacher both quoted TARGET_ISI as their unit. Neither is in force, and neither
+has a unit now. Both clauses say so rather than choosing one.

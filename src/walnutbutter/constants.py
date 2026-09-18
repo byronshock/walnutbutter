@@ -182,9 +182,4 @@ DECISION_MEMORY = 1e-4  # per-decision update of a neuron's expectation of its o
 # an epoch (measured September 17, 2026): the window is about three epochs, not the 170 a wave a hop would give. Until
 # that many decisions have been seen the estimate is their plain mean (a rate of 1/n at the n-th), and the first decision
 # sets it and charges nothing. A starting value, to be swept.
-TARGET_ISI = 5.1  # ms: the interspike interval the ISI factor pays most for (AUTHORITY.md §0.2; Byron, September 17, 2026:
-# "The desired ISI is 5.1 ms (hardcode for now)"). Not known: 0.1 ms past REFRACTORY for now
-ISI_FACTOR = True  # weigh every charge of the single-spike rule (hebb and hazard, §6.7) by f(t - TARGET_ISI), t the time
-# since the neuron's own last spike, f = (3x - 1) / (1 + x^3) at x = t / TARGET_ISI (§0.2); on by default (Byron, September
-# 17, 2026), and a resumed network keeps the setting it was saved under
 STUCK_BELOW, STUCK_ABOVE = 0.01, 0.99  # a neuron firing less or more often than this is "stuck"

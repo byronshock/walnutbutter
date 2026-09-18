@@ -86,7 +86,6 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE
     engine.set_rules(quash_rate, quash_k, low, high)
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
-    engine.set_isi_factor(bool(Neuron.isi_factor), Neuron.target_isi)  # §0.2: every charge weighed by the ISI factor
     # the single-spike rule (§6.7): the centred rule when the network runs it, and each neuron's expectation and decisions
     # to date, so a resumed run charges from where it was; the traces, notes and expected counts start at zero with
     # the traces, as the engine holds no signal in a potential yet

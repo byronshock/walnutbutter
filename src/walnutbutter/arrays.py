@@ -313,10 +313,6 @@ class ArrayNetwork(Network):
                 hit = charged & ready
                 credit_v[hit] = m[hit] * np.exp(-m[hit]) / -np.expm1(-m[hit])  # m e^-m / (1 - e^-m), as the objects compute it
                 q = np.where(charged & ~ready, m, 0.0)
-            if Neuron.isi_factor and charged.any():  # §0.2: each charge weighed by the time since the neuron's last spike
-                w = self._isi_factor(time)
-                credit_v = w * credit_v
-                q = w * q
             if charged.any():
                 if Neuron.tau == math.inf:  # the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike
                     self.expected[charged] += q[charged]
@@ -366,14 +362,6 @@ class ArrayNetwork(Network):
                 self.noted[open_] = 0.0
         else:
             self.trace[edges] = 0.0
-
-    def _isi_factor(self, time: float) -> np.ndarray:
-        """neuron.isi_factor per neuron (AUTHORITY.md §0.2), in the same order of operations; 0 where a neuron never fired."""
-        fired = self.fired_at > -np.inf
-        x = np.where(fired, (time - np.where(fired, self.fired_at, 0.0)) / Neuron.target_isi, 0.0)
-        with np.errstate(over="ignore", invalid="ignore"):
-            f = (3.0 * x - 1.0) / (1.0 + x * x * x)
-        return np.where(fired, f, 0.0)
 
     def settle_scores(self) -> None:
         """Network.settle_scores as vectors: under the evidence accumulator, every open arrival's debit into its score (§6.7)."""

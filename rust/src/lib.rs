@@ -93,16 +93,6 @@ impl MersenneTwister {
     }
 }
 
-/// neuron.py's isi_factor (AUTHORITY.md §0.2): f(t - I) = (3x - 1) / (1 + x^3), x = t / I, t the time since the last
-/// spike; 0 for a neuron that has never fired. The same order of operations as the other two engines.
-fn isi_factor(now: f64, fired_at: f64, target: f64) -> f64 {
-    if fired_at == f64::NEG_INFINITY {
-        return 0.0;
-    }
-    let x = (now - fired_at) / target;
-    (3.0 * x - 1.0) / (1.0 + x * x * x)
-}
-
 #[inline]
 fn slack(time: f64) -> f64 {
     TOLERANCE * f64::max(1.0, time.abs())
@@ -192,8 +182,6 @@ pub struct Engine {
     expected: Vec<f64>,    // per neuron: E_j, the spikes expected over its decisions since its last spike (§6.7)
     credit: Vec<f64>,      // per neuron: what its firing decision credits each open arrival with, for fire() to settle
     noted: Vec<f64>,       // per edge: B_ij, the sum over its open arrivals of the target's E_j as each arrived
-    isi_factor: bool,      // weigh every charge by the ISI factor, f(t - target_isi) (AUTHORITY.md §0.2)
-    target_isi: f64,       // ms: the interval that factor pays most for
 
     // --- the clock and the rules ------------------------------------------------------
     tau: f64,
@@ -288,8 +276,6 @@ impl Engine {
             expected: vec![0.0; neurons],
             credit: vec![0.0; neurons],
             noted: vec![0.0; edges],
-            isi_factor: false,
-            target_isi: 5.1,
             tau,
             refractory,
             hop,
@@ -416,13 +402,6 @@ impl Engine {
         self.centred = on;
         self.decision_memory = memory;
         self.traced = self.hazard || on;
-    }
-
-    /// The ISI factor of §0.2: every charge of the single-spike rule weighed by f(t - target), t the time since the
-    /// neuron's own last spike, as `Neuron.isi_factor` and `Neuron.target_isi` give it.
-    fn set_isi_factor(&mut self, on: bool, target: f64) {
-        self.isi_factor = on;
-        self.target_isi = target;
     }
 
     /// Each neuron's p_hat_j (NaN for none yet), decisions to date and E_j, as a checkpoint carries them (§6.7).
@@ -802,8 +781,8 @@ impl Engine {
             self.exposed_since[i] = now;
             self.draw[i] < -(-m).exp_m1()
         };
-        let mut credit;
-        let mut q;
+        let credit;
+        let q;
         if self.centred {
             let y = if fired { 1.0 } else { 0.0 };
             let p = self.expectation[i];
@@ -825,12 +804,6 @@ impl Engine {
             }
         } else {
             return fired;
-        }
-        if self.isi_factor {
-            // §0.2: the charge weighed by how near the time since the last spike is to the target
-            let w = isi_factor(now, self.fired_at[i], self.target_isi);
-            credit = w * credit;
-            q = w * q;
         }
         if self.tau.is_infinite() {
             // the evidence accumulator (§5.1): the debit settles per arrival, the credit at the spike

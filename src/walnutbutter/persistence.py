@@ -52,8 +52,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "time": network.time,  # the clock, nominal milliseconds
         "interval": network.interval,
         "tau": Neuron.tau,
-        "isi_factor": Neuron.isi_factor,  # §0.2: whether the single-spike rule's charges were weighed; a checkpoint
-        "target_isi": Neuron.target_isi,  # without the key is from before the factor, and ran without it
         "refractory": Neuron.refractory,
         "refractory_hops": Neuron.refractory_hops,
         "bored_after": Neuron.bored_after,
