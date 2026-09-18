@@ -16,16 +16,16 @@ from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
 from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
 from .inputs import CODES, DEFAULT_CODE, parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, EXPLORE, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
-    LEAKY_ELIGIBILITY, RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
-    SYNAPSE_TAU, QUASH_K, QUASH_RATE, TAU, ISI_FACTOR,
-    ELIGIBILITY, HOMEOSTASIS, INTERVAL, LATE, LR,
-    MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, SIGMA, TARGET, TARGET_RATE,
+    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
+    RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
+    QUASH_K, QUASH_RATE, TAU, ISI_FACTOR,
+    ELIGIBILITY, HOMEOSTASIS, INTERVAL, LR,
+    MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
     THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
 )
-from .learning import CRITICS, ELIGIBILITIES, LATE_RULES, RULES, TARGETS, Teacher
+from .learning import CRITICS, ELIGIBILITIES, RULES, TARGETS, Teacher
 from .problems import dataset_stream
 from .monitor import main, run_epoch
 from .network import input_stream
@@ -251,21 +251,6 @@ def build_parser() -> argparse.ArgumentParser:
         f"it quashes; 0 = off)",
     )
     parser.add_argument(
-        "--leaky",
-        action="store_true",
-        default=LEAKY_ELIGIBILITY,
-        help="append the leaky trace of AUTHORITY.md §6.12 to the reinforce rule's chain, so the global reward reaches "
-        "each synapse in proportion to the charge it still had in its target when that target's state was read",
-    )
-    parser.add_argument(
-        "--synapse-tau",
-        type=float,
-        default=SYNAPSE_TAU,
-        metavar="MS",
-        help=f"the leak of the eligibility trace on a synapse (AUTHORITY.md §6.12), the synapse's own and no longer the "
-        f"neuron's: it governs leaky Hebb and the reinforce rule's leaky eligibility alike (default: {SYNAPSE_TAU:g} ms)"
-    )
-    parser.add_argument(
         "--read",
         choices=("fired", "again", "window", "rate", "count"),
         default=None,
@@ -307,14 +292,6 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HZ",
         help=f"the rate an output the target says should be on is driven to; off is silence (default: {RATE_ON:g} Hz, "
         f"which is 1/REFRACTORY: saturation)",
-    )
-    parser.add_argument(
-        "--explore",
-        choices=("wave", "epoch"),
-        default=EXPLORE,
-        help=f"when the exploration draw is taken (AUTHORITY.md §6.1): wave, afresh before every firing decision so a "
-        f"neuron's noise is what it decided under, or epoch, once at the input's moment, which is the pre-alpha's "
-        f"(default: {EXPLORE})",
     )
     parser.add_argument(
         "--population",
@@ -397,15 +374,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"what the output zone should show, derived from the input zone (default: {TARGET})",
     )
     parser.add_argument(
-        "--late",
-        choices=LATE_RULES,
-        default=LATE,
-        help=f"what a signal arriving after its target has already fired earns: count (the same update "
-        "as one that landed, a local Hebbian term under the global reward), ignore (nothing: the "
-        "node-perturbation estimator proper) or depress (the opposite update, the shape of spike-timing-dependent "
-        f"plasticity). Default: {LATE}",
-    )
-    parser.add_argument(
         "--critic",
         choices=sorted(CRITICS),
         default=None,
@@ -430,12 +398,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=LR,
         help=f"learning rate, either rule (default: {LR:g})",
-    )
-    parser.add_argument(
-        "--sigma",
-        type=float,
-        default=SIGMA,
-        help=f"exploration noise: std dev added to each neuron's potential at every input (default: {SIGMA:g}; 0 = off)",
     )
     parser.add_argument(
         "--delta",
@@ -834,9 +796,8 @@ def _run(args: argparse.Namespace) -> int:
                 print(f"clock neurons: the first {args.clock} input neurons are driven every epoch whatever the pattern "
                       f"(§4.3), and take no raw bits", file=sys.stderr)
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
-            grid.synapse_tau = args.synapse_tau
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
-            grid.explore, grid.rate_on = args.explore, args.rate_on
+            grid.rate_on = args.rate_on
             grid.pickiness = args.pickiness
             grid.population = args.population
             grid.output_coding = args.output_coding  # how the output zone codes the classes (§8)
@@ -892,17 +853,9 @@ def _run(args: argparse.Namespace) -> int:
                       f"; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms", file=sys.stderr)
             else:
                 # the Teacher zeroes sigma for the Hebbian eligibilities, so the network is deterministic: report what runs
-                effective_sigma = args.sigma if args.eligibility == "perturb" else 0.0
-                if effective_sigma or args.delta:
-                    exploring = ""
-                elif args.eligibility in ("hebb", "count_hebb"):
-                    exploring = " (no injected noise: the centred Hebbian rule, explored by whatever varies the counts)"
-                else:
-                    exploring = " (no exploration: reward-modulated Hebb, not a policy gradient)"
-                print(f"rule: reinforce ({args.eligibility} eligibility"
-                      f"{' + leaky trace' if args.leaky else ''}, late signals {args.late}), lr {args.lr:g}, "
-                      f"sigma {effective_sigma:g} ({args.explore}), escape delta {args.delta:g}"
-                      f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}{exploring}"
+                print(f"rule: reinforce ({args.eligibility} eligibility), lr {args.lr:g}, "
+                      f"escape delta {args.delta:g}"
+                      f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}"
                       f"; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}",
@@ -922,7 +875,6 @@ def _run(args: argparse.Namespace) -> int:
                     grid,
                     target=args.target,
                     lr=args.lr,
-                    sigma=args.sigma,
                     eligibility=args.eligibility,
                     seed=seed,
                     homeostasis=args.homeostasis,
@@ -931,8 +883,6 @@ def _run(args: argparse.Namespace) -> int:
                     unstick=args.unstick,
                     unstick_target=args.unstick_target,
                     critic=args.critic,
-                    late=args.late,
-                    leaky=args.leaky,
                     rule=args.rule,
                 )
                 if loaded:
@@ -946,7 +896,7 @@ def _run(args: argparse.Namespace) -> int:
                 teacher.epoch(input_bits, verbose=Neuron.verbose)  # the first epoch, with exploration, like every other
             else:
                 explore = random.Random(seed)  # the exploration noise of an untrained run
-                run_epoch(grid, input_bits, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
+                run_epoch(grid, input_bits, verbose=Neuron.verbose, rng=explore, discharge=args.discharge)
 
             def save_checkpoint():
                 if args.save_weights:
@@ -963,7 +913,7 @@ def _run(args: argparse.Namespace) -> int:
                         print(f"epoch {epoch}: {teacher.status()}", file=sys.stderr)
                         save_checkpoint()
                 else:
-                    run_epoch(grid, verbose=Neuron.verbose, noise=args.sigma, rng=explore, discharge=args.discharge)
+                    run_epoch(grid, verbose=Neuron.verbose, rng=explore, discharge=args.discharge)
                     if epoch % report_every == 0 or epoch == args.epochs:
                         print(f"epoch {epoch}: {health(grid)}", file=sys.stderr)
                         save_checkpoint()
@@ -1045,10 +995,9 @@ def _seed_worker(job: dict) -> dict:
     grid.clock = job.get("clock", 0)
     grid.quash_rate, grid.quash_k = job.get("quash", (0.0, QUASH_K))
     grid.flip = job.get("flip", 0.0)
-    grid.synapse_tau = job.get("synapse_tau", SYNAPSE_TAU)
     grid.drive = job.get("drive", INPUT_DRIVE)
     grid.input_rate, grid.input_rate_off = job.get("input_rate", INPUT_RATE), job.get("input_rate_off", INPUT_RATE_OFF)
-    grid.explore, grid.rate_on = job.get("explore", EXPLORE), job.get("rate_on", RATE_ON)
+    grid.rate_on = job.get("rate_on", RATE_ON)
     grid.pickiness = job.get("pickiness", ROW_CRITIC_PICKINESS_IN_SPIKES)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
     grid.output_coding = job.get("output_coding", "population")  # how the output zone codes the classes (§8)
@@ -1106,7 +1055,6 @@ def _run_seeds(args: argparse.Namespace) -> int:
     teacher_kwargs = dict(
         target=args.target,
         lr=args.lr,
-        sigma=args.sigma,
         eligibility=args.eligibility,
         homeostasis=args.homeostasis,
         target_rate=args.target_rate,
@@ -1114,8 +1062,6 @@ def _run_seeds(args: argparse.Namespace) -> int:
         unstick=args.unstick,
         unstick_target=args.unstick_target,
         critic=args.critic,
-        late=args.late,
-        leaky=args.leaky,
         rule=args.rule,
     )
     if args.no_learn:
@@ -1138,9 +1084,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "tau": args.tau, "isi_factor": args.isi_factor,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip,
-                     "synapse_tau": args.synapse_tau,
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
-                     "explore": args.explore, "rate_on": args.rate_on, "rate_tau": args.rate_tau,
+                     "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "pickiness": args.pickiness, "delta": args.delta,
                      "population": args.population, "output_coding": args.output_coding, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,

@@ -383,7 +383,7 @@ def test_below_projection_one_a_goo_round_trips_with_its_seed_and_refuses_withou
         g = Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone)
         g.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         g.rule, g.drive, g.read = "reinforce", "rate", "count"
-        assert fast.compare(g, epochs=40, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="wrong_hebb", target="copy",
+        assert fast.compare(g, epochs=40, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy",
                                                           homeostasis=0.01, unstick=0.1)) == []
 
 
@@ -458,10 +458,10 @@ def test_a_seed_batch_runs_goo_and_its_header_says_what_ran(capsys):
     err = capsys.readouterr().err
     assert ("20 neurons of goo at scaling factor 0.05, 8 in, 4 hidden and 8 out, fan-in scaled, reinforce rule with the hazard "
             "eligibility, escape delta 0.455") in err  # the default eligibility follows the neuron (§1.3)
-    assert cli_main(["--goo", "20", "--wiring", "zones-equal", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "wrong_hebb",
+    assert cli_main(["--goo", "20", "--wiring", "zones-equal", "--projection", "0.5", "--no-scale-with-fan-in", "--eligibility", "hebb",
                      "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 0
     assert ("goo at projection 0.5 under the zones-equal wiring, 8 in, 4 hidden and 8 out, flat threshold and floor, reinforce "
-            "rule with the wrong_hebb eligibility") in capsys.readouterr().err
+            "rule with the hebb eligibility") in capsys.readouterr().err
 
 
 def test_the_rule_hears_n_s_everywhere_and_the_three_earlier_wirings_are_kept():

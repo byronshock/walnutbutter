@@ -25,23 +25,14 @@ def test_the_command_line_defaults_are_the_constants():
     assert (args.interval, args.refractory, args.refractory_hops) == (None, C.REFRACTORY, C.REFRACTORY_HOPS)  # the problem's, else INTERVAL
     assert args.rule is None and C.RULE == "local"  # the problem's rule, else the constant (§9.1)
     assert args.problem == C.PROBLEM
-    assert (args.target, args.late) == (C.TARGET, C.LATE)
-    assert args.eligibility is None and C.ELIGIBILITY == "perturb"  # follows the neuron: hazard under escape noise (§1.3)
+    assert args.target == C.TARGET
+    assert args.eligibility is None and C.ELIGIBILITY == "hazard"  # §8.3: where a run names none, the eligibility is hazard
     assert args.delta == C.ESCAPE_DELTA == 0.455  # escape noise on by default (§5.2, Byron, September 15, 2026)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
-    assert (args.lr, args.sigma, args.homeostasis, args.target_rate) == (C.LR, C.SIGMA, C.HOMEOSTASIS, C.TARGET_RATE)
+    assert (args.lr, args.homeostasis, args.target_rate) == (C.LR, C.HOMEOSTASIS, C.TARGET_RATE)
     assert (args.unstick, args.unstick_target) == (C.UNSTICK, C.UNSTICK_TARGET)
     assert args.pickiness == C.ROW_CRITIC_PICKINESS_IN_SPIKES == 2 and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
-
-def test_the_two_memories_and_the_five_eligibilities():
-    """§1.3: n_bar_j moves at COUNT_MEMORY an epoch (count_hebb, the epoch form), p_hat_j at DECISION_MEMORY a decision (hebb,
-    the single-spike rule of September 17, 2026); the +-1 rule is wrong_hebb."""
-    from walnutbutter.learning import ELIGIBILITIES
-    assert C.COUNT_MEMORY == C.RATE_MEMORY == 0.01 and C.DECISION_MEMORY == 1e-4
-    assert ELIGIBILITIES == ("perturb", "wrong_hebb", "hebb", "count_hebb", "hazard")
-    assert build_parser().parse_args(["--eligibility", "count_hebb"]).eligibility == "count_hebb"
-    assert build_parser().parse_args(["--eligibility", "wrong_hebb"]).eligibility == "wrong_hebb"
 
 
 def test_the_neuron_and_its_clock_read_the_constants():
@@ -96,13 +87,13 @@ def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
 
 def test_the_teacher_and_the_rule_read_the_constants():
     d = defaults_of(Teacher)
-    assert (d["target"], d["critic"], d["late"]) == (C.TARGET, C.CRITIC, C.LATE)
-    assert d["eligibility"] is None  # resolved from the network: hazard under escape noise, else ELIGIBILITY (§1.3)
-    assert (d["lr"], d["sigma"], d["baseline_rate"], d["window"]) == (C.LR, C.SIGMA, C.BASELINE_RATE, C.WINDOW)
+    assert (d["target"], d["critic"]) == (C.TARGET, C.CRITIC)
+    assert d["eligibility"] is None  # §8.3: a run that names none gets ELIGIBILITY
+    assert (d["lr"], d["baseline_rate"], d["window"]) == (C.LR, C.BASELINE_RATE, C.WINDOW)
     assert (d["homeostasis"], d["target_rate"]) == (C.HOMEOSTASIS, C.TARGET_RATE) and "threshold_range" not in d
     assert (d["unstick"], d["unstick_target"]) == (C.UNSTICK, C.UNSTICK_TARGET)
     r = defaults_of(reinforce)
-    assert (r["lr"], r["sigma"], r["eligibility"], r["late"]) == (C.LR, C.SIGMA, C.ELIGIBILITY, C.LATE)
+    assert (r["lr"], r["eligibility"]) == (C.LR, C.ELIGIBILITY)
     assert d["rule"] == C.RULE
     # §9.1 carries one rule that pays at the read and one local rule; the eight dopamine constants,
     # TEACHER_CREDIT, HEBB_RATE and WEIGHT_DECAY all left with the rules they belonged to

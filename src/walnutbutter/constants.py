@@ -146,18 +146,7 @@ QUASH_RATE = 0.02  # the rate a problem that quashes uses: a refire weakens each
 # of its weight. A network built in the library does not quash until it is asked to; 0 = off.
 QUASH_K = 0.2  # per ms: the quash falls off as exp(-k * (t - t_fired)) with the delay since the previous spike
 
-# --- leaky Hebb (AUTHORITY.md §6.12) -------------------------------------------------
-SYNAPSE_TAU = 10.0  # ms: the leak of the eligibility trace on a synapse (§6.12). It was taken equal to the neuron's TAU
-# 'for computational simplicity', which bought an identity and broke the rule: at TAU 2 the trace attenuates 148x across
-# the 10 ms a network computes over, and every value from 5 ms up recovers it (Byron, September 13, 2026, deciding to
-# decouple them). It governs leaky_hebb and the reinforce rule's leaky eligibility alike.
-LEAKY_ELIGIBILITY = False  # append the leaky trace of §6.12 to the reinforce rule's chain, so the global reward reaches
-# each synapse in proportion to what it was still contributing (Byron, September 13, 2026); off keeps the pre-alpha's rule
 LR = 0.03  # learning rate, both rules
-SIGMA = 0.1  # exploration noise: std dev added to each neuron's potential; 0 switches it off
-EXPLORE = "wave"  # when that draw is taken (AUTHORITY.md §6.1): "wave", afresh before every firing decision, so a
-# neuron's xi is the perturbation it actually decided under (Byron, September 13, 2026), or "epoch", once at the
-# input's moment, which is the pre-alpha's and what §6.7's baseline was measured with
 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the output zone should show, derived from the input zone (learning.TARGETS)
@@ -166,15 +155,11 @@ TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron,
 # the class sums are read as log-odds at this scale, q_k = exp(n_k / T) / sum_j exp(n_j / T), and the reward is ln q_y; a lead of
 # T spikes makes a class e times as likely. 0 would be the class critic, infinity a flat ln 0.1. Set at the middle of the first
 # sweep, {1, 2, 4}; "We will have to sweep for temperature eventually"
-ELIGIBILITY = "perturb"  # what the global reward acts on when the threshold decides (learning.ELIGIBILITIES): the
-# pre-alpha's. The others: wrong_hebb, the +-1 by whether the target fired (the rule called hebb until September 16, 2026,
-# renamed because it is uncentred and points nowhere); hebb, the centred Hebbian term charged at every decision of the
-# target -- its spike or silence minus its own per-decision expectation of it (DECISION_MEMORY), times what the synapse has
-# in its potential -- the single-spike rule of September 17, 2026 (§6.7); count_hebb, the epoch form hebb was until that
-# day -- what each synapse delivered this epoch times the epoch's count minus its expectation (COUNT_MEMORY); and hazard. The Teacher and the command line take "hazard" instead on a network with escape noise (ESCAPE_DELTA
-# > 0, §5.2) unless told otherwise -- the eligibility every measurement at 0.455 was made with; additive noise on top of
-# the hazard was never measured (Claude's reading of the default Byron set, September 15, 2026)
-LATE = "count"  # what a signal arriving after its target fired earns (learning.LATE_RULES)
+ELIGIBILITY = "hazard"  # which of the two eligibilities of AUTHORITY.md §8.3 a run gets when it names none. Both are
+# the single-spike rule of §8.4 and differ in what a decision's credit and expectation are: hazard takes the escape
+# decision's own score (§8.7), which is exactly zero-mean at every decision; hebb takes the neuron's own estimate of its
+# spike (§8.6), whose mean is the lag of that estimate, so a run under hebb posts a systematic component wherever a
+# neuron's rate is moving. Where the threshold decides, no eligibility runs and the rule refuses to learn (§8.3)
 BASELINE_RATE = 0.05  # per-epoch update of the running reward baseline the advantage is measured against
 WINDOW = 200  # epochs the Teacher's moving-average accuracy spans
 HOMEOSTASIS = 1e-6  # per-epoch rate at which a threshold moves toward the target firing rate; 0 = off
@@ -186,10 +171,6 @@ UNSTICK_TARGET = 0.5  # firing rate the un-sticking aims for
 # THRESHOLD_RANGE, the [-5, 5] homeostasis and un-sticking clipped thresholds to, was eliminated on September 14, 2026
 # (Byron: "It's artificial"; AUTHORITY.md §1.3, §3.4). A threshold goes where the rules take it.
 RATE_MEMORY = 0.01  # per-epoch update of a neuron's running firing rate (about the last 100 epochs)
-COUNT_MEMORY = 0.01  # per-epoch update of a neuron's expected spike count, n_bar_j, which the count_hebb eligibility centres
-# on -- the epoch form hebb was until September 17, 2026 (AUTHORITY.md §6.7): the rate memory's window, about the last 100
-# epochs. It starts at the first count observed in an unforced epoch, so a neuron's first epoch moves nothing rather than
-# everything.
 DECISION_MEMORY = 1e-4  # per-decision update of a neuron's expectation of its own spike, p_hat_j, which the hebb eligibility
 # charges at every decision (AUTHORITY.md §6.7, the single-spike rule; Byron, September 17, 2026: "Expectation is changed
 # per decision in this architecture"): about the last 10,000 decisions. Every neuron decides at every wave and every

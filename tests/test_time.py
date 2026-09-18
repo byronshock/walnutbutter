@@ -132,8 +132,8 @@ def test_both_engines_keep_the_same_clock(clock):
     a, b = Teacher(mesh, seed=2, rule="reinforce"), Teacher(net, seed=2, rule="reinforce")
     for k in range(60):
         time = None if k % 7 else mesh.horizon + 12.0  # now and then a long gap: everyone recovers
-        ra = a.epoch(verbose=False) if time is None else (run_epoch(mesh, verbose=False, noise=a.sigma, rng=a.rng, time=time), a.step())[1]
-        rb = b.epoch(verbose=False) if time is None else (run_epoch(net, verbose=False, noise=b.sigma, rng=b.rng, time=time), b.step())[1]
+        ra = a.epoch(verbose=False) if time is None else (run_epoch(mesh, verbose=False, rng=a.rng, time=time), a.step())[1]
+        rb = b.epoch(verbose=False) if time is None else (run_epoch(net, verbose=False, rng=b.rng, time=time), b.step())[1]
         assert ra == rb and mesh.time == net.time and mesh.horizon == net.horizon
         assert [(-1 if n.fired_in_wave is None else n.fired_in_wave) for n in mesh.all_neurons()] == net.fired_wave.tolist()
         assert [(-np.inf if n.fired_at is None else n.fired_at) for n in mesh.all_neurons()] == net.fired_at.tolist()
@@ -157,7 +157,7 @@ def test_the_clock_survives_a_checkpoint(tmp_path, clock):
     assert data["refractory"] == 5.0 and data["refractory_hops"] == 3.0 and data["learning"]["rule"] == "local"
     assert len(data["potentials"]) == len(data["fired_at"]) == len(data["previous_fired_at"]) == len(data["spikes"]) == 24
     assert len(data["last_signal"]) == len(grid.connections) == len(data["weights"])
-    assert data["pending"] == [[t, c.id] for t, c in grid.schedule.pending()] and data["pending"]  # signals in flight at the horizon
+    assert data["pending"] == [[t, c.id] for t, c in grid.schedule.pending()]  # signals in flight at the horizon
     restored, _ = restore(path)
     assert restored.time == 32.0 and restored.horizon == 36.0 and restored.next_time() == 36.0
     assert [n.fired_at for n in restored.all_neurons()] == [n.fired_at for n in grid.all_neurons()]

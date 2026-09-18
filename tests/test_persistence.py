@@ -35,21 +35,6 @@ def test_checkpoint_round_trips_weights_settings_and_permutation(tmp_path):
     ]
 
 
-def test_a_checkpoint_keeps_the_expected_counts(tmp_path):
-    """§6.7: n_bar_j, the hebb eligibility's expectation, round-trips beside the rate memory; unset ones stay unset."""
-    grid = main(count=32, across=8, seed=3)
-    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
-    teacher = Teacher(grid, seed=3, rule="reinforce", eligibility="hebb")
-    for _ in range(5):
-        teacher.epoch(verbose=False)
-    assert any(n.expected_count is not None for n in grid.all_neurons())
-    next(iter(grid.all_neurons())).expected_count = None  # an unset one stays unset across the round trip
-    counts = [n.expected_count for n in grid.all_neurons()]
-    data = checkpoint(grid, tmp_path / "e.json", teacher)
-    assert data["learning"]["eligibility"] == "hebb" and data["expected_counts"] == counts
-    back, _ = restore(tmp_path / "e.json")
-    assert [n.expected_count for n in back.all_neurons()] == counts
-
 
 def test_a_checkpoint_keeps_the_single_spike_rules_state(tmp_path):
     """§6.7 (September 17, 2026): p_hat_j, the decisions to date, E_j and each synapse's note round-trip beside the traces."""

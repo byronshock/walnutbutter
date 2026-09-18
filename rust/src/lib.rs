@@ -161,11 +161,9 @@ pub struct Engine {
     weight: Vec<f64>,
     active: Vec<bool>,
     last_signal: Vec<f64>, // NEG_INFINITY when this synapse has never carried one
-    eligibility: Vec<f64>,
 
     // --- neuron state ----------------------------------------------------------------
     potential: Vec<f64>,
-    noise: Vec<f64>, // the exploration draw each neuron decided under this epoch (§6.1)
     threshold: Vec<f64>,
     floor: Vec<f64>,
     fired_at: Vec<f64>, // NEG_INFINITY when never
@@ -205,11 +203,8 @@ pub struct Engine {
     rate_tau: f64,
     quash_rate: f64,
     quash_k: f64,
-    synapse_tau: f64,
     weight_low: f64,
     weight_high: f64,
-    earn: bool, // accumulate the eligibility a teacher pays at the read (§6.9)
-    sigma: f64, // exploration noise, 0 = off (§6.1)
     explore: Option<MersenneTwister>, // Python's own stream, handed over for the run
 
     // --- the schedule -----------------------------------------------------------------
@@ -264,9 +259,7 @@ impl Engine {
             weight,
             active,
             last_signal: vec![f64::NEG_INFINITY; edges],
-            eligibility: vec![0.0; edges],
             potential: vec![0.0; neurons],
-            noise: vec![0.0; neurons],
             threshold,
             floor,
             fired_at: vec![f64::NEG_INFINITY; neurons],
@@ -304,11 +297,8 @@ impl Engine {
             rate_tau,
             quash_rate: 0.0,
             quash_k: 0.2,
-            synapse_tau: 10.0,
             weight_low: -1.0,
             weight_high: 1.0,
-            earn: false,
-            sigma: 0.0,
             explore: None,
             heap: BinaryHeap::new(),
             seq: 0,
@@ -324,25 +314,13 @@ impl Engine {
         &mut self,
         quash_rate: f64,
         quash_k: f64,
-        synapse_tau: f64,
         weight_low: f64,
         weight_high: f64,
-        earn: bool,
-        sigma: f64,
     ) -> PyResult<()> {
-        if sigma > 0.0 && self.explore.is_none() {
-            return Err(PyValueError::new_err(
-                "exploration noise needs Python's stream: call set_explore_state(rng.getstate()[1]) \
-                 first, so the draws come in the same order as the other two engines (§6.1)",
-            ));
-        }
-        self.sigma = sigma;
         self.quash_rate = quash_rate;
         self.quash_k = quash_k;
-        self.synapse_tau = synapse_tau;
         self.weight_low = weight_low;
         self.weight_high = weight_high;
-        self.earn = earn;
         Ok(())
     }
 
@@ -362,14 +340,13 @@ impl Engine {
 
     /// Start a new epoch: clear the fired-this-epoch state, exactly as `Network.reset` does.
     /// Potentials, spike times and the signals in flight are kept (AUTHORITY.md §4.2).
-    fn reset(&mut self, discharge: bool, clear_eligibility: bool) {
+    fn reset(&mut self, discharge: bool) {
         if discharge {
             self.potential.iter_mut().for_each(|p| *p = 0.0);
         }
         self.fired_wave.iter_mut().for_each(|w| *w = -1);
         self.delivered_wave.iter_mut().for_each(|w| *w = -1);
         self.forced.iter_mut().for_each(|f| *f = false);
-        self.noise.iter_mut().for_each(|x| *x = 0.0); // Neuron.reset clears it too
         self.spikes_at_reset.copy_from_slice(&self.spikes); // Neuron.reset snapshots the count
         if self.traced {
             if discharge {
@@ -384,9 +361,6 @@ impl Engine {
                     self.noted[edge] = self.trace[edge] * self.expected[self.edge_target[edge] as usize];
                 }
             }
-        }
-        if clear_eligibility {
-            self.eligibility.iter_mut().for_each(|e| *e = 0.0);
         }
         self.wave_no = 0;
     }
@@ -407,103 +381,8 @@ impl Engine {
         Ok(())
     }
 
-    /// §6.7 with the wrong_hebb eligibility (the ±1 rule, so named September 16, 2026): every connection that
-    /// delivered into an unforced neuron moves by `lr * advantage * (+1 if that neuron fired, else -1)`.
-    /// Returns connections changed.
-    fn reinforce_wrong_hebb(&mut self, advantage: f64, lr: f64) -> usize {
-        if advantage == 0.0 {
-            return 0;
-        }
-        let step = lr * advantage;
-        let mut changed = 0;
-        for edge in 0..self.weight.len() {
-            if self.delivered_wave[edge] < 0 {
-                continue;
-            }
-            let target = self.edge_target[edge] as usize;
-            if self.forced[target] {
-                continue; // a forced input: its firing was not the network's doing
-            }
-            let e = if self.fired_wave[target] >= 0 { 1.0 } else { -1.0 };
-            let w = self.weight[edge] + step * e;
-            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
-            changed += 1;
-        }
-        changed
-    }
 
-    /// §6.7's epoch form, count_hebb (the rule called hebb until September 17, 2026): every synapse into an unforced
-    /// neuron moves by `lr * advantage * x_ij * c_j`,
-    /// x_ij the signals it delivered this epoch that its target integrated (the tally, kept when `earn` is set) and
-    /// c_j the target's spike count minus its expected count, which the Teacher keeps in Python (fast.py) as it keeps
-    /// the rate memory, and hands over per epoch. Returns connections changed.
-    fn reinforce_count_hebb(&mut self, advantage: f64, lr: f64, centred: Vec<f64>) -> PyResult<usize> {
-        if centred.len() != self.neurons {
-            return Err(PyValueError::new_err("one centred count per neuron"));
-        }
-        if !self.earn {
-            return Err(PyValueError::new_err(
-                "the count_hebb eligibility needs the tally: build the engine with earn = True, so every synapse counts \
-                 what it delivered (§6.7)",
-            ));
-        }
-        if advantage == 0.0 {
-            return Ok(0);
-        }
-        let step = lr * advantage;
-        let mut changed = 0;
-        for edge in 0..self.weight.len() {
-            let x = self.eligibility[edge];
-            if x == 0.0 {
-                continue; // delivered nothing this epoch
-            }
-            let target = self.edge_target[edge] as usize;
-            if self.forced[target] {
-                continue; // a forced input: its firing was not the network's doing
-            }
-            let e = x * centred[target];
-            if e == 0.0 {
-                continue; // exactly as many spikes as expected, or a first epoch: nothing to credit or blame
-            }
-            let w = self.weight[edge] + step * e;
-            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
-            changed += 1;
-        }
-        Ok(changed)
-    }
 
-    /// §6.7 with the perturb eligibility: every connection that delivered into an unforced
-    /// neuron moves by `lr * advantage * (xi_j / sigma)`, the draw that neuron decided under.
-    /// Returns connections changed. The late-signal rule is "count", the default.
-    fn reinforce_perturb(&mut self, advantage: f64, lr: f64, sigma: f64) -> PyResult<usize> {
-        if sigma <= 0.0 {
-            return Err(PyValueError::new_err(
-                "the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)",
-            ));
-        }
-        if advantage == 0.0 {
-            return Ok(0);
-        }
-        let step = lr * advantage;
-        let mut changed = 0;
-        for edge in 0..self.weight.len() {
-            if self.delivered_wave[edge] < 0 {
-                continue;
-            }
-            let target = self.edge_target[edge] as usize;
-            if self.forced[target] {
-                continue; // a forced input: its firing was not the network's doing
-            }
-            let e = self.noise[target] / sigma;
-            if e == 0.0 {
-                continue;
-            }
-            let w = self.weight[edge] + step * e;
-            self.weight[edge] = w.clamp(self.weight_low, self.weight_high);
-            changed += 1;
-        }
-        Ok(changed)
-    }
 
     /// Escape noise (§5.2): each neuron's decision width, `Network.set_delta`'s per-neuron values; all 0 turns it off.
     fn set_deltas(&mut self, deltas: Vec<f64>) -> PyResult<()> {
@@ -711,9 +590,6 @@ impl Engine {
                                 }
                                 self.trace_at[edge] = time;
                             }
-                            if self.earn {
-                                self.eligibility[edge] += 1.0;
-                            }
                             if self.stamp[target] != mark {
                                 self.stamp[target] = mark;
                                 touched.push(target as u32);
@@ -737,13 +613,8 @@ impl Engine {
                 }
             }
 
-            // §6.1: the exploration draw comes before the decision it is meant to explain,
-            // in propagation.py's position exactly -- after settle(), before anything fires
-            if self.sigma > 0.0 {
-                self.explore_wave(time);
-            }
             if self.hazard {
-                self.hazard_draws(); // §5.2: one uniform per neuron, in neuron order, after the additive draw
+                self.hazard_draws(); // §7.3: one uniform per neuron, in neuron order
             }
 
             let mut fired: Vec<u32> = Vec::new();
@@ -784,12 +655,6 @@ impl Engine {
     // --- reading the state back -----------------------------------------------------
     fn weights(&self) -> Vec<f64> {
         self.weight.clone()
-    }
-    fn eligibilities(&self) -> Vec<f64> {
-        self.eligibility.clone()
-    }
-    fn noises(&self) -> Vec<f64> {
-        self.noise.clone()
     }
     fn potentials(&self) -> Vec<f64> {
         self.potential.clone()
@@ -833,9 +698,6 @@ impl Engine {
         self.weight = weights;
         Ok(())
     }
-    fn clear_eligibility(&mut self) {
-        self.eligibility.iter_mut().for_each(|e| *e = 0.0);
-    }
     fn set_thresholds(&mut self, thresholds: Vec<f64>) -> PyResult<()> {
         if thresholds.len() != self.neurons {
             return Err(PyValueError::new_err("wrong number of thresholds"));
@@ -863,52 +725,6 @@ impl Engine {
         self.potential[i] * (-elapsed / self.tau).exp()
     }
 
-    /// `Network.perturb(sigma, rng, time, hold_fired=True)`, operation for operation (§6.1).
-    ///
-    /// Every neuron leaks to `time`, then takes a draw on top of its potential, floored.
-    /// A neuron that has already fired this epoch **keeps** the draw it decided under as
-    /// its record -- §6.7 credits one e_j per epoch and it must refer to the perturbation
-    /// that produced the spike -- but its potential still takes the new one: the hold is on
-    /// the record, not on the dynamics.
-    ///
-    /// The uniforms are drawn in one block of `count + (count & 1)`, as `exploration.uniforms`
-    /// does, and paired by Box-Muller in the same order, so neuron `j` gets the cosine of pair
-    /// `j / 2` when `j` is even and the sine when it is odd.
-    fn explore_wave(&mut self, time: f64) {
-        let n = self.neurons;
-        if n == 0 {
-            return;
-        }
-        let count = n + (n & 1); // rounded up so the pairs are whole
-        let mut draws = Vec::with_capacity(count);
-        match self.explore.as_mut() {
-            Some(rng) => {
-                for _ in 0..count {
-                    draws.push(rng.random());
-                }
-            }
-            None => return, // set_rules refuses sigma > 0 without a stream, so this cannot happen
-        }
-        for i in 0..n {
-            let pair = i & !1;
-            let angle = TWO_PI * draws[pair];
-            let radius = self.sigma * (-2.0 * (1.0 - draws[pair + 1]).ln()).sqrt();
-            let draw = if i & 1 == 0 { angle.cos() * radius } else { angle.sin() * radius };
-            self.leak(i, time);
-            if self.fired_wave[i] < 0 {
-                self.noise[i] = draw;
-            }
-            let p = self.potential[i] + draw;
-            if p < self.floor[i] {
-                self.potential[i] = self.floor[i];
-                if self.traced {
-                    self.clear_arrivals(i); // the floor bit: the weights are not in it (§6.7)
-                }
-            } else {
-                self.potential[i] = p;
-            }
-        }
-    }
 
     /// The traces into neuron `i` are zero: its potential was reset by a spike or is the floor (§6.7).
     #[inline]

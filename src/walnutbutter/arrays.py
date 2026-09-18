@@ -37,8 +37,8 @@ import random
 import numpy as np
 from scipy.sparse import csr_array
 
-from .constants import COUNT_MEMORY, DECISION_MEMORY, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW
-from .exploration import TWO_PI, uniforms, hazard_draws
+from .constants import DECISION_MEMORY, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW
+from .exploration import hazard_draws
 from .network import Network
 from .neuron import Neuron
 from .clock import TOLERANCE, before, slack
@@ -83,14 +83,12 @@ class ArrayNetwork(Network):
         self.output_coding = getattr(mesh, "output_coding", "population")  # how the output zone codes the classes (§8)
         self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
         self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
-        self.synapse_tau = mesh.synapse_tau
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
-        self.explore, self.sigma, self.explore_rng = mesh.explore, mesh.sigma, mesh.explore_rng
+        self.explore_rng = mesh.explore_rng
         self.rate_on = mesh.rate_on
         self.pickiness = mesh.pickiness  # spikes: the count read's line (§5.10, §9.5)
         self.flip = mesh.flip
         self.rule = mesh.rule
-        self.tally = getattr(mesh, "tally", False)  # count what each synapse delivers: the count_hebb eligibility's x_ij (§6.7)
         self.seed = mesh.seed
         self.threshold = mesh.threshold
         self.minimum_potential = mesh.minimum_potential
@@ -108,7 +106,6 @@ class ArrayNetwork(Network):
         self.potential = np.array([x.potential for x in neurons], dtype=float)
         self.threshold_v = np.array([x.threshold for x in neurons], dtype=float)
         self.floor = np.array([x.minimum_potential for x in neurons], dtype=float)
-        self.noise = np.array([x.noise for x in neurons], dtype=float)
         self.escape_delta = mesh.escape_delta  # escape noise (§5.2): ESCAPE_DELTA on this network
         self.delta_v = np.array([x.delta for x in neurons], dtype=float)  # each neuron's decision width, in potential units
         self.escape_scale = getattr(mesh, "escape_scale", 1.0)  # sqrt(N0 / N), the count's scaling of every hazard (§5.2)
@@ -116,8 +113,6 @@ class ArrayNetwork(Network):
         self.exposed_since = np.array([x.exposed_since for x in neurons], dtype=float)  # since when each hazard has run
         self.draw = np.ones(n)  # this wave's uniforms for the decisions
         self.rate = np.array([x.rate for x in neurons], dtype=float)
-        self.expected_count = np.array([np.nan if x.expected_count is None else x.expected_count for x in neurons],
-                                       dtype=float)  # n_bar_j, the count_hebb eligibility's expectation (§6.7); NaN until set
         self.centred = getattr(mesh, "centred", False)  # the hebb eligibility charges every decision (§6.7, the single-spike
         # rule); `traced`, whether each synapse's trace is kept, is the base class's property: escape noise, or this
         self.expectation = np.array([np.nan if x.expectation is None else x.expectation for x in neurons], dtype=float)  # p_hat_j
@@ -145,7 +140,6 @@ class ArrayNetwork(Network):
         self.active = np.array([c.is_active for c in connections], dtype=bool)
         self.last_signal = np.array([-np.inf if c.last_signal is None else c.last_signal for c in connections], dtype=float)
         self.delivered_wave = np.full(e, -1, dtype=np.int64)  # the wave of this epoch each connection delivered in
-        self.eligibility = np.array([c.eligibility for c in connections], dtype=float)  # what each synapse has earned this epoch
         self.trace = np.array([c.trace for c in connections], dtype=float)  # its charge in its target's potential (§6.7)
         self.trace_at = np.array([c.trace_at for c in connections], dtype=float)
         self.score = np.array([c.score for c in connections], dtype=float)  # the eligibility this epoch (§6.7)
@@ -278,13 +272,8 @@ class ArrayNetwork(Network):
                     clipped = np.zeros(n, dtype=bool)
                     clipped[np.flatnonzero(take)[summed < floor[take]]] = True  # the floor bit: the weights are not in it
                     self._close_arrivals(clipped[self.target])
-                if self.rule == "adaline" or self.tally:
-                    # presynaptic activity, as this target saw it: a source that fired twice into the same moment delivers twice
-                    self.eligibility[integrated] += firing[self.source[integrated]]
-            if self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None:
-                self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)  # §6.1, before the decision
             if self.hazard:
-                self.draw = np.array(hazard_draws(self.explore_rng, n))  # §5.2: one uniform per neuron, in neuron order
+                self.draw = np.array(hazard_draws(self.explore_rng, n))  # §7.3: one uniform per neuron, in neuron order
             if stimulus is None:
                 fire_forced = None
             else:
@@ -453,9 +442,6 @@ class ArrayNetwork(Network):
                 self.noted = self.trace * self.expected[self.target]  # an open arrival's debit counts from here
         self.fired_wave[:] = -1
         self.forced[:] = False
-        if self.rule in ("teacher", "adaline") or self.tally:
-            self.eligibility[:] = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
-        self.noise[:] = 0.0
         self.delivered_wave[:] = -1
         self.spikes_at_reset = self.spikes.copy()  # Neuron.reset snapshots the count
         self.waves = []
@@ -476,26 +462,6 @@ class ArrayNetwork(Network):
         if Neuron.tau == math.inf:
             return self.potential
         return self.potential * np.exp(-elapsed / Neuron.tau)
-
-    def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
-        """Exploration: the same Box-Muller draws as the object engine (see exploration.py), done as a vector."""
-        now = self.input_time if now is None else now
-        if now is not None:
-            self.leak(now)
-        n = len(self.neurons_list)
-        draws = np.array(uniforms(rng, n))
-        angle = TWO_PI * draws[0::2]
-        radius = sigma * np.sqrt(-2.0 * np.log(1.0 - draws[1::2]))
-        noise = np.empty(len(draws))
-        noise[0::2] = np.cos(angle) * radius
-        noise[1::2] = np.sin(angle) * radius
-        draw = noise[:n]
-        # hold_fired: a neuron that already fired this epoch keeps the noise it decided under (§6.1)
-        self.noise = np.where(self.fired_wave >= 0, self.noise, draw) if hold_fired else draw
-        summed = self.potential + draw
-        if self.traced:
-            self._close_arrivals((summed < self.floor)[self.target])  # the floor bit: the weights are not in it (§6.7)
-        np.maximum(summed, self.floor, out=self.potential)
 
     def set_input(self, pattern, time: float | None = None) -> None:
         super().set_input(pattern, time)
@@ -579,63 +545,17 @@ class ArrayNetwork(Network):
 
     # --- learning: the reinforce rule, factored out ---------------------------------
 
-    def reinforce(self, advantage: float, lr: float, sigma: float, eligibility: str, late: str,
-                  leaky: bool = False) -> int:
-        """The global-reward update, edge by edge, all at once. Returns connections changed."""
+    def reinforce(self, advantage: float, lr: float, eligibility: str) -> int:
+        """The update of AUTHORITY.md §8.4, edge by edge, all at once. Returns connections changed."""
         if not self.hazard:  # §8.3: no eligibility runs where the threshold decides
             raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3)")
-        if eligibility == "hazard":
-            if late != "count" or leaky:
-                raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
-        if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):
-            raise ValueError(f"the {eligibility} eligibility carries its own trace of what each synapse delivered: late = count "
-                             "and no leaky trace (§6.7)")
-        if eligibility in ("hazard", "hebb"):
-            self.settle_scores()  # under the evidence accumulator the open arrivals' debit comes into the score first (§6.7)
+        self.settle_scores()  # under the evidence accumulator the open arrivals' debit comes into the score first (§8.11)
         if not advantage:
             return 0
-        if eligibility == "count_hebb":  # §6.7's epoch form: what each synapse delivered times its target's count minus its expectation
-            counts = (self.spikes - self.spikes_at_reset).astype(float)
-            # a neuron with no expectation yet centres on itself: its first unforced epoch moves nothing, as the objects do
-            centred = counts - np.where(np.isnan(self.expected_count), counts, self.expected_count)
-            e = self.eligibility * centred[self.target]
-            mask = (e != 0.0) & ~self.forced[self.target]
-            low, high = self.weight_range
-            step = lr * advantage
-            self.weight[mask] = np.clip(self.weight[mask] + step * e[mask], low, high)
-            self._matrix_dirty = True
-            return int(mask.sum())
-        if eligibility in ("hazard", "hebb"):  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
-            mask = (self.score != 0.0) & ~self.forced[self.target]
-            low, high = self.weight_range
-            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * self.score[mask], low, high)
-            self._matrix_dirty = True
-            return int(mask.sum())
-        fired_target = self.fired_wave[self.target]
-        mask = (self.delivered_wave >= 0) & ~self.forced[self.target]  # delivered this epoch, and not into a forced neuron
-        if eligibility == "perturb":
-            e = self.noise[self.target] / sigma if sigma else np.zeros(len(self.target))
-        else:
-            e = np.where(fired_target >= 0, 1.0, -1.0)
-        if late != "count":
-            arrived_late = (fired_target >= 0) & (self.delivered_wave > fired_target)
-            if late == "ignore":
-                mask &= ~arrived_late
-            else:
-                e = np.where(arrived_late, -e, e)
-        mask &= e != 0
+        # §8.4: every synapse into an unforced neuron moves by what its per-decision entries summed to
+        mask = (self.score != 0.0) & ~self.forced[self.target]
         low, high = self.weight_range
-        if leaky:
-            mask &= self.last_signal > -np.inf  # nothing integrated here: it was contributing nothing
-            hop, tau = Neuron.hop(), self.synapse_tau
-            when = np.where(self.fired_wave[self.target[mask]] >= 0, self.fired_at[self.target[mask]],
-                            self.last_signal[mask])  # no spike, no moment to tell its synapses apart
-            # math.exp, as the object engine uses, so the two agree to the last bit
-            trace = np.array([math.exp(-(w - s + hop) / tau)
-                              for w, s in zip(when.tolist(), self.last_signal[mask].tolist())])
-            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * e[mask] * trace, low, high)
-        else:
-            self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * e[mask], low, high)
+        self.weight[mask] = np.clip(self.weight[mask] + lr * advantage * self.score[mask], low, high)
         self._matrix_dirty = True
         return int(mask.sum())
 
@@ -643,12 +563,6 @@ class ArrayNetwork(Network):
         unforced = ~self.forced
         fired = (self.fired_wave[unforced] >= 0).astype(float)
         self.rate[unforced] += RATE_MEMORY * (fired - self.rate[unforced])
-        # and the expected count the count_hebb eligibility centres on (§6.7): the first unforced epoch sets it, the rest move it
-        counts = (self.spikes - self.spikes_at_reset).astype(float)
-        unset = np.isnan(self.expected_count)
-        first, seen = unforced & unset, unforced & ~unset
-        self.expected_count[first] = counts[first]
-        self.expected_count[seen] += COUNT_MEMORY * (counts[seen] - self.expected_count[seen])
 
     def homeostasis(self, rate: float, target: float) -> int:
         if rate <= 0:
@@ -676,9 +590,7 @@ class ArrayNetwork(Network):
             wave = int(self.fired_wave[i])
             neuron.potential = float(self.potential[i])
             neuron.threshold = float(self.threshold_v[i])
-            neuron.noise = float(self.noise[i])
             neuron.rate = float(self.rate[i])
-            neuron.expected_count = None if np.isnan(self.expected_count[i]) else float(self.expected_count[i])
             neuron.expectation = None if np.isnan(self.expectation[i]) else float(self.expectation[i])
             neuron.decisions = int(self.decisions[i])
             neuron.expected = float(self.expected[i])
@@ -702,8 +614,6 @@ class ArrayNetwork(Network):
         mesh.epoch = self.epoch
         mesh.time, mesh.interval, mesh.input_time, mesh.horizon = self.time, self.interval, self.input_time, self.horizon
         mesh.rule = self.rule
-        for i, weight in enumerate(self.eligibility.tolist(), start=1):
-            connections[i].eligibility = weight
         mesh.waves = [Wave(w.number, w.time, [], [self.neurons_list[i] for i in w.fired.tolist()]) for w in self.waves]
         mesh.schedule.clear()
         for time, i in self.pending():

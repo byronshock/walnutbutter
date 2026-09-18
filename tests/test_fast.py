@@ -65,85 +65,15 @@ def test_it_agrees_on_the_shallow_grid_too():
     assert fast.compare(grid, epochs=40) == []
 
 
-@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-def test_it_draws_pythons_own_stream_bit_for_bit_and_hands_it_back():
-    """§6.1: every engine draws from the same Box-Muller stream. Rust runs Python's MT19937, from Python's state."""
-    import random
-    from walnutbutter.exploration import gaussians
-    grid = mesh(rows=2, seed=3)
-    rng, mirror = random.Random(99), random.Random(99)
-    engine, neurons, index = fast.build(grid, sigma=0.1, explore_rng=rng)
-    engine.reset(False, False)
-    engine.stimulus(0, 0.0)
-    engine.run(1.0)  # one wave, one draw per neuron
-    assert list(engine.noises()) == gaussians(mirror, len(neurons), 0.1)  # equal, not approximately
-    fast.sync_explore(engine, rng)
-    assert rng.getstate() == mirror.getstate()  # Python's stream carries on from where Rust left it
-    with pytest.raises(ValueError, match="needs a stream"):
-        fast.build(mesh(rows=2), sigma=0.1)
-
-
-@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-@pytest.mark.parametrize("eligibility", ["perturb", "wrong_hebb", "hebb"])
-def test_it_agrees_with_the_object_engine_under_the_reinforce_rule(eligibility):
-    """§7: a rule is implemented in every engine and passes the same tests. The perturb rule, per-wave draws and all."""
-    from walnutbutter.learning import Teacher
-    grid = mesh(rows=3, seed=11, rule="reinforce", delta=ESCAPE_DELTA)
-    # homeostasis and un-sticking on, fast enough to act inside the test (as tests/test_arrays.py runs them)
-    teacher = Teacher(grid, seed=7, rule="reinforce", eligibility=eligibility, sigma=0.1, homeostasis=0.01, unstick=0.1)
-    assert (teacher.sigma > 0) == (eligibility == "perturb")  # the Teacher zeroes sigma for hebb
-    before = [n.threshold for n in grid.all_neurons()]
-    parted = fast.compare(grid, epochs=60, teacher=teacher)
-    assert parted == [], parted
-    assert [n.threshold for n in grid.all_neurons()] != before  # the thresholds really moved, and Rust followed
-    if eligibility == "perturb":
-        assert any(n.noise != 0.0 for n in grid.all_neurons())  # the draws really were taken
-        assert teacher.rng.getstate() != random.Random(7).getstate()  # and the stream really moved
-
-
-@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-@pytest.mark.parametrize("eligibility", ["wrong_hebb", "hebb", "count_hebb"])
-def test_goo_runs_on_the_rust_engine_and_agrees_with_the_object_engine(eligibility):
-    """§3.4 on §6.15: the container the sweep is about, on the engine the sweep runs on, bit for bit."""
-    from walnutbutter.goo import Goo
-    from walnutbutter.learning import Teacher
-    goo = Goo(count=40, across=8, seed=3, weight=None)
-    goo.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
-    goo.rule, goo.drive = "reinforce", "rate"
-    teacher = Teacher(goo, seed=7, rule="reinforce", eligibility=eligibility, homeostasis=0.01, unstick=0.1)
-    parted = fast.compare(goo, epochs=60, teacher=teacher)
-    assert parted == [], parted
-    from walnutbutter.constants import GOO_THRESHOLD
-    assert goo.all_neurons()[0].threshold != goo.fan_in_scale() * GOO_THRESHOLD  # moved by homeostasis, on both engines alike
-
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
 def test_compare_refuses_what_it_cannot_mirror():
     from walnutbutter.learning import Teacher
     grid = mesh(rows=2, seed=1, delta=ESCAPE_DELTA)
     with pytest.raises(ValueError, match="row, class, graded or evidence critic"):
-        fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", late="ignore", homeostasis=0.0, unstick=0.0))
+        fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", target="copy",
+                                                    critic="sustained", homeostasis=0.0, unstick=0.0))
 
-
-@pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
-def test_train_runs_the_perturb_rule_from_a_seeded_stream():
-    a = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, eligibility="perturb", sigma=0.1, seed=5)
-    b = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, eligibility="perturb", sigma=0.1, seed=5)
-    c = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, eligibility="perturb", sigma=0.1, seed=6)
-    assert list(a[2].weights()) == list(b[2].weights())  # the same seed, the same run
-    assert list(a[2].weights()) != list(c[2].weights())  # a different stream, a different one
-    assert set(a[3]) >= {"last_tenth", "rates", "thresholds", "stuck_on", "stuck_off"} and 0 <= a[3]["last_tenth"] <= 1
-    flat = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, homeostasis=0.0, unstick=0.0)  # the default eligibility, hebb (§6.7)
-    assert flat[3]["thresholds"] == [n.threshold for n in mesh(rows=2, seed=4).all_neurons()]  # nothing moved them
-    assert len(flat[3]["expected_counts"]) == len(flat[3]["rates"]) and any(e is not None for e in flat[3]["expected_counts"])
-    old = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, eligibility="wrong_hebb", homeostasis=0.0, unstick=0.0)
-    assert list(old[2].weights()) != list(flat[2].weights())  # the +-1 rule and the centred one are not the same rule
-    with pytest.raises(ValueError, match="eligibility must be"):
-        fast.train(mesh(rows=2, delta=ESCAPE_DELTA), 1, eligibility="magic")
-    moved = fast.train(mesh(rows=2, seed=4, delta=ESCAPE_DELTA), 30, homeostasis=0.01, unstick=0.1)
-    assert moved[3]["thresholds"] != flat[3]["thresholds"]
-    with pytest.raises(ValueError, match="positive sigma"):
-        fast.train(mesh(rows=2, delta=ESCAPE_DELTA), 1, eligibility="perturb", sigma=0.0)
 
 
 @pytest.mark.skipif(not fast.available(), reason="the Rust schedule is not built")
@@ -157,7 +87,7 @@ def test_signals_in_flight_outlive_the_epoch():
         engine.stimulus(index[row[place]], when)
     engine.run(grid.time + grid.interval)
     assert engine.pending() > 0
-    engine.reset(False, True)
+    engine.reset(False)
     assert engine.pending() > 0  # a reset clears the epoch's state, not the schedule
 
 
@@ -192,7 +122,7 @@ def test_a_resumed_run_measures_from_its_first_start_and_counts_its_epochs_on(tm
     assert baseline == report["baseline"]  # §9.3: the run's own b comes back with it
     assert offset == 6 and reference == first and grid is not again
     assert [c.weight for n in grid.all_neurons() for c in n.outgoing] == list(engine.weights())  # the saved state, whole
-    assert [n.rate for n in grid.all_neurons()] == report["rates"] and [n.expected_count for n in grid.all_neurons()] == report["expected_counts"]
+    assert [n.rate for n in grid.all_neurons()] == report["rates"]
     grid.use_input_stream(patterns, None)
     grid.input_at = offset
     w_saved = np.array(engine.weights())

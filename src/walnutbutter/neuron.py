@@ -57,7 +57,6 @@ class Neuron:
         self.threshold = float(threshold)  # total weighted input needed to fire
         self.minimum_potential = float(minimum_potential)  # inhibition can push the potential no lower than this
         self.potential = 0.0  # weighted input received since the last spike
-        self.noise = 0.0  # exploration noise added at the last input (see learning.py)
         self.delta = 0.0  # the width of this neuron's firing decision, in potential units (AUTHORITY.md §5.2, escape
         # noise): ESCAPE_DELTA times its starting threshold, set by Network.set_delta; 0 is the deterministic threshold
         self.exposed_since = 0.0  # clock time the hazard has run from: the previous decision, or the refractory period's end
@@ -75,8 +74,6 @@ class Neuron:
         self.credit = 0.0  # what the decision that fired credits each open arrival with, for fire() to settle (§6.7)
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
-        self.expected_count: float | None = None  # n_bar_j: the running expectation of this neuron's spikes an epoch, which
-        # the count_hebb eligibility (the epoch form) centres on (AUTHORITY.md §6.7); None until its first unforced epoch
         self.has_fired = False  # fired in the current epoch
         self.fired_in_wave: int | None = None  # the wave of the current epoch it (last) fired in; None until it fires
         self.forced = False  # forced to fire by the stimulus in the current epoch
@@ -352,7 +349,6 @@ class Neuron:
         self.has_fired = False
         self.fired_in_wave = None
         self.forced = False
-        self.noise = 0.0
         self.spikes_at_reset = self.spikes
 
     @property

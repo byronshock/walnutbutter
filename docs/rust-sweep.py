@@ -55,7 +55,7 @@ import statistics
 import sys
 import time
 
-from walnutbutter.constants import COUNT_MEMORY, DECISION_MEMORY, ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
+from walnutbutter.constants import DECISION_MEMORY, ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -99,7 +99,7 @@ def parse() -> argparse.Namespace:
                         help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
-    parser.add_argument("--eligibility", nargs="+", choices=("hebb", "count_hebb", "wrong_hebb", "perturb", "hazard"),
+    parser.add_argument("--eligibility", nargs="+", choices=("hazard", "hebb"),
                         default=["hazard" if ESCAPE_DELTA > 0 else "hebb"],
                         help="what the reward acts on (§6.7): the centred Hebbian term charged per decision (hebb, the single-spike "
                              "rule of September 17, 2026), its epoch form (count_hebb, hebb until that day), the uncentred +-1 it replaced "
@@ -175,7 +175,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     grid.interval, grid.drive = args.interval, args.drive
     grid.input_rate, grid.input_rate_off = args.input_rate, args.input_rate_off
     grid.quash_rate, grid.quash_k = args.quash, args.quash_k
-    grid.synapse_tau, grid.flip = args.synapse_tau, args.flip
+    grid.flip = args.flip
     grid.rule = "reinforce"
     grid.set_delta(args.delta)  # escape noise (§5.2), once the thresholds are the container's
     return grid, args
@@ -196,8 +196,6 @@ def _save_network(engine, grid, report: dict, path) -> None:
         c.weight = w
     for n, theta in zip(grid.all_neurons(), report["thresholds"]):
         n.threshold = theta
-    for n, expected in zip(grid.all_neurons(), report.get("expected_counts") or []):
-        n.expected_count = expected  # the count_hebb eligibility's expectation (§6.7), so a continuation starts centred
     for n, expectation in zip(grid.all_neurons(), report.get("expectations") or []):
         n.expectation = expectation  # the single-spike rule's per-decision expectation (§6.7)
     for n, decisions in zip(grid.all_neurons(), report.get("decisions") or []):
@@ -211,7 +209,7 @@ def _save_network(engine, grid, report: dict, path) -> None:
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
                     "temperature", "coding", "population", "output_coding", "clock", "quash_rate", "quash_k",
-                    "synapse_tau", "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
+                    "flip")  # what the arm's settings decide, applied to a restored network over its checkpoint
 
 
 def resume_grid(fresh, source, isi_factor: bool | None = None):
@@ -347,7 +345,6 @@ def run_arm(job: tuple) -> dict:
               "escape_scale": grid.escape_scale,  # and the count's scaling of every hazard, sqrt(60 / N) (§5.2)
               "decision_memory": DECISION_MEMORY if eligibility == "hebb" else None,  # the single-spike rule's memory (§6.7,
               # September 17, 2026); a record naming hebb with a count_memory that is not null ran the epoch form, count_hebb since
-              "count_memory": COUNT_MEMORY if eligibility == "count_hebb" else None,  # the epoch form's memory (§6.7); a record
               # naming hebb without it is from before September 16, 2026, when hebb named the +-1 rule now called wrong_hebb
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knobs
               "projection": getattr(grid, "projection", None),

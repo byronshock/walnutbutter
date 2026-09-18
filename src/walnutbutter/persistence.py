@@ -46,9 +46,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "clock": network.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [network.quash_rate, network.quash_k],  # the cycle quash (§6.11)
         "flip": network.flip,  # the probability each coded input bit is flipped on the way in (§4.3)
-        "synapse_tau": network.synapse_tau,  # the leak of the trace on a synapse (§6.12)
         "drive": network.drive,  # how a bit becomes spikes (§4.3)
-        "explore": network.explore,  # when the exploration draw is taken (§6.1)
         "rate": [network.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
         "pickiness": network.pickiness,  # the count read's line in spikes (§5.10, §9.5)
         "input_rate": [network.input_rate, network.input_rate_off],  # per ms, under rate drive
@@ -71,7 +69,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
         "floors": [n.minimum_potential for n in network.all_neurons()],
         "rates": [n.rate for n in network.all_neurons()],
-        "expected_counts": [n.expected_count for n in network.all_neurons()],  # n_bar_j, the count_hebb eligibility's expectation (§6.7)
         # the single-spike rule (§6.7, September 17, 2026): p_hat_j, the decisions to date, and E_j, the spikes expected since the
         # neuron's last spike, so a resumed run charges from where it was
         "expectations": [n.expectation for n in network.all_neurons()],
@@ -106,7 +103,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
             "rule": teacher.rule,
             "target": teacher.target,
             "lr": teacher.lr,
-            "sigma": teacher.sigma,
             "eligibility": teacher.eligibility,
             "epochs": teacher.epochs,
             "homeostasis": teacher.homeostasis,
@@ -114,7 +110,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
             "unstick": teacher.unstick,
             "unstick_target": teacher.unstick_target,
             "critic": teacher.critic,
-            "late": teacher.late,
             "history": teacher.history,
             "total_reward": teacher.total_reward,
             "baseline": teacher.baseline,
@@ -223,8 +218,6 @@ def load_weights(network: Goo, data: dict) -> None:
         neuron.threshold = threshold
     for neuron, rate in zip(neurons, data.get("rates", [])):
         neuron.rate = rate
-    for neuron, expected in zip(neurons, data.get("expected_counts", [])):
-        neuron.expected_count = expected
     _restore_clock(network, data)
 
 
@@ -293,9 +286,7 @@ def _restore_clock(network, data: dict) -> None:
     if data.get("quash"):
         network.quash_rate, network.quash_k = data["quash"]
     network.flip = data.get("flip", network.flip)
-    network.synapse_tau = data.get("synapse_tau", network.synapse_tau)
     network.drive = data.get("drive", network.drive)
-    network.explore = data.get("explore", network.explore)
     if data.get("rate"):
         network.rate_on, Neuron.rate_tau = data["rate"]
     if data.get("input_rate"):

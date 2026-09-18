@@ -83,45 +83,6 @@ def test_both_engines_draw_the_same_inputs_and_fire_the_same_neurons_wave_by_wav
     assert net.epoch == mesh.epoch == 50
 
 
-@pytest.mark.parametrize("late", ["count", "ignore", "depress"])
-@pytest.mark.parametrize("eligibility", ["perturb", "wrong_hebb"])
-def test_teaching_moves_both_engines_identically(late, eligibility):
-    mesh, net = pair(seed=5)
-    kw = dict(seed=7, late=late, eligibility=eligibility, homeostasis=0.01, unstick=0.1)  # fast enough to act in the test
-    a, b = Teacher(mesh, **kw), Teacher(net, **kw)
-    for _ in range(150):
-        ra, rb = a.epoch(verbose=False), b.epoch(verbose=False)
-        assert ra == rb
-        assert fired_waves(net) == fired_waves(mesh)
-        assert np.allclose(weights(net), weights(mesh), atol=1e-12)
-        assert np.allclose(thresholds(net), thresholds(mesh), atol=1e-12)
-        assert np.allclose(rates(net), rates(mesh), atol=1e-12)
-    assert a.accuracy_to_date == b.accuracy_to_date and a.unstuck_count == b.unstuck_count
-    on_a, off_a = stuck_neurons(mesh)
-    on_b, off_b = stuck_neurons(net)
-    assert (len(on_a), len(off_a)) == (len(on_b), len(off_b))
-    assert a.record()["stuck_on"] == b.record()["stuck_on"]
-
-
-def test_the_count_hebb_eligibility_moves_both_engines_identically():
-    """§6.7's epoch form of the centred Hebbian rule (September 16, 2026; count_hebb since September 17): the tally of what
-    each synapse delivered, every neuron's expected count and the weights agree between the engines, to the bit -- the
-    rule is integers and one moving average."""
-    mesh, net = pair(seed=5, delta=ESCAPE_DELTA)
-    kw = dict(seed=7, eligibility="count_hebb", rule="reinforce", homeostasis=0.01, unstick=0.1)
-    a, b = Teacher(mesh, **kw), Teacher(net, **kw)
-    assert mesh.tally and net.tally and a.sigma == b.sigma == 0.0
-    before = list(weights(mesh))
-    for _ in range(150):
-        assert a.epoch(verbose=False) == b.epoch(verbose=False)
-        assert fired_waves(net) == fired_waves(mesh)
-        assert [mesh.connections[i].eligibility for i in range(1, len(mesh.connections) + 1)] == net.eligibility.tolist()
-        assert [n.expected_count for n in mesh.all_neurons()] == [None if np.isnan(e) else e for e in net.expected_count.tolist()]
-        assert list(weights(mesh)) == list(weights(net))
-        assert np.allclose(thresholds(net), thresholds(mesh), atol=1e-12)
-    assert list(weights(mesh)) != before  # the rule moved something
-    assert a.accuracy_to_date == b.accuracy_to_date
-
 
 def test_the_decoded_critics_agree_on_a_hamming_mesh():
     mesh = Goo(count=84, across=14, weight=None, seed=2)

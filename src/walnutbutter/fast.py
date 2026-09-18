@@ -17,8 +17,7 @@ the same bits. `compare()` is the harness for that.
 from __future__ import annotations
 
 from .constants import (
-    COUNT_MEMORY,
-    DECISION_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, SYNAPSE_TAU, TARGET_RATE, UNSTICK,
+    DECISION_MEMORY, HOMEOSTASIS, QUASH_K, RATE_MEMORY, STUCK_ABOVE, STUCK_BELOW, TARGET_RATE, UNSTICK,
     UNSTICK_TARGET, WEIGHT_RANGE,
 )
 from .neuron import Neuron
@@ -63,14 +62,13 @@ def flatten(network):
     return neurons, index, source, target, weight, active
 
 
-def build(network, *, quash_rate=0.0, quash_k=QUASH_K, synapse_tau=SYNAPSE_TAU,
-          weight_range=WEIGHT_RANGE, earn=False, sigma=0.0, explore_rng=None):
+def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE, explore_rng=None):
     """An Engine carrying this network's topology and state, ready to run epochs.
 
-    With `sigma` > 0 the engine draws exploration noise per wave (§6.1), and
-    `explore_rng` -- a `random.Random` -- is the stream it draws from: its
-    state is handed over here and `sync_explore` hands it back, so the other
-    two engines given the same stream take the same draws in the same order.
+    `explore_rng` -- a `random.Random` -- is the exploration stream the firing
+    decisions draw from (§7.3): its state is handed over here and `sync_explore`
+    hands it back, so the other two engines given the same stream take the same
+    draws in the same order.
     """
     rust = _require()
     neurons, index, source, target, weight, active = flatten(network)
@@ -80,12 +78,12 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, synapse_tau=SYNAPSE_TAU,
         Neuron.tau, Neuron.refractory, Neuron.hop(), Neuron.bored_after, Neuron.rate_tau,
     )
     deltas = [n.delta for n in neurons]  # escape noise (§5.2): each neuron's decision width, 0 when off
-    if sigma > 0.0 or any(d > 0.0 for d in deltas):
+    if any(d > 0.0 for d in deltas):
         if explore_rng is None:
-            raise ValueError("exploration or escape noise needs a stream: pass explore_rng, the random.Random the other engines use")
+            raise ValueError("escape noise needs a stream: pass explore_rng, the random.Random the other engines use (§7.3)")
         engine.set_explore_state(list(explore_rng.getstate()[1]))
     low, high = weight_range
-    engine.set_rules(quash_rate, quash_k, synapse_tau, low, high, earn, sigma)
+    engine.set_rules(quash_rate, quash_k, low, high)
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
     engine.set_isi_factor(bool(Neuron.isi_factor), Neuron.target_isi)  # §0.2: every charge weighed by the ISI factor
@@ -143,40 +141,23 @@ class _Thresholds:
     The Rust engine owns the potentials; the Teacher owns each neuron's running
     firing rate and moves its threshold from that once an epoch, in Python, which
     is cheap and keeps the arithmetic in the same order as the object engine's.
-    The expected spike count the count_hebb eligibility centres on (§6.7) is the
-    Teacher's too, kept here the same way: `centred()` hands the engine this
-    epoch's counts against it, and `step()` then moves it.
     """
 
-    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, rate_memory=RATE_MEMORY,
-                 count_memory=COUNT_MEMORY):
+    def __init__(self, engine, neurons, out, *, homeostasis, target_rate, unstick, unstick_target, rate_memory=RATE_MEMORY):
         self.engine, self.out = engine, out
         self.rates = [n.rate for n in neurons]
-        self.expected = [n.expected_count for n in neurons]  # n_bar_j; None until the neuron's first unforced epoch
         self.thresholds = [n.threshold for n in neurons]
         self.homeostasis, self.target_rate = homeostasis, target_rate
         self.unstick, self.unstick_target = unstick, unstick_target
-        self.rate_memory, self.count_memory = rate_memory, count_memory
+        self.rate_memory = rate_memory
         self.unstuck = 0
-
-    def centred(self) -> list[float]:
-        """n_j - n_bar_j for every neuron, this epoch's count against the expectation as it stands (§6.7's count_hebb eligibility).
-
-        A neuron with no expectation yet centres on itself, so its first unforced
-        epoch moves nothing -- the object engine's reading, operation for operation.
-        """
-        counts = self.engine.epoch_spike_counts()
-        return [float(c) - (float(c) if e is None else e) for c, e in zip(counts, self.expected)]
 
     def step(self) -> None:
         fired, forced = self.engine.fired_this_epoch(), self.engine.forced_flags()
-        rates, thresholds, expected = self.rates, self.thresholds, self.expected
-        counts = self.engine.epoch_spike_counts()
+        rates, thresholds = self.rates, self.thresholds
         for i in range(len(rates)):
             if not forced[i]:
                 rates[i] += self.rate_memory * ((1.0 if fired[i] else 0.0) - rates[i])
-                count = float(counts[i])
-                expected[i] = count if expected[i] is None else expected[i] + self.count_memory * (count - expected[i])
         moved = False
         if self.homeostasis > 0:
             for i in range(len(rates)):
@@ -207,26 +188,24 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
     With a `teacher` (a Teacher on this network, RULE = reinforce, the row critic, late =
     count, no trace) each epoch is `teacher.epoch()` on the object side and the same
     reward, advantage, §6.7 update, firing-rate memory, homeostasis and un-sticking
-    mirrored on the Rust side, so the perturb eligibility and its per-wave draws (§6.1)
-    and the Teacher's threshold moves are checked as well as the dynamics. The Rust engine is handed the teacher's own stream at the start and the
+    mirrored on the Rust side, so the per-decision entries of §8.4 and the Teacher's
+    threshold moves are checked as well as the dynamics. The Rust engine is handed the teacher's own stream at the start and the
     two then draw independently; that they land on the same bits, and on the same stream
     state at the end, is the test.
     """
     from .learning import TARGETS
     from .monitor import run_epoch
 
-    sigma = teacher.sigma if teacher is not None else 0.0
     if teacher is not None:
-        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence") or teacher.late != "count" or teacher.leaky:
-            raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic, late = count and no trace only")
+        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence"):
+            raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic only")
         if teacher.network is not network:
             raise ValueError("the teacher must be teaching this network")
     engine, neurons, index = build(
         network,
         quash_rate=network.quash_rate, quash_k=network.quash_k,
-        synapse_tau=network.synapse_tau,
-        weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline") or network.tally,
-        sigma=sigma, explore_rng=teacher.rng if teacher is not None else None,
+        weight_range=network.weight_range,
+        explore_rng=teacher.rng if teacher is not None else None,
     )
     edges = [c for neuron in neurons for c in neuron.outgoing]
     out = [index[neuron] for neuron in network.output_row()]
@@ -241,7 +220,7 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
             run_epoch(network, bits, verbose=False)
         else:
             reward = teacher.epoch(bits, verbose=False)
-        engine.reset(False, network.rule in ("teacher", "adaline") or network.tally)
+        engine.reset(False)
         for place, when in (network.input_events or []):
             engine.stimulus(index[network.input_row()[place]], when)
         engine.run(network.horizon)
@@ -252,20 +231,11 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
                 parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
             if baseline is None:
                 baseline = reward
-            if teacher.eligibility == "perturb":
-                engine.reinforce_perturb(reward - baseline, teacher.lr, sigma)
-            elif teacher.eligibility in ("hazard", "hebb"):
-                engine.reinforce_scores(reward - baseline, teacher.lr)
-            elif teacher.eligibility == "count_hebb":
-                engine.reinforce_count_hebb(reward - baseline, teacher.lr, book.centred())
-            else:
-                engine.reinforce_wrong_hebb(reward - baseline, teacher.lr)
+            engine.reinforce_scores(reward - baseline, teacher.lr)  # §8.4, under either eligibility
             book.step()
             baseline += teacher.baseline_rate * (reward - baseline)
             if [n.rate for n in neurons] != book.rates:
                 parted.append((epoch, "firing-rate memories differ"))
-            if [n.expected_count for n in neurons] != book.expected:
-                parted.append((epoch, "expected counts differ"))
             if [n.threshold for n in neurons] != book.thresholds:
                 parted.append((epoch, "thresholds differ after homeostasis / un-sticking"))
 
@@ -273,11 +243,6 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
         theirs = list(engine.spike_counts())
         if mine != theirs:
             parted.append((epoch, f"spikes differ: {sum(abs(a - b) for a, b in zip(mine, theirs))} in total"))
-        if sigma > 0.0:
-            mine = [n.noise for n in neurons]
-            theirs = list(engine.noises())
-            if mine != theirs:
-                parted.append((epoch, f"noise differs on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
         if teacher is not None and teacher.eligibility in ("hazard", "hebb"):
             mine = [c.score for c in edges]
             theirs = list(engine.scores())
@@ -298,11 +263,6 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
                 parted.append((epoch, f"expectations differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} neurons"))
             if [n.decisions for n in neurons] != list(engine.decision_counts()):
                 parted.append((epoch, "decision counts differ"))
-        if teacher is not None and teacher.eligibility == "count_hebb":
-            mine = [c.eligibility for c in edges]
-            theirs = list(engine.eligibilities())
-            if mine != theirs:
-                parted.append((epoch, f"tallies differ on {sum(1 for a, b in zip(mine, theirs) if a != b)} synapses"))
         mine = [c.weight for c in edges]
         theirs = list(engine.weights())
         worst = max((abs(a - b) for a, b in zip(mine, theirs)), default=0.0)
@@ -310,7 +270,7 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
             parted.append((epoch, f"weights differ by up to {worst:g}"))
         if parted:
             break
-    if not parted and teacher is not None and (sigma > 0.0 or network.hazard):
+    if not parted and teacher is not None and network.hazard:
         if list(engine.explore_state()) != list(teacher.rng.getstate()[1]):
             parted.append((epochs, "the two streams ended in different states: a different number of draws was taken"))
     return parted
@@ -330,13 +290,12 @@ def benchmark(network, epochs=200, bits=None):
     if available():
         engine, neurons, index = build(
             network, quash_rate=network.quash_rate, quash_k=network.quash_k,
-            synapse_tau=network.synapse_tau,
-            weight_range=network.weight_range, earn=network.rule in ("teacher", "adaline"),
+            weight_range=network.weight_range,
         )
         row = network.input_row()
         started = time.perf_counter()
         for _ in range(epochs):
-            engine.reset(False, network.rule in ("teacher", "adaline"))
+            engine.reset(False)
             network.new_random_input()
             for place, when in network.input_schedule():
                 engine.stimulus(index[row[place]], when)
@@ -346,10 +305,10 @@ def benchmark(network, epochs=200, bits=None):
 
 
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
-          eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
+          eligibility="hebb", seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
           unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           direction=None, reference_weights=None, epoch_offset=0, baseline=None):
-    """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
+    """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
     from the network's own seeded stream, in the same order the other engines draw them — and
@@ -361,15 +320,12 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     order. Without it the bits come from the network's own stream, which a differently built
     network consumes differently.
 
-    `eligibility` is hebb (the single-spike rule of §6.7, September 17, 2026: every neuron
-    charges its decisions against its own per-decision expectation; sigma is then 0, as
-    the Teacher sets it), count_hebb (the epoch form hebb was until then: the engine tallies
-    what each synapse delivered and the book keeps each neuron's expected count), wrong_hebb (the ±1 rule it replaced on September 16, 2026, sigma
-    0 too), perturb, which needs a positive `sigma` and draws its noise per wave (§6.1)
-    from `random.Random(seed)`, the stream a Teacher with that seed would use, so a Rust
-    run and a Python run of the same seed take the same draws, or hazard, which needs the
-    network to have been given a positive ESCAPE_DELTA (`network.set_delta`, §5.2) and draws its
-    decisions from the same stream. The row critic and late = count only.
+    `eligibility` is one of the two §8.3 keeps: hebb, which charges every decision against
+    the neuron's own expectation (§8.6), or hazard, which takes the escape decision's own
+    score (§8.7). Either way the network needs a positive ESCAPE_DELTA
+    (`network.set_delta`), since §8.3 refuses the rule where the threshold decides, and the
+    decisions draw from `random.Random(seed)` -- the stream a Teacher with that seed
+    would use, so a Rust run and a Python run of the same seed take the same draws.
 
     `critic` is row (the fraction of outputs matching the target), class (§8: the
     label's group of outputs out-spikes every other group, or nothing), graded (the
@@ -409,27 +365,23 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
 
     from .learning import TARGETS
 
-    if eligibility not in ("wrong_hebb", "hebb", "count_hebb", "perturb", "hazard"):
-        raise ValueError(f"eligibility must be hebb, count_hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
-    if eligibility == "perturb" and sigma <= 0.0:
-        raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
+    if eligibility not in ("hazard", "hebb"):
+        raise ValueError(f"§8.3 keeps two eligibilities, hazard and hebb; got {eligibility!r}")
     if not network.hazard:  # §8.3: no eligibility runs where the threshold decides
         raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient "
                          "from the randomness of the decision, and with no width there is no randomness to estimate from. "
                          "network.set_delta(ESCAPE_DELTA > 0) first (§8.3)")
-    sigma = sigma if eligibility == "perturb" else 0.0
-    explore_rng = random.Random(seed) if (sigma > 0.0 or network.hazard) else None  # the hazard's draws come from it too
+    explore_rng = random.Random(seed)  # §7.3: the exploration stream the firing decisions draw from
 
     if critic not in ("row", "class", "graded", "evidence"):
         raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")
     if patterns is not None:
         network.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
-    network.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions, as a Teacher would set
+    network.centre(eligibility == "hebb")  # §8.6: under hebb every neuron charges its decisions against its own expectation
 
     engine, neurons, index = build(
         network, quash_rate=network.quash_rate, quash_k=network.quash_k,
-        synapse_tau=network.synapse_tau, weight_range=network.weight_range,
-        sigma=sigma, explore_rng=explore_rng, earn=eligibility == "count_hebb",  # the tally of §6.7's epoch form
+        weight_range=network.weight_range, explore_rng=explore_rng,
     )
     row = network.output_row()
     out = [index[neuron] for neuron in row]
@@ -469,7 +421,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
         network.epoch += 1
         events = network.input_schedule()
         network.horizon = network.time + network.interval
-        engine.reset(False, eligibility == "count_hebb")  # a new epoch tallies afresh
+        engine.reset(False)
         if events:
             engine.stimulate_many([at[place] for place, _ in events], [when for _, when in events])
         engine.run(network.horizon)
@@ -477,14 +429,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
         reward = _reward(engine, network, out, critic, want_of)
         if baseline is None:
             baseline = reward
-        if eligibility in ("hazard", "hebb"):
-            engine.reinforce_scores(reward - baseline, lr)
-        elif sigma > 0.0:
-            engine.reinforce_perturb(reward - baseline, lr, sigma)
-        elif eligibility == "count_hebb":
-            engine.reinforce_count_hebb(reward - baseline, lr, book.centred())
-        else:
-            engine.reinforce_wrong_hebb(reward - baseline, lr)
+        engine.reinforce_scores(reward - baseline, lr)  # §8.4, under either eligibility
         book.step()
         baseline += baseline_rate * (reward - baseline)
         total += reward
@@ -503,7 +448,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
             probe(epoch + 1, engine, network, out, book)
     on, off = book.stuck()
-    report = {"last_tenth": tail / tenth, "rates": book.rates, "expected_counts": book.expected, "thresholds": book.thresholds,
+    report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
               # the single-spike rule's expectations and decisions to date (§6.7), so a continuation charges from where it was
               "expectations": [None if e != e else e for e in engine.expectations()], "decisions": list(engine.decision_counts()),
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,

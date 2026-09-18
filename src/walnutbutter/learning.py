@@ -92,7 +92,7 @@ import random
 from typing import Callable, Sequence
 
 from .constants import (
-    BASELINE_RATE, COUNT_MEMORY, LEAKY_ELIGIBILITY, SYNAPSE_TAU, CRITIC, ELIGIBILITY, HOMEOSTASIS, LATE, LR, RATE_MEMORY, RULE, SIGMA,
+    BASELINE_RATE, CRITIC, ELIGIBILITY, HOMEOSTASIS, LR, RATE_MEMORY, RULE,
     STUCK_ABOVE, STUCK_BELOW,
     TARGET, TARGET_RATE, UNSTICK, UNSTICK_TARGET, WINDOW,
 )
@@ -112,13 +112,11 @@ TARGETS: dict[str, Target] = {
 }
 
 RULES = ("reinforce", "local")  # which rule pays at the read (AUTHORITY.md §9.1); "local"
-# means none of them does, and the local rules that compose -- the quash (§6.11), leaky Hebb (§6.12), the decay (§6.8) --
-# are the whole of the learning (Byron, September 13, 2026: "no teacher for now")
-ELIGIBILITIES = ("perturb", "wrong_hebb", "hebb", "count_hebb", "hazard")  # wrong_hebb: the +-1 by whether the target fired;
-# hebb: the single-spike rule (§6.7, September 17, 2026), charged at every decision of the target; count_hebb, the epoch form: what the
-# synapse delivered times the target's count minus its expectation (§6.7); hazard: the score of the escape-noise decision
-# (§5.2) on each synapse's trace (§6.7)
-LATE_RULES = ("count", "ignore", "depress")  # what a signal that arrived after its target fired earns
+# means none of them does, and the local rules of §10 -- the quash alone -- are the whole of the learning
+# (Byron, September 13, 2026: "no teacher for now")
+ELIGIBILITIES = ("hazard", "hebb")  # the two §8.3 keeps. Both are the single-spike rule of §8.4 and differ in what a
+# decision's credit and expectation are: hazard takes the escape decision's own score (§8.7), hebb the neuron's own
+# estimate of its spike (§8.6). Neither takes a late-signal rule or an eligibility trace of its own (§8.13)
 
 
 def arrays(network) -> bool:
@@ -410,23 +408,16 @@ def forced(neuron: Neuron) -> bool:
 
 
 def update_rates(network: Network) -> None:
-    """Move every neuron's running firing-rate estimate, and its expected spike count, toward what it did this epoch.
+    """Move every neuron's running firing-rate estimate toward what it did this epoch (AUTHORITY.md §9.8).
 
     A neuron forced this epoch is skipped: that firing says nothing about the
-    network. The expected count, n_bar_j, is what the count_hebb eligibility centres
-    on (AUTHORITY.md §6.7); it starts at the first count seen and then moves
-    by COUNT_MEMORY an epoch, after the update has used it.
+    network.
     """
     if arrays(network):
         return network.update_rates()
     for neuron in network.all_neurons():
         if not forced(neuron):
             neuron.rate += RATE_MEMORY * ((1.0 if neuron.has_fired else 0.0) - neuron.rate)
-            count = float(neuron.epoch_spikes)
-            if neuron.expected_count is None:
-                neuron.expected_count = count  # its first unforced epoch sets the expectation
-            else:
-                neuron.expected_count += COUNT_MEMORY * (count - neuron.expected_count)
 
 
 def stuck_neurons(network: Network) -> tuple[list[Neuron], list[Neuron]]:
@@ -522,119 +513,38 @@ def reinforce(
     network: Network,
     advantage: float,
     lr: float = LR,
-    sigma: float = SIGMA,
     eligibility: str = ELIGIBILITY,
-    late: str = LATE,
-    leaky: bool = LEAKY_ELIGIBILITY,
 ) -> int:
-    """Apply the global-reward update for the epoch that has just run. Returns connections changed.
+    """Apply the epoch's update to every synapse, by the single-spike rule of AUTHORITY.md §8.4.
 
-    `late` says what a signal that arrived after its target fired (see `landed`)
-    earns: "count" the same update as one that landed, "ignore" none, or
-    "depress" the opposite.
-
-    `leaky` appends the trace of §6.12 to the chain, so the update becomes
-
-        w_ij <- clip(w_ij + LR * A * e_j * exp(-(t_read_j - t_fired_i) / TAU)),
-
-    with t_read_j the moment j's answer was fixed: its spike if it fired, and
-    the arrival of the signal itself if it did not, since a target that never
-    fired offers no moment at which its synapses can be told apart. Without the
-    trace every synapse that delivered into j gets the same update whatever it
-    delivered; with it, each synapse of a firing neuron is weighted by the
-    charge it still had in it when it fired.
+    Two eligibilities survive (§8.3), hazard and hebb. Both are the same rule
+    and differ only in what a decision's credit and expectation are, so both
+    carry their own trace: neither takes a late-signal rule or an eligibility
+    trace of its own (§8.13).
     """
     if eligibility not in ELIGIBILITIES:
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
-    if late not in LATE_RULES:
-        raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
     if not getattr(network, "hazard", False):  # §8.3: no eligibility runs where the threshold decides
         raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3)")
-    if eligibility == "hazard":
-        if late != "count" or leaky:
-            raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
-    if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):
-        raise ValueError(f"the {eligibility} eligibility carries its own trace of what each synapse delivered: late = count "
-                         "and no leaky trace (§6.7)")
     if arrays(network):
-        return network.reinforce(advantage, lr, sigma, eligibility, late, leaky)
-    if eligibility in ("hazard", "hebb"):
-        network.settle_scores()  # under the evidence accumulator the open arrivals' debit is brought into the score first (§6.7)
+        return network.reinforce(advantage, lr, eligibility)
+    network.settle_scores()  # under the evidence accumulator the open arrivals' debit is brought into the score first (§8.11)
     if not advantage:
         return 0
     low, high = network.weight_range
     step = lr * advantage
-    if eligibility in ("hazard", "hebb"):  # §6.7: every synapse into an unforced neuron moves by what its scores summed to
-        changed = 0
-        for connection in network.connections.values():
-            if not connection.score or connection.target.forced:
-                continue  # nothing accumulated, or a forced input: its firing was not the network's doing
-            weight = connection.weight + step * connection.score
-            if weight < low:
-                weight = low
-            elif weight > high:
-                weight = high
-            connection.weight = weight
-            changed += 1
-        return changed
-    if eligibility == "count_hebb":  # §6.7's epoch form: what each synapse delivered times its target's count minus its expectation
-        changed = 0
-        for connection in network.connections.values():
-            target = connection.target
-            if not connection.eligibility or target.forced:
-                continue  # delivered nothing this epoch, or a forced input: its firing was not the network's doing
-            if target.expected_count is None:
-                continue  # the target's first unforced epoch: the expectation is this count, and the eligibility zero
-            e = connection.eligibility * (target.epoch_spikes - target.expected_count)
-            if not e:
-                continue  # exactly as many spikes as expected: nothing to credit or blame
-            weight = connection.weight + step * e
-            if weight < low:
-                weight = low
-            elif weight > high:
-                weight = high
-            connection.weight = weight
-            changed += 1
-        return changed
-    perturb = eligibility == "perturb"
-    tau, hop = getattr(network, "synapse_tau", SYNAPSE_TAU), Neuron.hop()  # the synapse's leak, not the neuron's (§6.12)
+    # §8.4: every synapse into an unforced neuron moves by what its per-decision entries summed to
     changed = 0
-    last_delivery: dict = {}  # once per connection per epoch, by its last delivery (a source may fire more than once)
-    for wave in network.waves:
-        for connection in wave.delivered:
-            last_delivery[connection] = wave.number
-    for connection, arrived in last_delivery.items():
-        if True:
-            target = connection.target
-            if target.forced:
-                continue  # a forced input: its firing was not the network's doing
-            fired_in = target.fired_in_wave
-            if perturb:
-                e = target.noise / sigma if sigma else 0.0
-            else:
-                e = 1.0 if target.has_fired else -1.0
-            if late != "count" and fired_in is not None and arrived > fired_in:
-                if late == "ignore":
-                    continue  # dropped on arrival: it changed nothing this epoch
-                e = -e  # arrived after the firing: weakened where an early one would be strengthened
-            if not e:
-                continue
-            if leaky:
-                if connection.last_signal is None:
-                    continue  # nothing was ever integrated here, so it was contributing nothing
-                when = target.fired_at if target.has_fired else connection.last_signal
-                # A target that never fired has no moment at which its synapses can be told apart, so
-                # the trace is exp(-hop/TAU) for all of them: the scale changes, the resolution does not.
-                # Reading it at the horizon instead annihilates the whole non-firing half (5e-5 at TAU 2,
-                # a 35 ms epoch), which is the depressive half of the wrong_hebb eligibility.
-                e = e * math.exp(-(when - connection.last_signal + hop) / tau)
-            weight = connection.weight + step * e
-            if weight < low:
-                weight = low
-            elif weight > high:
-                weight = high
-            connection.weight = weight
-            changed += 1
+    for connection in network.connections.values():
+        if not connection.score or connection.target.forced:
+            continue  # nothing accumulated, or a forced input: its firing was not the network's doing
+        weight = connection.weight + step * connection.score
+        if weight < low:
+            weight = low
+        elif weight > high:
+            weight = high
+        connection.weight = weight
+        changed += 1
     return changed
 
 
@@ -654,7 +564,6 @@ class Teacher:
         network: Network,
         target: str = TARGET,
         lr: float = LR,
-        sigma: float = SIGMA,
         eligibility: str | None = None,
         baseline_rate: float = BASELINE_RATE,
         window: int = WINDOW,
@@ -665,9 +574,7 @@ class Teacher:
         unstick: float = UNSTICK,
         unstick_target: float = UNSTICK_TARGET,
         critic: str = CRITIC,
-        late: str = LATE,
         rule: str = RULE,
-        leaky: bool = LEAKY_ELIGIBILITY,
     ):
         if rule not in RULES:
             raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
@@ -682,26 +589,19 @@ class Teacher:
         if critic in ("class", "graded", "evidence") and target != "label":
             raise ValueError(f"the {critic} critic scores a dataset's label (§8): its target is label")
         self.critic = critic
-        if late not in LATE_RULES:
-            raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
-        self.late = late  # what a signal arriving after its target fired earns
-        self.leaky = bool(leaky)  # append the leaky trace of §6.12 to the reinforce rule's chain
-        if eligibility is None:  # the eligibility follows the neuron (§1.3): the hazard's under escape noise, else the constant's
-            eligibility = "hazard" if getattr(network, "hazard", False) else ELIGIBILITY
+        if eligibility is None:  # §8.3: where a run names none and the decision is a draw, the eligibility is hazard
+            eligibility = ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
         if rule == "reinforce" and not getattr(network, "hazard", False):  # §8.3
             raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3) before the Teacher")
-        if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
-            raise ValueError("learning rate, sigma, homeostasis and unstick rates must not be negative")
+        if lr < 0 or homeostasis < 0 or unstick < 0:
+            raise ValueError("learning rate, homeostasis and unstick rates must not be negative")
         if not 0.0 < unstick_target < 1.0:
             raise ValueError(f"unstick target firing rate must be between 0 and 1, got {unstick_target}")
         self.unstick = unstick
         self.unstick_target = unstick_target
         self.unstuck_count = 0  # how many epoch-nudges the un-sticking has applied
-        self.moved = 0  # synapses the external teacher has moved
-        self.last_signal: float | None = None  # the teacher's score for the last epoch, in [-1, 1]
-        self.mistakes = 0.0  # output neurons read wrongly in the last epoch (the ADALINE rule)
         self.history: list[dict] = []  # one entry per progress report; saved in checkpoints
         if not 0.0 < target_rate < 1.0:
             raise ValueError(f"target firing rate must be between 0 and 1, got {target_rate}")
@@ -711,10 +611,8 @@ class Teacher:
         self.network = network
         self.target = target
         self.lr = lr
-        self.sigma = sigma if eligibility == "perturb" else 0.0
         self.eligibility = eligibility
-        network.tally = eligibility == "count_hebb"  # the tally of what each synapse delivered, the x_ij of §6.7's epoch form, in whichever engine
-        network.centre(eligibility == "hebb")  # the single-spike rule (§6.7): every neuron charges its decisions against its own expectation
+        network.centre(eligibility == "hebb")  # §8.6: under hebb every neuron charges its decisions against its own expectation
         self.baseline_rate = baseline_rate
         self.window = window
         self.rng = random.Random(seed)
@@ -740,7 +638,7 @@ class Teacher:
 
     def epoch(self, bits: Sequence[bool] | None = None, verbose: bool = True) -> float:
         """Run one epoch with exploration noise, then learn from it. Returns its reward."""
-        run_epoch(self.network, bits, verbose=verbose, noise=self.sigma, rng=self.rng, discharge=self.discharge)
+        run_epoch(self.network, bits, rng=self.rng, verbose=verbose, discharge=self.discharge)
         return self.step()
 
     def step(self) -> float:
@@ -750,7 +648,7 @@ class Teacher:
             self.baseline = reward
         advantage = reward - self.baseline
         if self.rule == "reinforce":
-            reinforce(self.network, advantage, self.lr, self.sigma, self.eligibility, self.late, self.leaky)
+            reinforce(self.network, advantage, self.lr, self.eligibility)
         update_rates(self.network)
         homeostasis(self.network, self.homeostasis, self.target_rate)
         self.unstuck_count += len(unstick(self.network, self.unstick, self.unstick_target))
@@ -794,11 +692,9 @@ class Teacher:
         if self.rule == "local":
             settings = "nothing pays at the read (§9.1); the local rules are the whole of it"
         else:
-            settings = f"{self.eligibility}{' + leaky trace' if self.leaky else ''}, lr {self.lr:g}, sigma {self.sigma:g}"
+            settings = f"{self.eligibility}, lr {self.lr:g}"
         if self.critic != "row":
             settings += f", critic {self.critic}"
-        if self.late != "count":
-            settings += f", late signals {self.late}d"
         if self.homeostasis:
             settings += f", homeostasis {self.homeostasis:g} toward {self.target_rate:g}"
         if self.unstick:

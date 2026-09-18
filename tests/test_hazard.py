@@ -151,7 +151,6 @@ def test_the_three_engines_agree_under_the_hazard_eligibility():
     net = ArrayNetwork(twin)
     on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="hazard", target="copy", homeostasis=0.01, unstick=0.1)
     on_net = Teacher(net, seed=7, rule="reinforce", eligibility="hazard", target="copy", homeostasis=0.01, unstick=0.1)
-    assert on_mesh.sigma == 0.0
     for _ in range(40):
         on_mesh.epoch(verbose=False)
         on_net.epoch(verbose=False)
@@ -169,37 +168,6 @@ def test_the_three_engines_agree_under_the_hazard_eligibility():
         assert parted == [], parted
         assert teacher.rng.getstate() != random.Random(7).getstate()  # the stream really moved, on both sides alike
 
-
-def test_the_three_engines_agree_under_the_count_hebb_eligibility_with_escape_noise():
-    """§6.7's epoch form of the centred Hebbian rule (September 16, 2026; count_hebb since the single-spike rule of
-    September 17) on the network the sweeps run, goo under escape noise: every
-    spike, every tally, every expected count and every weight in every engine. The rule is integer counts and one
-    moving average, so the array engine agrees to the bit here, where the hazard's continuous score could not."""
-    np = pytest.importorskip("numpy")
-    from walnutbutter.arrays import ArrayNetwork
-    mesh, twin = goo(), goo()
-    mesh.set_delta(0.7)
-    twin.set_delta(0.7)
-    net = ArrayNetwork(twin)
-    on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
-    on_net = Teacher(net, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
-    assert on_mesh.sigma == 0.0 and mesh.tally and net.tally
-    ids = range(1, len(mesh.connections) + 1)
-    before = [mesh.connections[i].weight for i in ids]
-    for _ in range(40):
-        assert on_mesh.epoch(verbose=False) == on_net.epoch(verbose=False)
-        assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
-        assert [mesh.connections[i].eligibility for i in ids] == net.eligibility.tolist()
-        assert [n.expected_count for n in mesh.all_neurons()] == [None if np.isnan(e) else e for e in net.expected_count.tolist()]
-        assert [mesh.connections[i].weight for i in ids] == net.weight.tolist()
-    assert any(mesh.connections[i].eligibility != 0.0 for i in ids)
-    assert [mesh.connections[i].weight for i in ids] != before  # the rule moved something
-    if fast.available():
-        g = goo()
-        g.set_delta(0.7)
-        teacher = Teacher(g, seed=7, rule="reinforce", eligibility="count_hebb", target="copy", homeostasis=0.01, unstick=0.1)
-        parted = fast.compare(g, epochs=60, teacher=teacher)
-        assert parted == [], parted
 
 
 def test_the_count_scales_every_hazard_down_as_its_square_root():
@@ -497,7 +465,7 @@ def test_the_three_engines_agree_under_the_hebb_eligibility(tau):
         net = ArrayNetwork(twin)
         on_mesh = Teacher(mesh, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
         on_net = Teacher(net, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
-        assert on_mesh.sigma == 0.0 and mesh.centred and net.centred and not mesh.tally
+        assert mesh.centred and net.centred
         ids = range(1, len(mesh.connections) + 1)
         for _ in range(40):
             on_mesh.epoch(verbose=False)

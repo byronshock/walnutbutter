@@ -109,7 +109,7 @@ def main() -> int:
             return
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{args.eligibility}-seed{args.seed}-epoch{offset + epoch}-network.json"
-        rs._save_network(engine, grid, {"thresholds": book.thresholds, "expected_counts": book.expected, "rates": book.rates,
+        rs._save_network(engine, grid, {"thresholds": book.thresholds, "rates": book.rates,
                                         "expectations": [None if e != e else e for e in engine.expectations()],  # p_hat_j (§6.7)
                                         "decisions": list(engine.decision_counts())}, path)
         print(f"checkpoint {path.relative_to(ROOT)} (the network whole; --resume takes it, not to the bit)", flush=True)

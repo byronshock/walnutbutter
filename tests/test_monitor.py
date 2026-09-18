@@ -184,7 +184,7 @@ def test_cli_learn_runs_epochs_and_reports_accuracy(capsys):
             "--lr", "0.1", "--epochs", "200", "--rule", "reinforce"]
     assert cli_main(args) == 0
     err = capsys.readouterr().err
-    assert "learning all-off (hazard, lr 0.1, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err  # the default follows the neuron
+    assert "learning all-off (hazard, lr 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in err  # the default follows the neuron
     assert "after 200 epochs:" in err and "to date over 200 epochs" in err
     final = float(err.rsplit("% recent", 1)[0].rsplit(" ", 1)[1])
     assert 0 <= final <= 100  # the factored-out rule runs and reports; no performance claim under the schedule
@@ -207,12 +207,6 @@ def test_cli_learns_by_default_and_no_learn_switches_it_off(capsys):
     assert cli_main(["--headless", "--across", "8", "--goo", "32", "-q", "--seed", "1", "--epochs", "3", "--no-learn"]) == 0
     assert "learning" not in capsys.readouterr().err
 
-
-def test_cli_eligibility_and_sigma_options(capsys):
-    args = ["--headless", "--across", "8", "--goo", "32", "--seed", "1", "-q", "--eligibility", "wrong_hebb",
-            "--sigma", "0.3", "--lr", "0.02", "--epochs", "20", "--rule", "reinforce"]
-    assert cli_main(args) == 0
-    assert "learning reversed (wrong_hebb, lr 0.02, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001)" in capsys.readouterr().err
 
 
 def test_cli_saves_and_loads_weights(tmp_path, capsys):

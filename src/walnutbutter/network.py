@@ -16,8 +16,8 @@ import random
 from typing import Iterable
 
 from .constants import (
-    ESCAPE_REFERENCE_COUNT, EXPLORE, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
-    QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, SYNAPSE_TAU, THRESHOLD_FAN_IN,
+    ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
+    QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, THRESHOLD_FAN_IN,
 )
 
 
@@ -33,7 +33,7 @@ def escape_scale(count: int) -> float:
     import math
     return math.sqrt(ESCAPE_REFERENCE_COUNT / count) if count > 0 else 1.0
 from .local import quash
-from .exploration import gaussians, hazard_draws
+from .exploration import hazard_draws
 from .inputs import CODES, DEFAULT_CODE, Code, complement_code
 from .neuron import Neuron
 from .clock import before, slack
@@ -86,17 +86,11 @@ class Network:
         self.schedule = Schedule()  # signals in flight, across epochs
         self.quash_rate = 0.0  # a refire weakens its contributing synapses by this fraction of their weight (§6.11); off until asked
         self.quash_k = QUASH_K  # per ms: the quash falls off with the delay since the previous spike
-        self.synapse_tau = SYNAPSE_TAU  # the leak of the trace the reinforce chain's leaky option appends (§8.13; it
-        # goes with that option and has no other reader now leaky Hebb has left under §10.2)
-        self.explore = EXPLORE  # when the exploration draw is taken (§6.1): every wave, or once per epoch
-        self.sigma = 0.0  # the standard deviation of that draw; whoever runs the epoch sets it
-        self.explore_rng = None  # the stream it comes from
+        self.explore_rng = None  # the exploration stream the firing decisions draw from (§7.3)
         self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
         self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N), the count's scaling of every hazard (§5.2), once set_delta ran
         self.rule = "local"  # which rule pays at the read: "reinforce", or "local" for none, in which case the local
         # rules of §10 are the whole of the learning (§9.1: "a run may have none")
-        self.tally = False  # every synapse counts the signals its target integrated this epoch (Connection.eligibility):
-        # the x_ij of the count_hebb eligibility (§6.7). A Teacher with that eligibility switches it on, in whichever engine
         self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
         # the single-spike rule). A Teacher with that eligibility switches it on, in whichever engine (centre)
         self.readout = "top"  # what is read as the output: the output zone, or "input" (the inputs are the outputs)
@@ -490,7 +484,7 @@ class Network:
             self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                  trace=self.tally, explore=self.explorer())
+                                  explore=self.explorer())
         return waves
 
     def _everyone(self) -> list[Neuron]:
@@ -530,7 +524,7 @@ class Network:
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                 trace=self.tally, explore=self.explorer())
+                                 explore=self.explorer())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -540,9 +534,6 @@ class Network:
         """
         for neuron in self.all_neurons():
             neuron.reset(discharge)
-        if self.tally:
-            for connection in self.connections.values():
-                connection.eligibility = 0.0  # a new epoch earns its own credit, or its own tally (§6.7)
         if self.traced:
             accumulating = Neuron.tau == math.inf
             for connection in self.connections.values():
@@ -551,48 +542,17 @@ class Network:
                     connection.noted = connection.trace * connection.target.expected  # an open arrival's debit counts from here
         self.waves = []
 
-    def perturb(self, sigma: float, rng, now: float | None = None, hold_fired: bool = False) -> None:
-        """Exploration: add Gaussian noise of standard deviation `sigma` to every potential, floored.
-
-        The potential is first leaked to `now` (default: the pending input's
-        time), so the noise sits on top of what survived the gap. Each neuron
-        remembers its draw as `noise` (the reinforce rule's eligibility). The
-        draws come from `exploration.gaussians`, shared with the array engine.
-
-        With `hold_fired` a neuron that has already fired this epoch keeps the
-        `noise` it decided under instead of taking the new draw: under wave
-        exploration (§6.1) the eligibility must refer to the perturbation that
-        produced the spike, not to a later one that explains nothing.
-        """
-        now = self.input_time if now is None else now
-        neurons = self.all_neurons() if isinstance(self.all_neurons(), list) else list(self.all_neurons())
-        for neuron, draw in zip(neurons, gaussians(rng, len(neurons), sigma)):
-            if now is not None:
-                neuron.leak(now)
-            if not (hold_fired and neuron.has_fired):
-                neuron.noise = draw
-            summed = neuron.potential + draw
-            if summed < neuron.minimum_potential:
-                summed = neuron.minimum_potential
-                if neuron.traced:
-                    neuron.clear_arrivals()  # the floor bit: the potential is the floor whatever the weights (§6.7)
-            neuron.potential = summed
-
     def _explore(self, time: float) -> None:
-        """Before each wave's firing decision: the additive draw of §6.1, then the hazard's uniforms (§5.2), in that order."""
-        if self.explore == "wave" and self.sigma > 0.0:
-            self.perturb(self.sigma, self.explore_rng, time, hold_fired=True)
-        if self.hazard:
-            neurons = self._everyone()
-            for neuron, draw in zip(neurons, hazard_draws(self.explore_rng, len(neurons))):
-                neuron.draw = draw
+        """Before each wave's firing decision: one uniform per neuron, in neuron order (AUTHORITY.md §6.7, §7.3)."""
+        neurons = self._everyone()
+        for neuron, draw in zip(neurons, hazard_draws(self.explore_rng, len(neurons))):
+            neuron.draw = draw
 
     def explorer(self):
-        """The hook Schedule.run calls before each wave fires, or None when nothing is exploring."""
-        additive = self.explore == "wave" and self.sigma > 0.0 and self.explore_rng is not None
+        """The hook Schedule.run calls before each wave fires, or None where the threshold decides."""
         if self.hazard and self.explore_rng is None:
-            raise ValueError("escape noise needs a stream for its draws (§5.2): run the epoch with an rng, as run_epoch does")
-        return self._explore if (additive or self.hazard) else None
+            raise ValueError("escape noise needs a stream for its draws (§7.3): run the epoch with an rng, as run_epoch does")
+        return self._explore if self.hazard else None
 
     def fired_neurons(self) -> list[Neuron]:
         """Return the neurons that have fired since the last reset."""
