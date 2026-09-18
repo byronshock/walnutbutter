@@ -176,20 +176,18 @@ default read is `"fired"` and the command line offers five. Only mnist sets
 under `"fired"` the row critic's pickiness of 2, which landed this afternoon,
 is never applied at all.
 
-**C2. §9.9 and §9.10 — marked Non-default, and defaulted on.** *"the rule does
-not run unless a run asks for it: zero switches it off, and that is where every
-run this specification states leaves it."* The `Teacher` defaults
-`homeostasis=HOMEOSTASIS` and `unstick=UNSTICK`, and so do `--homeostasis` and
-`--unstick`, so every run that does not explicitly pass 0 drifts thresholds by
-a rule the file says is off. mnist passes 0; nothing else does.
+**C2. ~~§9.9 and §9.10 — marked Non-default, and defaulted on.~~ Done —
+D5 answered by the file, September 18, 2026.** The Teacher and the command line
+both defaulted to HOMEOSTASIS and UNSTICK, so `reversal` and `copy` drifted
+thresholds by a rule the file calls non-default; only mnist asked for them off.
 
-> **This is D5, and the code is wrong under either reading of it.** Byron
-> answered *"The constants become 0"*. The clauses as written say the opposite
-> in as many words — *"The constant keeps its value and the run switches it
-> off, rather than the constant being zero and a run supplying the value."*
-> The two readings differ about where the default lives; they agree that the
-> effective default is **off**, which is not what the code does. §9.9, §9.10
-> and §10.1 need Byron's edit before the code can follow either way.
+> **D5 is closed, and §9.9 answered it.** Byron had answered "the constants
+> become 0"; the clause, quoting him the day before, says the opposite — these
+> are "latent knobs", so the constant keeps the value it would run at and the
+> run switches it off. Asked which stood, he chose the file's reading. The
+> constants are untouched; off is now the default everywhere, and a run asks:
+> bare `--homeostasis` runs it at 1e-6, `--homeostasis 5e-6` at that, absent is
+> off. The quash was already right and was the model.
 
 **C3. §9.13, §7.5 — the old rate teacher's two extremes are still live.**
 RATE_ON = 200 Hz and RATE_OFF = 0 are exactly the saturation and silence the
