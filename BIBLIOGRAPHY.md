@@ -131,8 +131,7 @@ AUTHORITY.md.
     The sequential probability ratio test: add up the evidence, stop at a
     boundary, decide. An integrator with a threshold and a reset is this
     test run again after every spike.
-    Not in `references/`: free at Project Euclid, which refuses a scripted
-    download.
+    In `references/`: `Wald45.pdf`, from Project Euclid, saved from a browser.
 
 15. Bialek, W., & Zee, A. (1990). Coding and computation with neural spike
     trains. *Journal of Statistical Physics*, 59(1-2), 103-115.
@@ -146,6 +145,16 @@ AUTHORITY.md.
     the question of what the teacher of §4.3 should read, asked of a
     neuron's reader. Added at Byron's request.
     In `references/`: `BialekZee90.pdf`, the first author's copy (a scan).
+
+## The values
+
+- Asimov, I. (1985). *Robots and Empire*. Doubleday. The novel in which the
+  Zeroth Law is first stated and named -- "A robot may not harm humanity, or,
+  by inaction, allow humanity to come to harm" -- and placed above the three
+  laws of *Runaround* (1942), collected in *I, Robot* (1950). `VALUES.md`
+  asks that any robot this work is incorporated in follow all four, the
+  Zeroth first: a foundational value of the project, not a licence term.
+  Not in `references/`: a novel in copyright, with no free copy to fetch.
 
 ## Not yet mentioned in our conversations, but the roots of the above
 
