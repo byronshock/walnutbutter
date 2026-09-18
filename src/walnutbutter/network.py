@@ -117,7 +117,6 @@ class Network:
         self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
         self.input_events: list[tuple[int, float]] | None = None  # the (place, time) stimuli this epoch actually used;
         # input_schedule() draws afresh under rate drive, so this is what to read to see what happened
-        self.input_cells: list[tuple[int, int]] | None = None  # an input zone given explicitly, (place, row) cells
         self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
@@ -225,19 +224,8 @@ class Network:
     # --- input ------------------------------------------------------------
 
     def input_row(self) -> list[Neuron]:
-        """The network's input neurons in order: the input zone, by place."""
-        if self.input_cells is not None:
-            return [self.get_neuron_at(place, row) for place, row in self.input_cells]
+        """The network's input neurons in order: the input zone, by place (§4.3)."""
         return [self.get_neuron_at(place, self.rows - 1) for place in range(self.across)]
-
-    def set_input_cells(self, cells) -> None:
-        """Put the input on these (place, row) cells instead of the input zone; the permutation resets to the identity."""
-        cells = [(int(place), int(row)) for place, row in cells]
-        for place, row in cells:
-            if self.get_neuron_at(place, row) is None:
-                raise ValueError(f"no neuron at place {place}, row {row}")
-        self.input_cells = cells
-        self.permutation = list(range(len(cells)))
 
     def output_width(self) -> int:
         """How many neurons are read as the output: the count across, unless the output zone is another width (§4.3)."""
@@ -289,8 +277,8 @@ class Network:
         return [1.0 if fired else 0.0 for fired in self.output_fired()]
 
     def input_width(self) -> int:
-        """How many neurons the input covers: one bit of the (coded, permuted) pattern each."""
-        return len(self.input_cells) if self.input_cells is not None else self.across
+        """How many neurons the input covers: one bit of the (coded, permuted) pattern each (§4.3)."""
+        return self.across
 
     def next_time(self) -> float:
         """When the next input arrives if no time is given: the interval after the last one (the first at 0)."""

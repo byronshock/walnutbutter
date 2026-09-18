@@ -19,7 +19,7 @@ def quiet(monkeypatch):
 
 
 def test_the_problems_and_the_default():
-    assert set(PROBLEMS) == {"reversal", "copy", "sustain_inputs", "improved_sustain", "population_copy", "mnist",
+    assert set(PROBLEMS) == {"reversal", "copy", "sustain_inputs", "population_copy", "mnist",
                              "population_denoise", "shallow_copy", "shallow_not", "doubled_copy",
                              "reaching_copy"}
     assert build_parser().parse_args([]).problem == C.PROBLEM == "reversal"

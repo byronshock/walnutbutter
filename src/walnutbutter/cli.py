@@ -777,7 +777,6 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.read = problem.read  # --read overrides what the problem asks for
     if args.read == "window" and args.read_window is None:
         args.read_window = READ_WINDOW
-    args.input_cells = problem.input_cells
     args.no_permute = args.no_permute or not problem.permute
     if args.outputs is None:
         args.outputs = problem.outputs  # the output zone's width when it differs from the input's (goo, §8), unless --outputs
@@ -912,8 +911,6 @@ def _run(args: argparse.Namespace) -> int:
                         f"fan-in scaling off: a flat threshold {edge.threshold:g} and floor {edge.minimum_potential:g}",
                         file=sys.stderr,
                     )
-            if args.input_cells and not loaded:
-                grid.set_input_cells(args.input_cells)
             grid.interval = args.interval
             if not loaded or args.delta != ESCAPE_DELTA:
                 grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
@@ -1246,7 +1243,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "refractory": args.refractory, "refractory_hops": args.refractory_hops,
                      "interval": args.interval, "dopamine": dopamine, "problem": args.problem, "bored_after": args.bored_after,
-                     "tau": args.tau, "isi_factor": args.isi_factor, "input_cells": args.input_cells,
+                     "tau": args.tau, "isi_factor": args.isi_factor,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window, "coding": args.coding,
                      "quash": (args.quash, args.quash_k), "flip": args.flip, "hebb": args.hebb,
                      "synapse_tau": args.synapse_tau,

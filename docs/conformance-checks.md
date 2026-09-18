@@ -39,11 +39,15 @@ change touched — `copy` and `mnist`, each under the hazard and the hebb
 eligibility, at `read=count` and pickiness 2 — so §12.4's bit agreement holds
 across the change that landed this afternoon.
 
-**B2. `improved_sustain` cannot be posed.** Its `input_cells` are hex-grid
-coordinates (`problems.py:96`, row 3), and goo has two rows. `--problem
-improved_sustain` exits 2 before the first epoch. Every other problem runs.
-Whether the problems survive at all is Byron's: Appendix A's unclaimed list
-leaves PROBLEM open.
+**B2. ~~`improved_sustain` cannot be posed.~~ Done — Byron removed it,
+September 17, 2026.** Its `input_cells` were hex-grid coordinates and goo has
+two rows, so `--problem improved_sustain` exited 2 before the first epoch. It
+was also the only user of `input_cells` at all, so the whole (place, row)
+input-zone mechanism went with it — the thing §4.3 replaced with "the first
+`across` neurons are the input zone". The ten remaining problems all run.
+
+*Whether the rest of the problems survive is still Byron's: Appendix A's
+unclaimed list leaves PROBLEM open.*
 
 ---
 

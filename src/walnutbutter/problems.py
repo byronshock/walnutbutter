@@ -40,7 +40,6 @@ class Problem:
     population: int | None = None  # neurons per raw bit where the coding repeats it (None: constants.POPULATION)
     output_coding: str = "population"  # how the output zone codes the classes (§8, learning.OUTPUT_CODINGS): a population a
     # class, or "complement" -- fire-if-one populations then fire-if-zero ones (mnist; Byron, September 16, 2026)
-    input_cells: tuple | None = None  # an input zone given explicitly, in place of the first `across` neurons
     permute: bool = True  # scramble the coded bits over the input neurons with a fixed permutation
     rule: str | None = None  # the learning rule this problem is posed for (None: --rule, else constants.RULE)
     quash: bool = True  # quash cycles (§6.11); False switches it off for this problem
@@ -86,14 +85,6 @@ PROBLEMS: dict[str, Problem] = {
         "Scored by the Teacher, not trained by it: the neurons learn by dopamine (AUTHORITY.md §6, §8)",
         4, trained=False, readout="input", read="again", target="copy", critic="row", coding="raw",
         rule="teacher", quash=False,
-    ),
-    "improved_sustain": Problem(
-        "improved_sustain",
-        "sustain_inputs on a different topology (Byron, September 12, 2026): a 10-across, 7-row hex grid wired to reach 3, "
-        "the 4 raw input bits presented in the middle, row 4 places 4 to 7 counted from 1 (row 3, places 3 to 6 from 0), "
-        "no permutation; the same neurons read back (spiked again), the row critic, learning by dopamine",
-        10, trained=False, readout="input", read="again", target="copy", critic="row", coding="raw",
-        input_cells=((3, 3), (4, 3), (5, 3), (6, 3)), permute=False, rule="teacher", quash=False,
     ),
     "population_copy": Problem(
         "population_copy",

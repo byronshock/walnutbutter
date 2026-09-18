@@ -54,7 +54,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "rate": [network.rate_on, Neuron.rate_tau],  # the rate read: saturation in Hz, and its window in ms (§4.3)
         "pickiness": network.pickiness,  # the count read's line in spikes (§5.10, §9.5)
         "input_rate": [network.input_rate, network.input_rate_off],  # per ms, under rate drive
-        "input_cells": network.input_cells,  # an input zone given explicitly, or None for the first `across` neurons
         "problem": getattr(network, "problem", None),  # what the run was asked to do (problems.PROBLEMS)
         "engine": engine,
         "random_weights": network.weight is None,
