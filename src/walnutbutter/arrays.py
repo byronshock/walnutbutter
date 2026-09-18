@@ -678,9 +678,9 @@ class ArrayNetwork(Network):
     def reinforce(self, advantage: float, lr: float, sigma: float, eligibility: str, late: str,
                   leaky: bool = False) -> int:
         """The global-reward update, edge by edge, all at once. Returns connections changed."""
+        if not self.hazard:  # §8.3: no eligibility runs where the threshold decides
+            raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3)")
         if eligibility == "hazard":
-            if not self.hazard:
-                raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
             if late != "count" or leaky:
                 raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
         if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):

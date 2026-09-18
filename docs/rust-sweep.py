@@ -184,9 +184,11 @@ def _save_network(engine, grid, report: dict, path) -> None:
     """The arm's network at the end of the run: the engine's weights and thresholds written back to the mesh and checkpointed.
 
     A run restored from it continues with those weights (the CLI's --load-weights, or
-    docs/mnist-watch.py); it is not a resume to the bit, since the stream's position,
-    the exploration stream's state and the baseline are not in a checkpoint.
+    docs/mnist-watch.py); it is not a resume to the bit, since the stream's position
+    and the exploration stream's state are not in a checkpoint. The reinforcement
+    baseline is (§9.3), written beside the checkpoint's own fields.
     """
+    import json as _json
     from walnutbutter.persistence import checkpoint
     edges = [c for n in grid.all_neurons() for c in n.outgoing]  # the engine's order (fast.build)
     for c, w in zip(edges, engine.weights()):
@@ -201,7 +203,9 @@ def _save_network(engine, grid, report: dict, path) -> None:
         n.decisions = decisions
     for n, rate in zip(grid.all_neurons(), report.get("rates") or []):
         n.rate = rate  # the Teacher's rate memory, so a continuation's stuck counts and homeostasis start where they were
-    checkpoint(grid, path)
+    data = checkpoint(grid, path)
+    data["baseline"] = report.get("baseline")  # §9.3: b as the run left it, so a resume is paid against it
+    path.write_text(_json.dumps(data))
 
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
@@ -210,14 +214,16 @@ RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "
 
 
 def resume_grid(fresh, source, isi_factor: bool | None = None):
-    """The arm's network as `runs/<other>/<arm>-network.json` left it, ready to run on: (grid, epochs already run, first-start weights).
+    """The arm's network as `runs/<other>/<arm>-network.json` left it, ready to run on: (grid, epochs already run, first-start weights, baseline).
 
     `fresh` is the arm's network as grid_of builds it from the seed -- the same
     wiring, so its weights are the first start's, the reference the estimator
     keeps measuring from. The checkpoint's state is taken whole (weights,
     thresholds, rate memories, expectations, the clock, the widths, the signals
     in flight); the arm's settings are applied over it, and the caller advances
-    the input stream to the epoch reached. The ISI factor of §0.2 is the checkpoint's -- off for a
+    the input stream to the epoch reached. The reinforcement baseline comes back
+    with it (§9.3): a resumed run is the same run continued and is paid against
+    the baseline the run had reached, not a fresh one. The ISI factor of §0.2 is the checkpoint's -- off for a
     network saved before it existed -- unless `isi_factor` says otherwise, so a resumed arm runs on
     under the rule it started with.
     """
@@ -235,7 +241,7 @@ def resume_grid(fresh, source, isi_factor: bool | None = None):
         setattr(restored, attr, getattr(fresh, attr))
     restored.rule = "reinforce"
     Neuron.isi_factor = bool(data.get("isi_factor", False)) if isi_factor is None else isi_factor
-    return restored, int(data["epoch"]), reference
+    return restored, int(data["epoch"]), reference, data.get("baseline")
 
 
 def _rate_by_zone(grid, rates: list[float]) -> dict:
@@ -276,12 +282,12 @@ def run_arm(job: tuple) -> dict:
         return {"arm": arm_name(arm), "skipped": True}
     grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring, fixed)
     eligibility = arm.get("eligibility", eligibility)
-    offset, reference, earlier_trace, earlier_estimator = 0, None, [], []
+    offset, reference, earlier_trace, earlier_estimator, baseline = 0, None, [], [], None
     if resume_from:  # continue from the saved network; the earlier trace and estimator are carried over so the record is whole
         source = ROOT / "runs" / resume_from / f"{arm_name(arm)}-network.json"
         if not source.exists():
             return {"arm": arm_name(arm), "missing": str(source)}
-        grid, offset, reference = resume_grid(grid, source, None if isi is None else isi == "on")
+        grid, offset, reference, baseline = resume_grid(grid, source, None if isi is None else isi == "on")
         earlier = source.with_name(f"{arm_name(arm)}.json")
         if earlier.exists():
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
@@ -311,7 +317,7 @@ def run_arm(job: tuple) -> dict:
         eligibility=args.eligibility, sigma=args.sigma, seed=explore_seed,
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
-        reference_weights=reference, epoch_offset=offset,
+        reference_weights=reference, epoch_offset=offset, baseline=baseline,
     )
     elapsed = time.perf_counter() - started
     _save_network(engine, grid, report, path.with_name(path.stem + "-network.json"))  # so an arm can be resumed, not rerun

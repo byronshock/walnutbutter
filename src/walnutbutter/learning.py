@@ -601,9 +601,9 @@ def reinforce(
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
     if late not in LATE_RULES:
         raise ValueError(f"unknown late-signal rule {late!r}; choose from {', '.join(LATE_RULES)}")
+    if not getattr(network, "hazard", False):  # §8.3: no eligibility runs where the threshold decides
+        raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3)")
     if eligibility == "hazard":
-        if not getattr(network, "hazard", False):
-            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) (§5.2)")
         if late != "count" or leaky:
             raise ValueError("the hazard eligibility carries its own trace: late = count and no leaky trace (§6.7)")
     if eligibility in ("hebb", "count_hebb") and (late != "count" or leaky):
@@ -745,9 +745,8 @@ class Teacher:
             eligibility = "hazard" if getattr(network, "hazard", False) else ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
-        if eligibility == "hazard" and not getattr(network, "hazard", False):
-            raise ValueError("the hazard eligibility needs escape noise: give the network a positive ESCAPE_DELTA (--delta) "
-                             "before the Teacher (§5.2)")
+        if rule == "reinforce" and not getattr(network, "hazard", False):  # §8.3
+            raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3) before the Teacher")
         if lr < 0 or sigma < 0 or homeostasis < 0 or unstick < 0:
             raise ValueError("learning rate, sigma, homeostasis and unstick rates must not be negative")
         if not 0.0 < unstick_target < 1.0:

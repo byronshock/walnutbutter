@@ -6,7 +6,7 @@ import pathlib
 import pytest
 
 from walnutbutter.cli import build_parser, cli_main
-from walnutbutter.constants import ACROSS, GOO_COUNT, GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
+from walnutbutter.constants import ACROSS, ESCAPE_DELTA, GOO_COUNT, GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN, WEIGHT_RANGE
 from walnutbutter.goo import DEFAULT_COUNT, Goo
 from walnutbutter.monitor import run_epoch
 from walnutbutter.neuron import Neuron
@@ -179,6 +179,7 @@ def test_the_count_read_is_the_same_in_all_three_engines():
         assert net.output_counts_hz() == mesh.output_counts_hz() and net.output_fired() == mesh.output_fired()
     if fast.available():
         goo = Goo(count=30, across=6, seed=5, weight=None, permute=False)
+        goo.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         goo.read, goo.rule, goo.drive = "count", "reinforce", "rate"
         teacher = Teacher(goo, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.01, unstick=0.1)
         parted = fast.compare(goo, epochs=40, teacher=teacher)  # the reward is the count read on both sides
@@ -359,6 +360,7 @@ def test_below_projection_one_a_goo_round_trips_with_its_seed_and_refuses_withou
     from walnutbutter.learning import Teacher
     zone = dict(wiring="zones-equal")
     goo = Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone)
+    goo.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     run_epoch(goo, verbose=False)
     data = checkpoint(goo, "half.json")
     assert data["projection"] == 0.5 and data["connections"] == len(goo.connections)
@@ -379,6 +381,7 @@ def test_below_projection_one_a_goo_round_trips_with_its_seed_and_refuses_withou
         assert net.output_fired() == mesh.output_fired()
     if fast.available():
         g = Goo(count=30, across=6, seed=3, weight=None, projection=0.5, **zone)
+        g.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         g.rule, g.drive, g.read = "reinforce", "rate", "count"
         assert fast.compare(g, epochs=40, teacher=Teacher(g, seed=7, rule="reinforce", eligibility="wrong_hebb", target="copy",
                                                           homeostasis=0.01, unstick=0.1)) == []

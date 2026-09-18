@@ -3,6 +3,7 @@ import statistics
 
 import pytest
 
+from walnutbutter.constants import ESCAPE_DELTA
 from walnutbutter import learning
 from walnutbutter.goo import Goo
 from walnutbutter.learning import (
@@ -80,6 +81,7 @@ def test_delivered_connections_are_those_whose_source_fired():
 
 def test_reinforce_moves_delivered_weights_by_advantage_times_noise():
     grid = Goo(count=32, across=8, weight=None, seed=2)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     before = {c.id: c.weight for c in grid.connections.values()}
     changed = reinforce(grid, advantage=0.5, lr=0.01, sigma=0.1)
@@ -94,6 +96,7 @@ def test_reinforce_moves_delivered_weights_by_advantage_times_noise():
 
 def test_ignoring_late_signals_skips_those_that_arrived_after_their_target_fired():
     grid = Goo(count=32, across=8, weight=None, seed=2)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     before = {c.id: c.weight for c in grid.connections.values()}
     last = {s.connection: s for s in delivered_signals(grid)}  # the rule judges a connection by its last delivery of the epoch
@@ -111,6 +114,7 @@ def test_ignoring_late_signals_skips_those_that_arrived_after_their_target_fired
 
 def test_reinforce_with_zero_advantage_changes_nothing():
     grid = main(count=32, across=8, weight=None, seed=3)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     before = [c.weight for c in grid.connections.values()]
     assert reinforce(grid, advantage=0.0) == 0
     assert [c.weight for c in grid.connections.values()] == before
@@ -118,6 +122,7 @@ def test_reinforce_with_zero_advantage_changes_nothing():
 
 def test_the_wrong_hebb_eligibility_uses_target_firing_and_keeps_weights_in_range():
     grid = main(count=32, across=8, weight=None, seed=4)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     before = {c.id: c.weight for c in grid.connections.values()}
     reinforce(grid, advantage=-1.0, lr=0.5, eligibility="wrong_hebb")
     for c in delivered_connections(grid):
@@ -136,6 +141,7 @@ def test_the_reinforce_rule_still_runs_and_moves_weights():
     """The pre-alpha's rule, factored out behind rule="reinforce": it runs, scores and moves weights. Under the
     schedule the mesh reverberates on its own, so this is kept for comparison, not as a performance claim."""
     grid = Goo(count=32, across=8, weight=None, seed=2)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     before = [c.weight for c in grid.connections.values()]
     teacher = Teacher(grid, target="all-off", lr=0.1, seed=2, rule="reinforce")
     rewards = [teacher.epoch(verbose=False) for _ in range(200)]
@@ -146,6 +152,7 @@ def test_the_reinforce_rule_still_runs_and_moves_weights():
 
 def test_teacher_validates_tracks_and_reports():
     grid = main(count=32, across=8, seed=1)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     with pytest.raises(ValueError):
         Teacher(grid, target="upside-down")
     with pytest.raises(ValueError):
@@ -159,7 +166,7 @@ def test_teacher_validates_tracks_and_reports():
     second = teacher.epoch(verbose=False)
     assert teacher.epochs == 2 and 0 <= teacher.average <= 1 and 0 <= second <= 1
     assert grid.epoch == 2
-    assert "learning reversed (perturb, lr 0.01, sigma 0.1, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
+    assert "learning reversed (hazard, lr 0.01, sigma 0, homeostasis 1e-06 toward 0.5, unstick 0.001): accuracy" in teacher.status()
     for hebbian in ("wrong_hebb", "hebb", "count_hebb"):
         assert Teacher(grid, eligibility=hebbian).sigma == 0.0  # no injected noise for any Hebbian variant
     assert grid.tally and not grid.centred  # the last Teacher, count_hebb's, switched the tally of what each synapse delivers on (§6.7)
@@ -195,6 +202,7 @@ def test_accuracy_to_date_is_the_mean_over_all_epochs():
 
 def test_reinforce_clips_to_the_grid_weight_range():
     grid = Goo(count=32, across=8, weight=None, seed=2, weight_range=(0.001, 1.0), threshold=2.0)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     run_epoch(grid, verbose=False, noise=0.1, rng=random.Random(2))
     reinforce(grid, advantage=-1.0, lr=50.0)  # a huge negative push: everything touched should hit the floor, not go negative
     touched = [c for c in delivered_connections(grid) if not c.target.forced and c.target.noise > 0]
@@ -409,6 +417,7 @@ def test_a_late_signal_counts_by_default_and_is_ignored_or_depressed_on_request(
     b.noise = c.noise = 0.1  # both perturbed, so both would be eligible if timing were ignored
 
     class Tiny:
+        hazard = True  # §8.3: the reinforce rule runs only where the decision is a draw
         waves = propagate(fire=[a])
         weight_range = (-1.0, 1.0)
 
@@ -463,6 +472,7 @@ def test_the_count_hebb_eligibility_is_what_the_synapse_delivered_times_the_cent
     expectation yet moves nothing, and the rule carries its own tally, so late = count and no leaky trace."""
     from walnutbutter.goo import Goo
     grid = Goo(count=32, across=8, weight=None, seed=4)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     grid.rule, grid.drive = "reinforce", "rate"
     teacher = Teacher(grid, eligibility="count_hebb", seed=3, rule="reinforce")
     assert grid.tally and teacher.sigma == 0.0

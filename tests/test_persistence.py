@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from walnutbutter.constants import ESCAPE_DELTA
 from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import main, run_epoch
@@ -37,6 +38,7 @@ def test_checkpoint_round_trips_weights_settings_and_permutation(tmp_path):
 def test_a_checkpoint_keeps_the_expected_counts(tmp_path):
     """§6.7: n_bar_j, the hebb eligibility's expectation, round-trips beside the rate memory; unset ones stay unset."""
     grid = main(count=32, across=8, seed=3)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     teacher = Teacher(grid, seed=3, rule="reinforce", eligibility="hebb")
     for _ in range(5):
         teacher.epoch(verbose=False)

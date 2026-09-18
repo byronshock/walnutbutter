@@ -145,7 +145,8 @@ def test_cli_rejects_unknown_arguments():
 
 def test_cli_weight_and_threshold_options(capsys):
     args = ["--headless", "-v", "--across", "6", "--goo", "30", "--weight", "0.2", "--threshold", "1", "--input", "101",
-            "--no-scale-with-fan-in", "--delta", "0"]  # the deterministic neuron at a flat threshold: the count is the threshold's doing
+            "--no-scale-with-fan-in", "--delta", "0", "--no-learn"]  # the deterministic neuron at a flat threshold: the
+    # count is the threshold's doing, and §8.3 refuses to learn where the threshold decides
     assert cli_main(args) == 0
     assert capsys.readouterr().out.count("fired") == 3  # only the input neurons: 0.2 per synapse < 1
 

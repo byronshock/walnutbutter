@@ -8,6 +8,7 @@ import random
 
 import pytest
 
+from walnutbutter.constants import ESCAPE_DELTA
 from walnutbutter import fast
 from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
@@ -118,14 +119,17 @@ def test_a_neuron_that_hears_nothing_is_left_at_the_containers_threshold_in_ever
     # threshold is 0 itself: most waves it is not refractory (a wave is not always there the moment one ends; 4.7 an epoch here)
 
 
-def test_the_hazard_eligibility_needs_escape_noise():
+def test_the_reinforce_rule_refuses_where_the_threshold_decides():
+    """§8.3: no eligibility runs where the threshold decides -- REINFORCE has no randomness to estimate from."""
     g = goo()
-    with pytest.raises(ValueError, match="escape noise"):
-        Teacher(g, rule="reinforce", eligibility="hazard")
+    assert not g.hazard
+    for eligibility in ("hazard", "hebb"):
+        with pytest.raises(ValueError, match="refuses to learn"):
+            Teacher(g, rule="reinforce", eligibility=eligibility)
     with pytest.raises(ValueError, match="not be negative"):
         g.set_delta(-1.0)
     if fast.available():
-        with pytest.raises(ValueError, match="escape noise"):
+        with pytest.raises(ValueError, match="refuses to learn"):
             fast.train(g, 2, eligibility="hazard", seed=1)
 
 
@@ -516,13 +520,13 @@ def test_the_three_engines_agree_under_the_hebb_eligibility(tau):
         Neuron.tau = was
 
 
-def test_the_hebb_eligibility_needs_no_escape_noise():
+def test_the_hebb_eligibility_charges_the_decisions_too():
     """§6.7: the centred rule charges the threshold's decisions too -- the trace is kept for it -- and the objects and Rust agree."""
     was = Neuron.tau
     Neuron.tau = math.inf
     try:
         g = goo()
-        assert not g.hazard
+        g.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         teacher = Teacher(g, seed=7, rule="reinforce", eligibility="hebb", target="copy", homeostasis=0.0, unstick=0.0)
         assert g.traced and all(n.traced and n.centred for n in g.all_neurons())
         if fast.available():

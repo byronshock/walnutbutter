@@ -348,7 +348,7 @@ def benchmark(network, epochs=200, bits=None):
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility="hebb", sigma=0.0, seed=None, homeostasis=HOMEOSTASIS, target_rate=TARGET_RATE,
           unstick=UNSTICK, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
-          direction=None, reference_weights=None, epoch_offset=0):
+          direction=None, reference_weights=None, epoch_offset=0, baseline=None):
     """Run `epochs` of the §6.7 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -413,8 +413,10 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
         raise ValueError(f"eligibility must be hebb, count_hebb, wrong_hebb, perturb or hazard, got {eligibility!r}")
     if eligibility == "perturb" and sigma <= 0.0:
         raise ValueError("the perturb eligibility needs a positive sigma: e_j is xi_j / sigma (§6.7)")
-    if eligibility == "hazard" and not network.hazard:
-        raise ValueError("the hazard eligibility needs escape noise: network.set_delta(ESCAPE_DELTA > 0) first (§5.2)")
+    if not network.hazard:  # §8.3: no eligibility runs where the threshold decides
+        raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient "
+                         "from the randomness of the decision, and with no width there is no randomness to estimate from. "
+                         "network.set_delta(ESCAPE_DELTA > 0) first (§8.3)")
     sigma = sigma if eligibility == "perturb" else 0.0
     explore_rng = random.Random(seed) if (sigma > 0.0 or network.hazard) else None  # the hazard's draws come from it too
 
@@ -437,7 +439,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     book = _Thresholds(engine, neurons, out, homeostasis=homeostasis, target_rate=target_rate, unstick=unstick,
                        unstick_target=unstick_target)
 
-    baseline = None
+    # §9.3: a resumed run is the same run continued, so it is paid against the baseline the run had reached
     total = tail = hits = 0.0
     tenth = max(1, epochs // 10)
     trace = []
@@ -506,5 +508,6 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
               "expectations": [None if e != e else e for e in engine.expectations()], "decisions": list(engine.decision_counts()),
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
               "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
+              "baseline": baseline,  # §9.3: what b had reached, so a resume is paid against it and not a fresh one
               "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given
     return total / epochs, trace, engine, report

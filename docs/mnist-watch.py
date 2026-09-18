@@ -79,9 +79,9 @@ def main() -> int:
         fixed.append("--no-isi-factor")
     grid, cli = rs.grid_of("mnist", arm, args.eligibility, True, args.floor_ratio, args.wiring, tuple(fixed))
     patterns, labels = dataset_stream("mnist", args.seed)
-    offset, reference, explore_seed = 0, None, args.seed
+    offset, reference, explore_seed, baseline = 0, None, args.seed, None
     if args.resume:
-        grid, offset, reference = rs.resume_grid(grid, Path(args.resume), None if args.isi_factor is None else args.isi_factor == "on")
+        grid, offset, reference, baseline = rs.resume_grid(grid, Path(args.resume), None if args.isi_factor is None else args.isi_factor == "on")
         grid.use_input_stream(patterns, labels)
         grid.input_at = offset
         patterns = labels = None

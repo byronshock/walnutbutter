@@ -7,7 +7,7 @@ import random
 import pytest
 
 from walnutbutter.cli import cli_main
-from walnutbutter.constants import ACROSS, GOO_COUNT
+from walnutbutter.constants import ACROSS, ESCAPE_DELTA, GOO_COUNT
 from walnutbutter.dopamine import ORDERS, Dopamine, learn
 from walnutbutter.goo import Goo
 from walnutbutter.learning import Teacher
@@ -213,14 +213,16 @@ def test_the_weights_move_on_the_default_grid_and_stay_in_range():
 
 def test_the_teacher_scores_under_dopamine_and_reinforces_under_the_other_rule():
     grid = Goo(count=32, across=8, weight=None, seed=2)
+    grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     teacher = Teacher(grid, seed=2, rule="dopamine")
     assert teacher.rule == "dopamine" and grid.dopamine is not None and grid.dopamine.lr == teacher.lr
     teacher.epoch(verbose=False)
     assert "dopamine" in teacher.status() and "perturb, lr" not in teacher.status()
     other = Goo(count=32, across=8, weight=None, seed=2)
+    other.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
     old = Teacher(other, seed=2, rule="reinforce")
     old.epoch(verbose=False)
-    assert old.rule == "reinforce" and other.dopamine is None and "perturb, lr" in old.status()
+    assert old.rule == "reinforce" and other.dopamine is None and "hazard, lr" in old.status()
     with pytest.raises(ValueError):
         Teacher(grid, rule="osmosis")
 
@@ -358,6 +360,7 @@ def test_the_leaky_trace_appended_to_the_reinforce_chain():
         class Tiny:
             weight_range = (-1.0, 1.0)
             horizon = 30.0
+            hazard = True  # §8.3: the reinforce rule runs only where the decision is a draw
             synapse_tau = tau  # §6.12: the trace leaks at the synapse's own constant, not TAU
 
         j = Neuron("j")
@@ -389,6 +392,9 @@ def test_the_leaky_trace_appended_to_the_reinforce_chain():
         Neuron.tau = 2.0
 
 
+@pytest.mark.xfail(strict=True, reason="§8.3 keeps two eligibilities, hazard and hebb: perturb and wrong_hebb leave the "
+                   "specification, and §8.13 leaves the leaky trace with no eligibility to attach to. The rule this test "
+                   "asserts is refused on a deterministic network already; the test goes when the eligibilities do.")
 def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
     np = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
@@ -396,6 +402,7 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
 
     def make():
         grid = Goo(count=24, across=12, weight=None, seed=5, permute=False)
+        grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         grid.coding, grid.readout, grid.read, grid.interval = "population", "top", "fired", 20.0
         grid.quash_rate = 0.02
         return grid
@@ -410,6 +417,9 @@ def test_reinforce_with_the_leaky_trace_matches_across_the_engines():
     assert [c.weight for c in mesh.connections.values()] != [0.0] * len(mesh.connections)
 
 
+@pytest.mark.xfail(strict=True, reason="§8.3 keeps two eligibilities, hazard and hebb: perturb and wrong_hebb leave the "
+                   "specification, and §8.13 leaves the leaky trace with no eligibility to attach to. The rule this test "
+                   "asserts is refused on a deterministic network already; the test goes when the eligibilities do.")
 def test_the_reinforce_banner_reports_the_sigma_that_actually_runs(capsys):
     """The Teacher zeroes sigma for the Hebbian eligibilities; the banner used to print the asked-for value."""
     # --delta 0: on the deterministic neuron wrong_hebb explores nothing; under escape noise the hazard explores for it

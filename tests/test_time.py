@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from walnutbutter.constants import ESCAPE_DELTA
 from walnutbutter.cli import cli_main
 from walnutbutter import constants as C
 from walnutbutter.goo import Goo
@@ -123,6 +124,7 @@ def test_both_engines_keep_the_same_clock(clock):
 
     def make():
         grid = Goo(count=24, across=6, weight=None, seed=8)
+        grid.set_delta(ESCAPE_DELTA)  # §8.3: the reinforce rule refuses where the threshold decides
         grid.interval = 3.0  # refractory periods overlap inputs, so timing matters every wave
         return grid
 
