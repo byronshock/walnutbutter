@@ -14,16 +14,30 @@ is a sentence in the file that the code does not say.*
 
 ---
 
-## Two things that block the rest
+## One thing that blocks the rest
 
-**B1. The Rust extension in the venv is not the Rust source.** The installed
-`.so` is stamped 05:32; `rust/src/lib.rs` is stamped 12:35. Seven hours of
-source are not in the binary, and `fast.compare` has been comparing the object
-engine against a build nobody has seen since this morning. Every engine
-agreement measured today is against the wrong binary. Rebuild before trusting
-any of it:
+**B1. ~~The Rust extension in the venv is not the Rust source.~~ Withdrawn —
+this one was wrong.** The audit compared the installed `.so`'s mtime (05:32)
+against `rust/src/lib.rs`'s (12:35) and read seven hours of staleness into the
+gap. A git checkout rewrites a working file's mtime without touching its
+content, and there had been two that day — the merge of PR 16 and the move of
+three commits off `main` — so the comparison measured the checkouts, not the
+build.
 
-    cd rust && ../.venv/bin/maturin develop --release
+The binary was current. `fast.build` calls `engine.set_isi_factor(...)`
+unconditionally (`fast.py:91`) and every Rust test passes through it, so a
+binary predating that method would have failed all of them; they all passed.
+Rebuilding settled it: cargo produced a `.so` of identical size, and the suite
+gave identical results either side of it.
+
+*Recorded rather than deleted, because mtime is a tempting and useless way to
+ask this question and the next reader will be tempted the same way. The way to
+ask it is to rebuild and compare, which takes three seconds.*
+
+With the rebuild done, `fast.compare` agrees on the configurations the read
+change touched — `copy` and `mnist`, each under the hazard and the hebb
+eligibility, at `read=count` and pickiness 2 — so §12.4's bit agreement holds
+across the change that landed this afternoon.
 
 **B2. `improved_sustain` cannot be posed.** Its `input_cells` are hex-grid
 coordinates (`problems.py:96`, row 3), and goo has two rows. `--problem
@@ -272,3 +286,6 @@ so it is not reintroduced.
   generators' state.)
 - **§8.3** — the reinforce rule refuses to learn where the threshold decides,
   in all three engines.
+- **§12.4** — the Rust extension is rebuilt, and `fast.compare` agrees with the
+  object engine on `copy` and `mnist`, each under hazard and hebb, at the new
+  count read and pickiness 2.
