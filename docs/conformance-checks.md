@@ -109,6 +109,22 @@ register fixes $10^{-12}$; `clock.py:12` has `1e-9`, and
 `rust/src/lib.rs:21` carries a **second literal** of the same quantity at the
 same wrong value, which A.0 forbids on its own.
 
+**A7. §5.4a — the presentation window is not built.** The clause is new, of
+September 18, 2026: the drive runs to $t_e + \text{PRESENTATION\_TIME}$ and not
+past it, defaulting to INTERVAL. No engine carries the constant, and all three
+draw arrivals to $t_e + \text{INTERVAL}$. At the default the behaviour is
+identical, so nothing measured moves until a run shortens the window — which
+is why this sits with the re-timing rather than ahead of it.
+
+*Two things to get right when it is built.* The arrivals are drawn from the
+network's own stream, so a shorter window takes **fewer draws** and shifts
+every later draw in that stream; the three engines must shorten identically or
+§12.6 fails. And `fast.compare` cannot catch a wrong window on its own: at the
+default there is nothing to see, and away from the default every engine that
+shares the same drawing code would be wrong together. The test has to be
+against the clause — that no arrival lands past the window — and not against
+another engine. §12.11's exact resume needs the constant in the checkpoint.
+
 ---
 
 ## B. Rules the specification does not carry — **done, September 17, 2026**

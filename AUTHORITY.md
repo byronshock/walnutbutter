@@ -586,11 +586,12 @@ input neurons always driven by 1" [RECORD §4.3].*
 the complement-coded bits, in that order.
 
 **5.4 The drive is a Poisson rate drive.** An independent Poisson process
-drives each input neuron across the epoch: at INPUT_RATE where its coded
-bit is 1, at INPUT_RATE_OFF where it is 0. The arrivals of one neuron are
-drawn $\mathrm{Exp}(\lambda)$ apart from the network's own seeded stream,
-starting at the epoch's moment $t_e$, until a draw falls at or past
-$t_e + \text{INTERVAL}$ — that last arrival is drawn and discarded. The neurons are drawn
+drives each input neuron across the presentation window of 5.4a: at
+INPUT_RATE where its coded bit is 1, at INPUT_RATE_OFF where it is 0. The
+arrivals of one neuron are drawn $\mathrm{Exp}(\lambda)$ apart from the
+network's own seeded stream, starting at the epoch's moment $t_e$, until a
+draw falls at or past $t_e + \text{PRESENTATION\_TIME}$ — that last arrival is
+drawn and discarded. The neurons are drawn
 place by place in place order, and a place whose rate is zero draws
 nothing. The whole epoch's arrivals are drawn before the schedule runs, so
 they precede that epoch's firing draws in the stream.
@@ -603,13 +604,54 @@ include the Poisson drive as it ran" [RECORD §4.3].*
 order, so a seed gives every engine the same arrivals; an engine that
 generates its own would agree on nothing else.
 
+**5.4a The presentation window.** The drive runs from the epoch's moment to
+$t_e + \text{PRESENTATION\_TIME}$ and not after it. PRESENTATION_TIME $=$
+INTERVAL, so by default the window is the whole epoch and the drive is 5.4's
+unchanged; a run that shortens it presents the input over the front of the
+epoch and leaves the rest to the network. The window is the drive's alone: it
+reaches the input zone, which is where the drive reaches (§5.1), and the clock
+neurons of 5.3 with it, they being input neurons and no rule of this file
+giving a neuron a role its zone does not (§0.1). PRESENTATION_TIME greater
+than INTERVAL is **refused** and not clipped (§0.5): a window past the horizon
+would schedule arrivals into an epoch that has already been read (§3.10).
+
+*What the tail is, and what it is not.* After the window the input zone is
+undriven, which is not the same as silent: every neuron decides at every wave
+(§6.8) and an undriven neuron carries the hazard's rest rate (§7.2), so the
+tail is the network's own doing and the drive's cascade finishing, not a gap.
+What the read measures is therefore the epoch's count as it always was
+(§5.10), over a whole epoch of which only the front was presented — the
+denominator stays INTERVAL and does not follow the window.
+
+*What it collides with, and is not settled.* §5.8 marks a neuron the drive
+fired **this epoch**, and §8.1 skips every synapse into a neuron so marked
+because "its firing was not the network's doing". That reason holds over the
+window and not over the tail: a neuron driven in the front of the epoch stays
+marked through a tail in which its firing *is* the network's doing, so a short
+window makes the rule refuse to learn from the very part of the epoch the
+window creates. Either the mark narrows to the window and §8.1 skips only what
+the drive caused, or §8.1's skip stays the epoch's and the tail is unlearnable
+for every driven neuron. This is Byron's, and it blocks a short window rather
+than the clause.
+
+*Byron, September 18, 2026: "Please add a new parameter, PRESENTATION_TIME.
+From the beginning of the epoch to PRESENTATION_TIME, input zone neurons are
+driven; from PRESENTATION_TIME to the end of the epoch they are not." The
+default is INTERVAL because that is the only value under which nothing already
+measured moves; what a shorter window is for, and what it should be, are open
+and Byron's. **Not yet built:** the code drives the whole epoch, and this
+clause is one the engines do not meet (`docs/conformance-checks.md`).*
+
 **5.5 These are arrivals, not spikes.** An arrival is a mandated spike and
 not a signal: it adds nothing to the potential, and a neuron that takes one
 spikes as it spikes from any other cause. An arrival landing while its
 neuron is refractory is dropped, so a driven neuron fires at the first
-arrival after its refractory period ends and its spike train is a renewal
-process with dead time,
+arrival after its refractory period ends and its spike train is, within the
+presentation window of 5.4a, a renewal process with dead time,
 $$\text{ISI} = \text{REFRACTORY} + \mathrm{Exp}(\lambda).$$
+Past the window there are no arrivals and the train is the neuron's own
+(§7.2); at the default PRESENTATION_TIME the window is the epoch and there is
+no past.
 Two arrivals at one moment fire one spike. An arrival that fires the neuron
 resets its potential as any spike does (§2.4), so under the accumulator the
 evidence gathered since that neuron's last spike is discharged with it. A driven neuron fires in its
@@ -1385,7 +1427,12 @@ That is what makes where it sits a choice. At ONE_TARGET $= 1$ the target is
 stood when the interval carried it, and the teacher it replaces is criticised
 in this file for targets "at the two extremes of what a neuron can do"
 [RECORD §6.9] — so 1 is a starting value, to be swept, and the range it is
-swept over runs from the 0-target up to 1.020 and no further.
+swept over runs from the 0-target up to 1.020 and no further. Two points on
+that range are already fixed by clauses in force and are where a sweep would
+start: the drive of §5.6 gives a bit-1 neuron $\bar r = 80$ Hz, which is 0.408
+spikes per hop, and §7.2's rest at $N = 60$ gives 0.111. The 1 the default
+carries is the deterministic drive's rate, and that drive is not in force
+(§0.12).
 
 **Open. Each part blocks a build:**
 
@@ -1635,7 +1682,8 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 
 | constant | value | what it fixes | owned by |
 |---|---|---|---|
-| INPUT_DRIVE | rate | how a bit becomes spikes: an independent Poisson process drives each input neuron across the epoch | §5 [record §1.2, §4.3] |
+| INPUT_DRIVE | rate | how a bit becomes spikes: an independent Poisson process drives each input neuron across the presentation window | §5 [record §1.2, §4.3] |
+| PRESENTATION_TIME | INTERVAL | how far into the epoch the drive runs; the default is the whole of it, and more than INTERVAL is refused | §5.4a [Byron, September 18, 2026] |
 | INPUT_CV | 0.6 | how that drive is specified: the coefficient of variation of the train it produces, from which the rate follows | §5 [record §1.2, §4.3] |
 | INPUT_RATE, INPUT_RATE_OFF | 0.133, 0 /ms | the same drive in the other coordinate: the rates of a bit-1 and a bit-0 neuron's process | §5 [record §1.2] |
 | ROW_CRITIC_PICKINESS_IN_SPIKES | 2 | the spikes an output neuron must fire in an epoch to count as on for the row critic, and for nothing else; an integer. mnist's critic reads the counts themselves (11.8) | §9.5 [Byron, September 17, 2026] |

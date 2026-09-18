@@ -462,3 +462,52 @@ made: what a drawn hop would re-ask is §2.5's and §6.12's boundary arithmetic
 (each statement becomes a probability), the hazard's per-hop unit (§6.5,
 §7.2), and the one-stream-one-order invariant (§7.3, §12.6), which gains a
 consumer. LAG stays small meanwhile.
+
+**§9.13, §5.4a — the 1-target separated, and the presentation window**
+(September 18, 2026):
+
+> *"Please separate the 1-target from REFRACTORY+LAG. Please add a new
+> parameter, PRESENTATION_TIME. From the beginning of the epoch to
+> PRESENTATION_TIME, input zone neurons are driven; from PRESENTATION_TIME to
+> the end of the epoch they are not. Will this clean the problem up?"*
+
+and, naming the constant:
+
+> *"ONE_TARGET = 1 (by default)."*
+
+*The answer to the question asked.* The first half cleans it up on its own; the
+second half is worth having but does not do that job. ONE_TARGET is a constant
+in §7.2's unit, spikes per hop, quoted off nothing — so where the target sits
+becomes a choice rather than a consequence of the clock, and the collision
+§9.13 recorded as one that "cannot be tuned away" is closed.
+
+PRESENTATION_TIME cannot move the 1-target, because §9.13 states both targets
+in spikes per hop and a per-hop rate does not know how long the drive ran.
+What it moves is the epoch's count (§5.10), which is a different quantity. That
+was the error in the first reading of this instruction, and it was corrected
+before anything was written from it.
+
+*What PRESENTATION_TIME is for, then.* It stops the drive being able to hold an
+input neuron near the refractory wall for a whole epoch, and it gives the read
+a stretch of epoch the drive had no hand in. §5.4a states it with the window's
+default at INTERVAL, which is the only value under which nothing already
+measured moves.
+
+*The one thing that blocks a short window*, recorded in §5.4a rather than
+decided: §5.8 marks a neuron the drive fired **this epoch**, and §8.1 skips
+every synapse into a marked neuron because "its firing was not the network's
+doing". Over the tail that reason is false. Either the mark narrows to the
+window, or a short window makes the tail unlearnable for every driven neuron.
+
+*Where to sweep ONE_TARGET from.* Two points on its range are fixed by clauses
+in force: the drive of §5.6 gives a bit-1 neuron 80 Hz, which is 0.408 spikes
+per hop, and §7.2's rest at N = 60 gives 0.111. The default 1 is the
+*deterministic* drive's rate, and that drive is not in force — so the default
+is quoted off something the specification does not yet carry.
+
+*A correction kept because the arithmetic is tempting.* It was claimed in
+passing that under §5.10's count read the 1-target and the refractory ceiling
+are indistinguishable — both seven spikes in 35 ms. That pins a spike at the
+epoch's moment, which §5.7 forbids. With the phase free the hop train reads six
+spikes on 13.7% of epochs and seven on the rest, mean 6.863 against the
+ceiling's 7: the 98% in §9.13 is right, and the read does tell them apart.
