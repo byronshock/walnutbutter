@@ -257,11 +257,20 @@ non-identity permutation rather than defaulting it away.
 
 ## C. The reads, and the two non-defaults that are on
 
-**C1. §5.10 — "It is the only read", and it is one of five.** The network's
-default read is `"fired"` and the command line offers five. Only mnist sets
-`read="count"`, so every other run reads the zone a way no clause carries — and
-under `"fired"` the row critic's pickiness of 2, which landed this afternoon,
-is never applied at all.
+**C1. ~~§5.10 — "It is the only read", and it is one of five.~~ Settled the
+other way, September 19, 2026 — the clause moved, not the code.** The network's
+default read was `"fired"` and the command line offers five. Only `copy` and
+`mnist` set `read="count"`, so every other run read the zone a way no clause
+carried — and under `"fired"` the row critic's pickiness of 2 was never applied
+at all.
+
+Byron, asked whether to strike the other four: *"5.10 should say count is the
+default read. Keep the rest."* So §5.10 now says the count is the **default**
+read and names the other four as non-defaults a run asks for by name, on §9.1's
+pattern; and the one part of the disagreement that really was the code's — the
+default being `fired` — is fixed, `Network.read` starting at `"count"`. Two
+tests that drove `has_fired` directly now name the `fired` read, which is what
+§5.10 says a run does when it wants one.
 
 **C2. ~~§9.9 and §9.10 — marked Non-default, and defaulted on.~~ Done —
 D5 answered by the file, September 18, 2026.** The Teacher and the command line
@@ -276,10 +285,18 @@ thresholds by a rule the file calls non-default; only mnist asked for them off.
 > bare `--homeostasis` runs it at 1e-6, `--homeostasis 5e-6` at that, absent is
 > off. The quash was already right and was the model.
 
-**C3. §9.13, §7.5 — the old rate teacher's two extremes are still live.**
-RATE_ON = 200 Hz and RATE_OFF = 0 are exactly the saturation and silence the
-new set point replaces. They drive the `"rate"` read through `output_levels`
-and have CLI flags. None of RATE_ON, RATE_OFF or RATE_TAU is in Appendix A.
+**C3. ~~§9.13, §7.5 — the old rate teacher's two extremes are still live.~~
+Done with C1, September 19, 2026.** RATE_ON = 200 Hz and RATE_OFF = 0 are
+exactly the saturation and silence §9.13's set point replaces. They drive the
+`"rate"` read through `output_levels` and have CLI flags, and none of RATE_ON,
+RATE_OFF or RATE_TAU was in Appendix A.
+
+The read that uses them stays (C1), so they stay — and A.0 then requires them
+in the register rather than out of the code. READ_WINDOW, RATE_TAU and the
+RATE_ON/RATE_OFF pair now have rows, each marked **non-default read** and
+pointing at §5.10. The row for the pair says in as many words that these are
+the two extremes §9.13 was written to leave behind, so nobody reads their
+presence as the file endorsing them: they belong to a read, not to a teacher.
 
 ---
 

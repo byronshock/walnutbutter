@@ -70,7 +70,7 @@ def test_the_inputs_are_the_outputs_and_on_means_spiked_again():
 def test_the_sustained_critic_scores_only_the_forced_neurons():
     from walnutbutter.learning import CRITICS, sustained
     grid = Goo(count=12, across=4, weight=1.0)
-    grid.readout = "input"
+    grid.readout, grid.read = "input", "fired"  # §5.10: this test drives has_fired, so it names the fired read
     grid.set_input_bits([True, False])  # pattern 1 0 0 1 after complement coding, before the permutation
     row = grid.input_row()
     forced = [n for n, bit in zip(row, grid.input_pattern) if bit]

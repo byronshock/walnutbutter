@@ -731,10 +731,23 @@ dataset's images into raw bits is the problem's (§11.4).
 
 **5.10 The read is the count read.** The read of an output neuron is
 $n_j$, the spikes it fired since the epoch's reset — a count, and nothing
-else. It is the only read. A rate follows from it and the epoch's length
-where a rule wants one, $1000\,n_j/\text{INTERVAL}$ in hertz, but no rule of
-this file reads the zone any other way, and what counts as a neuron being
-**on** belongs to the critic that asks (§9.5).
+else. **It is the default read**, and the one every rule of this file is
+written on: where a clause says what is read, it means this. A rate follows
+from it and the epoch's length where a rule wants one,
+$1000\,n_j/\text{INTERVAL}$ in hertz, and what counts as a neuron being **on**
+belongs to the critic that asks (§9.5).
+
+*The other reads are non-defaults, and a run asks for each by name* (§9.1's
+rule for a rule that does not run unless asked, applied to a read). They are
+**fired**, on if the neuron spiked at all this epoch; **again**, on if it
+spiked after the epoch's input moment; **window**, on if it spiked within
+READ_WINDOW of the read; and **rate**, the neuron's own exponential firing-rate
+estimate over RATE_TAU, scored against RATE_ON for a 1 and RATE_OFF for a 0
+and clipped to $[0, 1]$ — the only read that is graded rather than a count.
+None of them is quoted by any other clause, no result of this project rests on
+one, and a run that names one is outside what the rest of this file describes.
+*Byron, September 19, 2026, keeping them: "5.10 should say count is the
+default read. Keep the rest."*
 *Byron, September 14, 2026: "Here's how we actually score: COUNT the number
 of times each neuron fired in the epoch. ESTIMATE the firing rate based on
 the count. If the firing rate estimate exceeds TEACHER_THRESHOLD, the
@@ -747,6 +760,11 @@ every engine — no tolerance applies to it, and the three agree on it exactly.
 The rate line this clause used to carry became the row critic's pickiness
 (§9.5) on September 17, 2026, which is a count and not a rate, so the read no
 longer changes meaning with the epoch's length [RECORD §1.2, §4.3, §8].
+This clause read "It is the only read" until September 19, 2026, when Byron
+kept the other four rather than strike them; what changed is the clause and
+not the code, which had offered five all along and defaulted to **fired** —
+that default is now the count's, which is the part of the disagreement that
+was the code's [`docs/conformance-checks.md` C1].
 
 **5.11 The output zone is complement-coded.** For $C$ classes and a
 population of $P$ neurons in each half — $P$ fire-if-one and $P$
@@ -1695,6 +1713,9 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 | INPUT_RATE, INPUT_RATE_OFF | 0.133, 0 /ms | the same drive in the other coordinate: the rates of a bit-1 and a bit-0 neuron's process | §5 [record §1.2] |
 | ROW_CRITIC_PICKINESS_IN_SPIKES | 2 | the spikes an output neuron must fire in an epoch to count as on for the row critic, and for nothing else; an integer. mnist's critic reads the counts themselves (11.8) | §9.5 [Byron, September 17, 2026] |
 | POPULATION | 3 | the neurons per class in each half of a complement-coded output zone (11.6) | §5.11 [record §1.3] |
+| READ_WINDOW | 5 ms | **non-default read.** How recently before the read a spike must have fallen to count, under the *window* read of §5.10 | §5.10 [record §1.3] |
+| RATE_TAU | 5 ms | **non-default read.** The exponential window a neuron's own firing-rate estimate is taken over, under the *rate* read of §5.10 | §5.10 [record §1.3] |
+| RATE_ON, RATE_OFF | 200, 0 Hz | **non-default read.** What the *rate* read of §5.10 scores a 1 and a 0 against: saturation, which is 1/REFRACTORY, and silence. These are the two extremes §9.13 was written to leave behind, and they stay because the read that uses them stays | §5.10 [record §1.3; Byron, September 19, 2026] |
 
 **Learning**
 

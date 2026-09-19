@@ -107,7 +107,7 @@ class Network:
         self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
         self.input_events: list[tuple[int, float]] | None = None  # the (place, time) stimuli this epoch actually used;
         # input_schedule() draws afresh under rate drive, so this is what to read to see what happened
-        self.read = "fired"  # what "on" means at the read: "fired" this epoch; "again", spiked after the epoch's input moment
+        self.read = "count"  # §5.10's default read: the epoch's spikes counted. "fired", "again", "window" and "rate" are its non-defaults
         # (a forced neuron must have refired); "window", within read_window ms before the horizon
         self.read_window: float | None = None  # the window for read == "window"
         self.rate_on = RATE_ON  # Hz: the rate a target-on output is driven to, and what output_levels divides by (§4.3)

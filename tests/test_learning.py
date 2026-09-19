@@ -47,6 +47,7 @@ def test_expected_outputs_for_each_target():
 
 def test_errors_and_accuracy_against_the_top_row():
     grid = Goo(count=12, across=4)
+    grid.read = "fired"  # §5.10: one spike each is what this test arranges, so it names the fired read
     grid.set_input([True, False, False, False])  # reversed target: only place 3 should fire
     top = output_row(grid)
     top[3].fire()  # correct
