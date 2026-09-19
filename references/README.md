@@ -46,6 +46,9 @@ and not ours to redistribute (see "Closed access, and how a copy gets here"). It
 | `PlesserGerstner00.pdf` | Plesser & Gerstner (2000), Neural Computation 12(2), 367-384 -- the ancestor of the level-crossing mapping, cited September 19, 2026; not in BIBLIOGRAPHY.md | https://arken.nmbu.no/~plesser/publications/NEURCOMP_2000_367.pdf | the published MIT Press typesetting (18 pages, the journal's 367-384) on the first author's own page at NMBU; MIT Press's own copy is paywalled and Unpaywall and OpenAlex both list the article closed | September 19, 2026 | `c613d2e0bff3cff6…` |
 | `PlesserPhD99.pdf` | Plesser (1999), *Aspects of Signal Processing in Noisy Neurons*, dissertation, Georg-August-Universitat zu Gottingen (a thesis) -- the long form of the paper above; chapter 3 tests five hazard shapes against the exact answer. Cited September 19, 2026; not in BIBLIOGRAPHY.md | https://arken.nmbu.no/~plesser/publications/HEPlesser_PhD.pdf | the whole thesis (162 pages) on the author's own page at NMBU; the university's own record is at https://doi.org/10.53846/goediss-2910, whose repository serves a script nothing but its JavaScript shell | September 19, 2026 | `cf014c0978755abb…` |
 | `BalasubramanianKimberBerry01-arxiv.pdf` | Balasubramanian, Kimber & Berry (2001), Neural Computation 13(4), 799-815 -- cited September 19, 2026, when Byron asked what refers to the energy budget of neurons; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/cond-mat/0105127 | the arXiv preprint (cond-mat/0105127, May 6, 2001), 19 pages, stamped "Neural Comp. MS 2132"; MIT Press's own copy is paywalled | September 19, 2026 | `b2cbd883b78e722d…` |
+| `AttwellLaughlin01.pdf` | Attwell & Laughlin (2001), Journal of Cerebral Blood Flow and Metabolism 21(10), 1133-1145 -- the energy budget itself; not in BIBLIOGRAPHY.md | https://journals.sagepub.com/doi/pdf/10.1097/00004647-200110000-00001 | the published Lippincott typesetting (13 pages), free at SAGE (bronze); the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `a77d667defcb5df9…` |
+| `LevyBaxter02.pdf` | Levy & Baxter (2002), Journal of Neuroscience 22(11), 4746-4755 -- synaptic failure as an energy optimum; not in BIBLIOGRAPHY.md | https://www.jneurosci.org/content/jneuro/22/11/4746.full.pdf | the published typesetting (10 pages), free at the Journal of Neuroscience; the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `415a65bbf5909fca…` |
+| `HarrisJolivetAttwell12.pdf` | Harris, Jolivet & Attwell (2012), Neuron 75(5), 762-777 -- the budget redone at the synapse; not in BIBLIOGRAPHY.md | https://www.cell.com/article/S0896627312007568/pdf | the published Cell Press typesetting (16 pages), free in Elsevier's open archive; the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `3ceceffd2c5c6ebd…` |
 | `KorcsakGorzoEtAl25-arxiv.pdf` | Korcsak-Gorzo, Espinoza Valverde, Stapmanns, Plesser, Dahmen, Bolten, van Albada & Diesmann (2025), *Event-driven eligibility propagation in large sparse networks* -- asked for by Byron, September 19, 2026; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/2511.21674 | the arXiv preprint (2511.21674v1, November 26, 2025), 34 pages, cs.NE and q-bio.NC; no journal version yet | September 19, 2026 | `5cedf2a9c670835c…` |
 
 | `Jefferson85.pdf` | Jefferson (1985), "Virtual Time", ACM Transactions on Programming Languages and Systems 7(3), 404-425 | https://worrydream.com/refs/Jefferson_1985_-_Virtual_Time.pdf | the published ACM typesetting, freely served; optimistic simulation and the rollback-by-antimessage scheme (Time Warp) | September 19, 2026 | `66ef780b7182c0da…` |
@@ -210,18 +213,10 @@ requests (see "Closed access, and how a copy gets here" above); the highest-scor
 `Laughlin, de Ruyter van Steveninck & Anderson (1998)` is already BIBLIOGRAPHY.md entry 13 and is the one
 paper of it we could not get (above, and issue #4). These are the rest of that literature. All are free to
 a reader and all refuse a script -- SAGE, Biologists, Cell Press, PubMed Central and the Journal of
-Neuroscience each answer 403 -- so each needs saving from a browser under the name given.*
+Neuroscience each answer 403 -- so each needs saving from a browser under the name given. **Byron saved Attwell & Laughlin, Levy & Baxter
+(2002) and Harris, Jolivet & Attwell on September 19, 2026**; they are rows in the table above, and what
+remains below is what is still to fetch.*
 
-- Attwell & Laughlin (2001), *An Energy Budget for Signaling in the Grey Matter of the Brain*, JCBFM
-  21(10), 1133-1145: the budget itself -- action potentials 47%, postsynaptic glutamate effects 34%,
-  resting potential 13% -- and the conclusion that the numbers imply a distributed code with at most 15%
-  of neurons active at once. Free (bronze) at https://journals.sagepub.com/doi/pdf/10.1097/00004647-200110000-00001 -- save as `AttwellLaughlin01.pdf`.
-- Levy & Baxter (2002), *Energy-Efficient Neuronal Computation via Quantal Synaptic Failures*, Journal of
-  Neuroscience 22(11), 4746-4755: synaptic failure argued as an energy optimum rather than a defect. Free
-  at https://www.jneurosci.org/content/jneuro/22/11/4746.full.pdf -- save as `LevyBaxter02.pdf`.
-- Harris, Jolivet & Attwell (2012), *Synaptic Energy Use and Supply*, Neuron 75(5), 762-777: the budget
-  redone at the synapse a decade on. Free (hybrid) at https://www.cell.com/article/S0896627312007568/pdf
-  -- save as `HarrisJolivetAttwell12.pdf`.
 - Hasenstaub, Otte, Callaway & Sejnowski (2010), *Metabolic cost as a unifying principle governing
   neuronal biophysics*, PNAS 107(27), 12329-12334: the cost argument run down into the channel kinetics.
   Free at https://pmc.ncbi.nlm.nih.gov/articles/PMC2901447/ -- save as `HasenstaubEtAl10.pdf`.
