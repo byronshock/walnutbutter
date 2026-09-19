@@ -6,8 +6,16 @@ And, September 17, 2026: "Please do this automatically whenever you call up a re
 worth the bibliography mention" -- so a paper here need not be in BIBLIOGRAPHY.md. Fetched from the sources named, checked to be PDFs, and hashed; nothing from a publisher's paywall or a
 pirate mirror. A preprint is marked as one.
 
-The PDFs are not tracked in git (Byron, September 16, 2026: "please untrack the references
-folder"): only this list is. A fresh clone fetches them from the sources below.
+The PDFs are tracked here, in this private repository. Byron, September 19, 2026: "please track all the
+PDFs in this folder. This is a private repository and I need to share it with Cedric." That reverses the
+arrangement of September 16 ("please untrack the references folder"), which was about the *public*
+checkout: walnutbutter still ignores everything in this folder but README.md, so nothing here is
+redistributed from the public repository. A clone of this repository now carries the papers themselves,
+which is what makes it shareable with Cedric in one step; the sources below stay in the table as
+provenance, and as the way to refetch anything.
+
+**This repository must stay private.** Some of these are acquired or author copies that are ours to read
+and not ours to redistribute (see "Closed access, and how a copy gets here"). It is about 190 MB.
 
 | file | entry | source | note | fetched | SHA-256 |
 |---|---|---|---|---|---|
