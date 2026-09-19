@@ -122,13 +122,21 @@ MECHANICS WE UNDERSTAND."* §7.4 now says there is no shaping function and no
 rule reads the interval since a neuron's own last spike; the code says the
 same, in all three engines.
 
-**A5. Appendix A — TAU is ∞, and the code leaks by default.** The register:
-*"TAU | ∞ | the potential does not leak: the evidence accumulator. 2 ms is the
-leak, kept as a per-run option with its analysis"*, quoting Byron: *"neuron:
-NOT leaky, but please leave the leak option with its analysis."* `constants.py`
-has `TAU = 2.0` and `--tau` defaults to it, so every run leaks and the
-accumulator — the thing §1.2 and §8 are written on — is the branch a run has to
-ask for.
+**A5. ~~Appendix A — TAU is ∞, and the code leaks by default.~~ Done,
+September 19, 2026.** The register: *"TAU | ∞ | the potential does not leak:
+the evidence accumulator. 2 ms is the leak, kept as a per-run option with its
+analysis"*, quoting Byron: *"neuron: NOT leaky, but please leave the leak
+option with its analysis."* `constants.py` had `TAU = 2.0` and `--tau`
+defaulted to it, so every run leaked and the accumulator — the thing §1.2 and
+§8 are written on — was the branch a run had to ask for. `TAU` is now
+`math.inf`.
+
+*Where the 2 went.* It is `LEAK_TAU`, named rather than deleted, because the
+register keeps the leak "as a per-run option with its analysis" and a bare 2.0
+in a help string is not that. It is not a second name for TAU: it is the value
+the option was swept to, and `--tau` is how a run asks for it. **Every number
+measured before this date was measured under the leak**, which is the whole
+reason section A goes together and is followed by a re-measurement.
 
 **A6. ~~§3.4 — TOLERANCE is a thousand times looser than specified.~~ Done,
 September 19, 2026.** The register fixes $10^{-12}$; `clock.py` had `1e-9` and

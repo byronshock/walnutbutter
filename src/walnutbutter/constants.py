@@ -13,6 +13,8 @@ The clock values live here but run from `Neuron.refractory` and
 restores) per run.
 """
 
+import math
+
 # --- the default network: footprint and wiring ----------------------------------
 ACROSS = 8  # the input zone's width: the first ACROSS neurons, one per coded bit (§4.3)
 WEIGHT_RANGE = (-1.0, 1.0)  # random weights are drawn from this range, and learning clips to it
@@ -52,7 +54,11 @@ GOO_PROJECTION = 0.2  # the probability of the three earlier wirings (--wiring z
 # Set from Byron's two sweeps of September 14-15 (§3.4): the plateau in P runs 0.15 to 0.5 with cliffs at 0.1 and from
 # 0.6 up, and 0.2 sits inside it with every seed learning on either side, the highest floor anywhere, and the fastest goo
 # that learns -- about 650 projections at sixty neurons, four times the speed of the fully connected goo, which was 1
-TAU = 2.0  # ms: leak time constant of the potential, computed lazily on arrival (Byron, September 12, 2026, bringing the leak back; his earlier sweep chose 2); math.inf switches it off
+TAU = math.inf  # the potential does not leak: the evidence accumulator (AUTHORITY.md §2, §8; Byron, September 17,
+# 2026: "neuron: NOT leaky, but please leave the leak option with its analysis"). The leak is LEAK_TAU below, and a
+# run asks for it with --tau; it is not a second name for this quantity but the value the option was swept to
+LEAK_TAU = 2.0  # ms: the leak time constant --tau names when a run wants one, computed lazily on arrival (Byron,
+# September 12, 2026, bringing the leak back; his earlier sweep chose 2). Not the default since September 19, 2026
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
 REFRACTORY_HOPS = 2.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
 # 2026). 3 until September 17, 2026 (Byron: "Please set hops=2 by default"): a hop of 2.5 ms, not 1.67

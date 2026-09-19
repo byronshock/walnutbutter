@@ -1,6 +1,7 @@
 """The clock: nominal milliseconds, one hop per connection, an absolute refractory period, a schedule with a horizon."""
 
 import json
+import math
 
 import pytest
 
@@ -214,7 +215,8 @@ def test_cli_clock_options_and_validation(tmp_path, capsys):
                      "--refractory-hops", "2", "--save-weights", str(save)]) == 0
     data = json.loads(save.read_text())
     assert data["time"] == 10.0 and data["interval"] == 2.5 and data["refractory"] == 3.0 and data["refractory_hops"] == 2.0
-    assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == 2.0 and len(data["last_update"]) == C.GOO_COUNT
+    # §2: the default is the accumulator, so the checkpoint records inf and not the leak (§12.9)
+    assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == C.TAU == math.inf and len(data["last_update"]) == C.GOO_COUNT
     assert (Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after) == (
         C.REFRACTORY, C.REFRACTORY_HOPS, C.BORED_AFTER)  # restored after the command
     assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "3", "--bored-after", "0", "--no-save"]) == 0

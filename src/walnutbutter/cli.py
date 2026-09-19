@@ -18,7 +18,7 @@ from .inputs import parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
-    QUASH_K, QUASH_RATE, TAU,
+    QUASH_K, QUASH_RATE, TAU, LEAK_TAU,
     ELIGIBILITY, HOMEOSTASIS, INTERVAL, LR,
     MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
@@ -449,7 +449,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=TAU,
         metavar="MS",
-        help=f"leak time constant of every neuron, nominal milliseconds (default: {TAU:g}; inf switches the leak off). "
+        help=f"leak time constant of every neuron, nominal milliseconds (default: {TAU:g} -- the potential does not "
+        f"leak, which is the evidence accumulator of AUTHORITY.md §2; {LEAK_TAU:g} is the leak as it was swept). "
         "The leak is computed only when a signal reaches a neuron",
     )
     parser.add_argument(
