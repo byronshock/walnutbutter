@@ -53,19 +53,30 @@ unclaimed list leaves PROBLEM open.*
 
 ## A. The clock and the neuron's default
 
-*These move every number the project has measured. They belong together
-in one re-timing, followed by a re-measurement of mnist — not one at a time.*
+*These move every number the project has measured, though by 2% and not by
+half — see A1, corrected September 19, 2026. They belong together in one
+re-timing, followed by a re-measurement of mnist — not one at a time.*
 
-**A1. §3.2 — the hop is half what the file says.** The file fixes
-$h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, written out and with no name of
-its own since September 18, 2026, and retires the old form in Byron's words:
-*"I no longer want to specify REFRACTORY_HOPS. I want to specify $h$
-directly."* `neuron.py:51` still computes
-`REFRACTORY / REFRACTORY_HOPS` = 2.5 ms. Every delay in the system is half the
-specified one, and the LAG's whole purpose fails with it: a signal sent to a
-neuron that fired in the same wave now lands at $t + 2.5$ ms, **inside** that
-neuron's refractory period, where §3.2 requires it to land at $t + 5.1$ ms,
-just after recovery.
+**A1. §3.2 — the hop is short by the LAG.** The file fixes
+$2h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, so $h = 2.55$ ms, written out
+and with no name of its own since September 18, 2026, and retires the old form
+in Byron's words: *"I no longer want to specify REFRACTORY_HOPS. I want to
+specify $h$ directly."* `neuron.py:35` still computes
+`REFRACTORY / REFRACTORY_HOPS` = 2.5 ms. The gap is the LAG: every delay in the
+system is 2% short of the specified one, and the LAG's whole purpose fails with
+it, since two hops then land at exactly 5.0 ms — **on** the refractory wall,
+where §3.2 puts them 0.1 ms past it and the clock's slack (§3.4) decides
+nothing. The tight case is the neuron's own earliest return, two connections
+by §4.4, and not a one-hop arrival: one hop lands inside the period either way
+and is §8.13's.
+
+*This entry read, until September 19, 2026, that the hop was half what the file
+said and that every delay was half the specified one. That followed §3.2 as it
+was then written, which made a whole REFRACTORY + LAG one hop rather than two.
+Byron, September 19, 2026: "The current dynamics should be 2.55 ms hops, with 2
+hops landing at 5.1 ms after the refractory period they are responsible for
+ends at 5 ms." §3.2 and §2.5 were corrected to say so, and the code's error is
+2% rather than 50%.*
 
 **A2. Appendix A — LAG has no home, and the code has no hop to add it to.**
 `rg '\bLAG\b'` over `src/` and `rust/` returns nothing, so the register's one
@@ -77,7 +88,9 @@ with the shaping function on September 18, 2026, and the name
 TIME_CONSTANT_OF_TRANSMISSION was retired the same day, leaving the quantity.
 `REFRACTORY_HOPS` survives in the code as the divisor of A1 and is a different
 quantity under a similar name: the refractory period divided by the hop, not
-the connections a spike travels. A.0 wants one home for every value in the
+the connections a spike travels. It cannot carry the specified hop even in
+principle — the period over 2.55 ms is 1.9607843137…, not a number to write in
+a register — which is the arithmetic behind Byron's wanting $h$ direct. A.0 wants one home for every value in the
 register.
 
 **A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~

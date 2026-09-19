@@ -32,10 +32,10 @@ The questions this file leaves for Byron and Cedric are collected in
 measurements were not made at this file's defaults, and the gap is wider than
 one constant. Every measurement in `RECORD.md` was made at TAU 2 ms and a hop
 of 1.667 ms — three hops to a refractory period — where this specification
-starts from the evidence accumulator and a hop of 5.1 ms (§2.2, §3.2): three
-times as long, and longer than the refractory period rather than a fraction
-of it, so a signal that arrived mid-period there arrives just after the
-period here. Every mnist measurement in it was made at a 100 ms epoch
+starts from the evidence accumulator and a hop of 2.55 ms (§2.2, §3.2): half
+again as long, and two hops to a refractory period and a hair rather than
+three inside one, so a return that refired a neuron there clears its wall
+here. Every mnist measurement in it was made at a 100 ms epoch
 and at a container threshold of 0.6 with the floor at −2.4, where this
 specification's defaults are INTERVAL 35 ms (§3.11) and GOO_THRESHOLD 0.2
 with the floor at −0.8 (§4.10). Those three are not the problem's to set
@@ -123,7 +123,7 @@ The form it is meant to take is one sparse matrix of every synaptic connection, 
 - Exploration generated at the synapse (§0.11), and with it the deprecation of θ and a hazard set by a neuron's fan-in. *Byron, September 17, 2026: "Theta should also be deprecated" — and, the same afternoon, 14:53 MDT, that the rewrite states the system as he has been running it, θ and its fan-in scaling included. [the quoted words are at `docs/rewrite-outline.md` §6.2, attributed to Byron there; RECORD §0.3 for "θ ignored"; `docs/rewrite-answers.md` §1 for the 14:53 counter]*
 - A dopamine reward produced locally at a spike (§0.10).
 - A deterministic drive: one spike every REFRACTORY + LAG on each driven neuron in place of the Poisson rate drive. The interval was quoted in TARGET_ISI, which §7.4 took out with the shaping function, and is quoted in the hop since — Byron, September 18, 2026: "REFRACTORY+LAG". *Byron, September 17, 2026, 14:58 MDT: "Please include the Poisson drive as it ran." [`docs/rewrite-answers.md` §3]*
-- A signal's travel time drawn rather than fixed. §3.2 gives every connection the one hop $h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, and the arithmetic that keeps an arrival off a refractory boundary (§2.5, §6.12) is that one number's; a drawn hop makes each of those statements a probability, takes "spikes per hop" away from the hazard as its unit (§6.5, §7.2), and adds a consumer to the streams a seed fixes (§7.3, §12.6). Which stream it draws from, and whether a draw may fall below REFRACTORY and be dropped by §8.13, are open and Byron's. LAG stays at a very small value meanwhile. A signal still arrives whole and at an instant (§0.3): what a draw spreads is the population of signals, not the signal. *Byron, September 18, 2026, retiring TIME_CONSTANT_OF_TRANSMISSION as a name: "We keep the LAG at some very small value. Arrival times may eventually be stochastic."*
+- A signal's travel time drawn rather than fixed. §3.2 gives every connection the one hop $h = (\text{REFRACTORY} + \text{LAG})/2 = 2.55$ ms, and the arithmetic that keeps a two-hop return off a refractory boundary (§2.5, §6.12) is that one number's; a drawn hop makes each of those statements a probability, takes "spikes per hop" away from the hazard as its unit (§6.5, §7.2), and adds a consumer to the streams a seed fixes (§7.3, §12.6). Which stream it draws from, and whether a draw may fall below REFRACTORY and be dropped by §8.13, are open and Byron's. LAG stays at a very small value meanwhile. A signal still arrives whole and at an instant (§0.3): what a draw spreads is the population of signals, not the signal. *Byron, September 18, 2026, retiring TIME_CONSTANT_OF_TRANSMISSION as a name: "We keep the LAG at some very small value. Arrival times may eventually be stochastic."*
 - Small-world shortcuts, to return. *Byron, September 17, 2026, 15:08 MDT: "We'll bring back small world shortcuts later."*
 - The plane, as one way of putting the substance into a maker's hands rather than as a container of its own (§0.6). *Byron, September 17, 2026: "It is not THE idea, but AN idea of how to make neural networks useful to makers."*
 
@@ -286,8 +286,8 @@ and the neuron's spike count rises by one. Nothing any synapse delivered is stil
 
 **2.5 The refractory period.** A neuron that fired at $t^{\text{fired}}$ is refractory while $t < t^{\text{fired}} + \text{REFRACTORY}$, REFRACTORY = 5 ms. While refractory it ignores every signal, does not integrate it, cannot be forced by the drive, and makes no firing decision. This clause and §6.12's resumption of the hazard are the whole of what reads $t^{\text{fired}}$: since §7.4 there is no third reader, and the interval between a neuron's own spikes is read by the quash alone (§10.1, a non-default). What a refractory neuron does about firing is §6.12; what it does about a signal that reaches it is §8.13.
 
-The period is shorter than a hop by LAG (§3.2), so every signal a spike generates is delivered after its sender has itself recovered, and a signal sent to a neuron that fired in the same wave arrives just after that neuron recovers, never as it recovers. No arrival is on the boundary to begin with. *Engines:* the comparison allows the clock's slack all the same (§3.4) — the test is `now + slack(now) < t_fired + REFRACTORY` — because the times being compared are each the end of a chain of clock arithmetic and neither is exact; the slack is what makes the three engines recover the same neuron at the same wave rather than a hair either side of it.
-*Byron and Cedric, from the beginning [RECORD §0, §5.3]. The clause read, until September 18, 2026, that without the slack "floating-point arithmetic would decide whether a two-hop return refires the neuron" — true of the 2.5 ms hop the code still runs, where two hops landed exactly on the wall, and not of the hop this file specifies, under which no whole number of hops equals the period at all (§3.2).*
+The period is shorter than two hops by LAG (§3.2), so a neuron's own spike — which reaches it again only round a cycle, and §4.4 gives it none shorter than two connections — arrives just after that neuron recovers and never as it recovers. A one-hop arrival falls inside the period and is §8.13's. No arrival is on the boundary to begin with. *Engines:* the comparison allows the clock's slack all the same (§3.4) — the test is `now + slack(now) < t_fired + REFRACTORY` — because the times being compared are each the end of a chain of clock arithmetic and neither is exact; the slack is what makes the three engines recover the same neuron at the same wave rather than a hair either side of it.
+*Byron and Cedric, from the beginning [RECORD §0, §5.3]. The clause read, until September 18, 2026, that without the slack "floating-point arithmetic would decide whether a two-hop return refires the neuron" — which is exactly the case the LAG removes, and exactly what the 2.5 ms hop the code still runs does not: there two hops land on the wall and the slack decides. Byron, September 19, 2026, fixing the hop this file had stated as a whole REFRACTORY + LAG: "The current dynamics should be 2.55 ms hops, with 2 hops landing at 5.1 ms after the refractory period they are responsible for ends at 5 ms." The 5.1 ms is two hops, and §3.2 is written that way since.*
 
 **2.6 The rate memory.** After every epoch, each neuron the drive did not force in that epoch moves its rate memory toward what it did:
 
@@ -306,34 +306,38 @@ it.
 *Byron and Cedric, September 10, 2026 [RECORD §4.1].*
 
 **3.2 The hop.** A signal generated at time $t$ is delivered at
-$t + \text{REFRACTORY} + \text{LAG}$, and **never** at $t + \text{REFRACTORY}$.
-That is the hop, and it has no name of its own: wherever this file needs it,
-it is written out,
+$t + h$, one hop later, and no whole number of hops ever falls at
+$t + \text{REFRACTORY}$. The hop has no name of its own: wherever this file
+needs it, it is written out,
 
-$$h = \text{REFRACTORY} + \text{LAG} = 5.1\ \text{ms},$$
+$$2h = \text{REFRACTORY} + \text{LAG} = 5.1\ \text{ms},\qquad h = 2.55\ \text{ms},$$
 
 where $h$ is this file's shorthand in arithmetic and not a constant —
-REFRACTORY and LAG are the two constants and the hop is what they add to.
+REFRACTORY and LAG are the two constants and two hops are what they add to.
 LAG $= 0.1$ ms, and there is no other delay: the time in signalling is
 carried by the hop alone. It is a delay and not a decay — a signal arrives
 whole, one hop after it was sent (§0.3).
 
-**The hop is longer than the refractory period, and that is the content of
-the LAG.** A whole number of hops is never a refractory period. A signal that
+**Two hops are longer than the refractory period, and that is the content of
+the LAG.** No whole number of hops is a refractory period. A signal that
 has travelled $k$ connections is delivered $k\,h$ after the spike that
 generated it, and a neuron that fired in that same wave is recovered
 REFRACTORY after, so the arrival falls $k\,h - \text{REFRACTORY}$ past that
-neuron's wall — 0.1 ms at one hop, 5.2 ms at two, 10.3 ms at three, and never
-zero. In general that clearance is $(k-1)\,\text{REFRACTORY} + k\,\text{LAG}$,
-positive for every $k \ge 1$ whenever LAG is positive and smallest at $k = 1$,
-where it is LAG itself: any positive LAG puts every whole number of hops clear
-of the period, and the one hop is the tight one. A neuron's own spike reaches
+neuron's wall — $-2.45$ ms at one hop, 0.1 ms at two, 2.65 ms at three, and
+never zero. In general that clearance is
+$(k-2)\,\text{REFRACTORY}/2 + k\,\text{LAG}/2$, which is LAG itself at
+$k = 2$ and is zero for no whole $k$ at all: $k\,h = \text{REFRACTORY}$ would
+need $k = 2\,\text{REFRACTORY}/(\text{REFRACTORY} + \text{LAG}) = 1.96\ldots$,
+which is not one. One hop lands inside the period, and what becomes of a signal
+that arrives there is §8.13's; two hops is the tight one. A neuron's own spike reaches
 it again only round a cycle, and §4.4 gives
 it no cycle shorter than two connections, so its own earliest return is at
-$2h = 10.2$ ms, 5.2 ms past its wall.
+$2h = 5.1$ ms, 0.1 ms past its wall — the tight case above, and the one the LAG
+is for.
 
-The one-hop case is the tight one and is what the LAG is for. Without the LAG
-that arrival would land exactly at the end of the target's refractory period,
+The two-hop return is what the LAG is for. Without it the hop would be
+REFRACTORY / 2 and that return would land exactly at the end of the neuron's
+own refractory period,
 and the clock's slack (§3.4) — a tolerance for rounding, not a rule about
 neurons — would decide whether the signal was taken or dropped. With it, no
 delivery is ever settled by which side of a rounding error it fell on. What
@@ -352,8 +356,8 @@ convenience when we were working on an integer hex grid." There a trip had a
 length in cells, so counting the refractory period in hops measured how far a
 spike could travel before its neuron recovered. Goo has no distance (§4.2),
 every projection is one hop, and the count has nothing to count [RECORD §1.2,
-§4.1]. The 5.1 ms is REFRACTORY + LAG: a delay, and not an interval any rule
-aims at. TARGET_ISI, in the form hardcoded at 5.1 ms until September 17, 2026
+§4.1]. The 5.1 ms is REFRACTORY + LAG, which is two hops and not one: a delay, and
+not an interval any rule aims at. TARGET_ISI, in the form hardcoded at 5.1 ms until September 17, 2026
 — not the derived HOPS × (REFRACTORY + LAG) = 10.2 ms that briefly replaced it
 — was the same number, and Byron replaced it with REFRACTORY + LAG on
 September 18, 2026: a name retired in favour of the arithmetic, not two
@@ -361,8 +365,8 @@ meanings merged. Nothing in force aims at this interval.
 
 The LAG has a floor as well as a ceiling. It must stay far above the clock's
 slack (§3.4) — a LAG within slack(t) puts the delivery back inside the very
-tolerance it was introduced to escape — and far below REFRACTORY, so the hop
-stays a refractory period and a hair and the hazard's per-hop unit (§6.5) does
+tolerance it was introduced to escape — and far below REFRACTORY, so two hops
+stay a refractory period and a hair, and the hazard's per-hop unit (§6.5) does
 not move. At TOLERANCE $10^{-12}$, 0.1 ms clears the slack by a factor of
 $10^{11}$ at a millisecond of clock time and by ten at $10^{10}$ ms, and §0.8
 says the network never stops: the margin is the reason for the value and not a
