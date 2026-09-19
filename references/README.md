@@ -39,6 +39,9 @@ folder"): only this list is. A fresh clone fetches them from the sources below.
 | `PlesserPhD99.pdf` | Plesser (1999), *Aspects of Signal Processing in Noisy Neurons*, dissertation, Georg-August-Universitat zu Gottingen (a thesis) -- the long form of the paper above; chapter 3 tests five hazard shapes against the exact answer. Cited September 19, 2026; not in BIBLIOGRAPHY.md | https://arken.nmbu.no/~plesser/publications/HEPlesser_PhD.pdf | the whole thesis (162 pages) on the author's own page at NMBU; the university's own record is at https://doi.org/10.53846/goediss-2910, whose repository serves a script nothing but its JavaScript shell | September 19, 2026 | `cf014c0978755abb…` |
 | `KorcsakGorzoEtAl25-arxiv.pdf` | Korcsak-Gorzo, Espinoza Valverde, Stapmanns, Plesser, Dahmen, Bolten, van Albada & Diesmann (2025), *Event-driven eligibility propagation in large sparse networks* -- asked for by Byron, September 19, 2026; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/2511.21674 | the arXiv preprint (2511.21674v1, November 26, 2025), 34 pages, cs.NE and q-bio.NC; no journal version yet | September 19, 2026 | `5cedf2a9c670835c…` |
 
+| `Jefferson85.pdf` | Jefferson (1985), "Virtual Time", ACM Transactions on Programming Languages and Systems 7(3), 404-425 | https://worrydream.com/refs/Jefferson_1985_-_Virtual_Time.pdf | the published ACM typesetting, freely served; optimistic simulation and the rollback-by-antimessage scheme (Time Warp) | September 19, 2026 | `66ef780b7182c0da…` |
+| `ChandyMisra81.pdf` | Chandy & Misra (1981), "Asynchronous Distributed Simulation via a Sequence of Parallel Computations", CACM 24(4), 198-206 | https://www.cs.utexas.edu/~misra/scannedPdf.dir/AsynchDistrSimulation.pdf | the second author's own scan on his UT Austin page; the conservative scheme, the counterpart to Time Warp | September 19, 2026 | `8f40769f8381099f…` |
+
 Full SHA-256 sums: `sha256sum references/*.pdf`; the first sixteen hex digits are above.
 
 ## Not in the folder
@@ -83,6 +86,7 @@ own pages. Nothing from a paywall or a mirror.
 
 | file | entry | score | source | SHA-256 |
 |---|---|---|---|---|
+| `GerstnerEtAl18.pdf` | [2] Gerstner, Lehmann, Liakoni, Corneil & Brea (2018), "Eligibility Traces and Plasticity on Behavioral Time Scales: Experimental Support of NeoHebbian Three-Factor Learning Rules", Frontiers in Neural Circuits 12:53, doi:10.3389/fncir.2018.00053 | 1.0 | https://pmc.ncbi.nlm.nih.gov/articles/PMC6079224/ | `df5b25d39ba5da3a…` |
 | `Bellec20.pdf` | [6] Bellec, Scherr, Subramoney, Hajek, Salaj, Legenstein & Maass (2020), "A solution to the learning dilemma for recurrent networks of spiking neurons", Nature Communications 11:3625, doi:10.1038/s41467-020-17236-y | 1.0 | https://www.nature.com/articles/s41467-020-17236-y.pdf | `01fcab01b22aa940…` |
 | `Werbos90.pdf` | [7] Werbos (1990), "Backpropagation through time: what it does and how to do it", Proceedings of the IEEE 78(10):1550-1560, doi:10.1109/5.58337 | 0.6 | http://www.cs.cmu.edu/~bhiksha/courses/deeplearning/Fall.2016/pdfs/Werbos.backprop.pdf | `b06f696340d637c0…` |
 | `al16-arxiv.pdf` | [9] Abadi et al. (2016), "TensorFlow: Large-scale Machine Learning on Heterogeneous Distributed Systems", arXiv:1603.04467 | 0.0 | https://arxiv.org/pdf/1603.04467 | `49fb080dd2dddb43…` |
@@ -129,17 +133,16 @@ own pages. Nothing from a paywall or a mirror.
 | `MartnSnchez22-arxiv.pdf` | [87] Guillermo Martín-Sánchez, Sander Bohté and Sebastian Otte (2022), "A Taxonomy of Recurrent Learning Rules", International Conference on Artificial Neural Networks (ICANN), Springer LNCS 13529:478-490, doi:10.1007/978-3-031-15919-0_40 | 0.8 | https://arxiv.org/pdf/2207.11439 | `366cba862a947ad3…` |
 | `Deng25-arxiv.pdf` | [89] Deng, Shen, Li, Sun, Li & Tao (2025), "Toward Understanding the Generalizability of Delayed Stochastic Gradient Descent", IEEE Transactions on Pattern Analysis and Machine Intelligence 47(9), 7976–7986, doi:10.1109/tpami.2025.3572251 | 0.3 | https://arxiv.org/pdf/2308.09430 | `8f28e5969c1a6327…` |
 | `Brette07.pdf` | [90] Brette, Rudolph, Carnevale, Hines, Beeman, Bower, Diesmann, Morrison, Goodman, Harris et al. (2007), "Simulation of networks of spiking neurons: a review of tools and strategies", Journal of Computational Neuroscience 23, 349–398, doi:10.1007/s10827-007-0038-6 | 0.5 | https://arxiv.org/pdf/q-bio/0611089 | `e9dc267c309d1bc0…` |
+| `UrbanczikSenn14.pdf` | [92] Urbanczik & Senn (2014), "Learning by the dendritic prediction of somatic spiking", Neuron 81(3), 521-528, doi:10.1016/j.neuron.2013.11.030 | 1.0 | https://www.cell.com/neuron/fulltext/S0896-6273(13)01127-6 | `0e8ef2d65bbbdb32…` |
 | `Yin23-arxiv.pdf` | [96] Yin, Corradi & Bohté (2023), "Accurate online training of dynamical spiking neural networks through Forward Propagation Through Time", Nature Machine Intelligence 5(5), 518–527, doi:10.1038/s42256-023-00650-4 | 0.7 | https://arxiv.org/pdf/2112.11231 | `6f62534f819144f1…` |
 
 ### Free, but the site refuses a script
 
 Open access or a free preprint, but served behind a bot wall (PubMed Central, Nature, Cell Press,
 Annual Reviews, Springer, IEEE). A browser gets them at the URLs below; saved into `references/` with a
-row above, each would be complete. Listed highest-scoring first.
+row above, each would be complete. Listed highest-scoring first. **Byron saved [2] and [92] from a browser on September 19, 2026**; both are rows in the table above now.
 
-- **1.0** [2] Gerstner, Lehmann, Liakoni, Corneil & Brea (2018), "Eligibility Traces and Plasticity on Behavioral Time Scales: Experimental Support of NeoHebbian Three-Factor Learning Rules", Frontiers in Neural Circuits 12:53, doi:10.3389/fncir.2018.00053 -- https://pmc.ncbi.nlm.nih.gov/articles/PMC6079224/
 - **1.0** [60] Liu, Smith, Mihalas, Shea-Brown & Sümbül (2021), "Cell-type-specific neuromodulation guides synaptic credit assignment in a spiking neural network", PNAS 118(51), e2111821118, doi:10.1073/pnas.2111821118 -- https://pmc.ncbi.nlm.nih.gov/articles/PMC8713766/
-- **1.0** [92] Urbanczik & Senn (2014), "Learning by the dendritic prediction of somatic spiking", Neuron 81(3), 521–528, doi:10.1016/j.neuron.2013.11.030 -- https://www.cell.com/neuron/fulltext/S0896-6273(13)01127-6
 - **0.9** [8] Murray (2019), "Local online learning in recurrent networks with random feedback", eLife 8:e43299, doi:10.7554/eLife.43299 -- https://elifesciences.org/articles/43299
 - **0.9** [57] Quintana, Perez-Peña, Galindo, Neftci, Chicca & Khacef (2024), "ETLP: Event-based three-factor local plasticity for online learning with neuromorphic hardware", Neuromorphic Computing and Engineering 4(3), 034006, doi:10.1088/2634-4386/ad6733 -- https://iopscience.iop.org/article/10.1088/2634-4386/ad6733
 - **0.9** [75] Lillicrap, Cownden, Tweed & Akerman (2016), "Random synaptic feedback weights support error backpropagation for deep learning", Nature Communications 7:13276, doi:10.1038/ncomms13276 -- https://pmc.ncbi.nlm.nih.gov/articles/PMC5105169/
@@ -166,6 +169,8 @@ row above, each would be complete. Listed highest-scoring first.
 - **0.0** [38] Gewaltig & Diesmann (2007), "NEST (NEural Simulation Tool)", Scholarpedia 2(4):1430, doi:10.4249/scholarpedia.1430 -- http://www.scholarpedia.org/article/NEST_(NEural_Simulation_Tool)
 
 ### Paywalled: the library-request queue
+
+- Chandy & Misra (1979), "Distributed Simulation: A Case Study in Design and Verification of Distributed Programs", IEEE Transactions on Software Engineering SE-5(5), 440-452 -- paywalled (IEEE); tried September 19, 2026, no free identical copy found. The 1981 CACM paper in the table above carries the same conservative scheme and is free. No bibliography entry; cited in conversation on the parallel scheduler.
 
 No free identical copy. Tried September 19, 2026. These are candidates for Byron's institutional library
 requests (see "Closed access, and how a copy gets here" above); the highest-scoring have issues open.
