@@ -246,16 +246,25 @@ def test_a_problem_and_the_command_line_choose_the_drive():
 
 
 def test_the_default_drive_leaves_no_wave_front_at_time_zero():
-    """§4.3: forced drive locks every spike onto a hop grid anchored at t_e; rate drive has no such anchor."""
+    """§4.3: forced drive locks every spike onto a hop grid; rate drive has no such anchor.
+
+    The grid is the run's clock and not the epoch's. Until September 19, 2026 the two were the same
+    thing, because INTERVAL was exactly 14 hops at HOP 2.5; at the specified 2.55 it is 13.7255, so
+    each epoch's forced inputs start a lattice of their own and the per-epoch alignment falls to 11%.
+    What survives is the run-wide one: every spike a cascade causes sits on a multiple of the hop,
+    and the 9% that do not are the driven spikes themselves, anchored at multiples of INTERVAL.
+    That the epoch no longer holds a whole number of hops is a consequence of A1's fix and is
+    recorded with it -- it weakens the very synchrony Byron struck `forced` for on September 14.
+    """
     def spikes_on_the_grid(drive):
         grid = Goo(count=60, across=12, weight=None, seed=1)
         grid.readout, grid.read, grid.drive = "top", "fired", drive
-        hop, on_grid, total, at_zero = Neuron.hop(), 0, 0, 0
+        hop, on_grid, total, at_zero = Neuron.hop, 0, 0, 0
         row = set(grid.input_row())
         for _ in range(40):
             run_epoch(grid, [True, False, True, False, True, False], verbose=False)
             for wave in grid.waves:
-                phase = (wave.time - grid.time) % hop
+                phase = wave.time % hop  # the run's clock, not the epoch's: INTERVAL is not a whole number of hops
                 aligned = min(phase, hop - phase) < 1e-9
                 for neuron in wave.fired:
                     total += 1
@@ -264,7 +273,7 @@ def test_the_default_drive_leaves_no_wave_front_at_time_zero():
         return on_grid / total, at_zero
 
     aligned, at_zero = spikes_on_the_grid("forced")
-    assert aligned == 1.0 and at_zero > 0  # every spike on the lattice, and the input row starts it together
+    assert aligned > 0.9 and at_zero > 0  # the cascades on one lattice, and the input row starts together
     aligned, at_zero = spikes_on_the_grid("rate")
     assert aligned == 0.0 and at_zero == 0  # no common lattice, and nothing fires at the epoch's moment
 

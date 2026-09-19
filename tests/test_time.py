@@ -28,16 +28,17 @@ def quiet(monkeypatch):
 
 @pytest.fixture
 def clock(monkeypatch):
-    """The defaults, pinned: refractory 5 ms, three hops to it."""
+    """The defaults, pinned: refractory 5 ms, a hop a third of it -- not the specified 2.55, so the two-hop return
+    of §3.2 does not refire these fixtures and each of them still tests what it was written to test."""
     monkeypatch.setattr(Neuron, "refractory", 5.0)
-    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)
+    monkeypatch.setattr(Neuron, "hop", 5.0 / 3.0)
 
 
 HOP = 5.0 / 3.0
 
 
 def test_the_defaults_and_the_horizon(clock):
-    assert Neuron.refractory == 5.0 and Neuron.refractory_hops == 3.0 and Neuron.hop() == pytest.approx(HOP)
+    assert Neuron.refractory == 5.0 and Neuron.hop == pytest.approx(HOP)
     grid = Goo(count=12, across=4)
     assert grid.interval == C.INTERVAL == 35.0  # the swept default (§4.2)
     grid.interval = 10.0  # this test is about the horizon's arithmetic, so pin a round number
@@ -155,7 +156,7 @@ def test_the_clock_survives_a_checkpoint(tmp_path, clock):
     path = tmp_path / "clock.json"
     data = checkpoint(grid, path, teacher)
     assert data["time"] == 32.0 and data["horizon"] == 36.0 and data["interval"] == 4.0
-    assert data["refractory"] == 5.0 and data["refractory_hops"] == 3.0 and data["learning"]["rule"] == "local"
+    assert data["refractory"] == 5.0 and data["hop"] == pytest.approx(HOP) and data["learning"]["rule"] == "local"
     assert len(data["potentials"]) == len(data["fired_at"]) == len(data["previous_fired_at"]) == len(data["spikes"]) == 24
     assert len(data["last_signal"]) == len(grid.connections) == len(data["weights"])
     assert data["pending"] == [[t, c.id] for t, c in grid.schedule.pending()]  # signals in flight at the horizon
@@ -212,13 +213,13 @@ def test_both_engines_agree_on_bored_neurons(clock, monkeypatch):
 def test_cli_clock_options_and_validation(tmp_path, capsys):
     save = tmp_path / "t.json"
     assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "5", "--interval", "2.5", "--refractory", "3",
-                     "--refractory-hops", "2", "--save-weights", str(save)]) == 0
+                     "--hop", "1.5", "--save-weights", str(save)]) == 0
     data = json.loads(save.read_text())
-    assert data["time"] == 10.0 and data["interval"] == 2.5 and data["refractory"] == 3.0 and data["refractory_hops"] == 2.0
+    assert data["time"] == 10.0 and data["interval"] == 2.5 and data["refractory"] == 3.0 and data["hop"] == 1.5
     # §2: the default is the accumulator, so the checkpoint records inf and not the leak (§12.9)
     assert data["bored_after"] == C.BORED_AFTER == 0.0 and data["tau"] == C.TAU == math.inf and len(data["last_update"]) == C.GOO_COUNT
-    assert (Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after) == (
-        C.REFRACTORY, C.REFRACTORY_HOPS, C.BORED_AFTER)  # restored after the command
+    assert (Neuron.refractory, Neuron.hop, Neuron.bored_after) == (
+        C.REFRACTORY, C.HOP, C.BORED_AFTER)  # restored after the command
     assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "3", "--bored-after", "0", "--no-save"]) == 0
     assert cli_main(["--headless", "--bored-after", "-1"]) == 2
     assert cli_main(["--headless", "--seeds", "2", "--seed", "1", "-a", "6", "--epochs", "5", "--interval", "2", "--no-save"]) == 0
@@ -226,7 +227,7 @@ def test_cli_clock_options_and_validation(tmp_path, capsys):
     assert cli_main(["--headless", "--refractory", "0"]) == 2
     assert cli_main(["--headless", "--tau", "0"]) == 2
     assert cli_main(["--headless", "-a", "6", "--seed", "1", "--epochs", "3", "--tau", "inf", "--no-save"]) == 0
-    assert cli_main(["--headless", "--refractory-hops", "0"]) == 2
+    assert cli_main(["--headless", "--hop", "0"]) == 2
     assert cli_main(["--headless", "--interval", "-1"]) == 2
     assert "must be positive" in capsys.readouterr().err
 

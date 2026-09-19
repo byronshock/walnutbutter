@@ -22,7 +22,7 @@ def test_the_command_line_defaults_are_the_constants():
     args = build_parser().parse_args([])
     assert args.epsilon == C.WEIGHT_EPSILON
     assert (args.threshold, args.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)
-    assert (args.interval, args.refractory, args.refractory_hops) == (None, C.REFRACTORY, C.REFRACTORY_HOPS)  # the problem's, else INTERVAL
+    assert (args.interval, args.refractory, args.hop) == (None, C.REFRACTORY, C.HOP)  # the problem's, else INTERVAL
     assert args.rule is None and C.RULE == "local"  # the problem's rule, else the constant (§9.1)
     assert args.problem == C.PROBLEM
     assert args.target == C.TARGET
@@ -59,10 +59,13 @@ def test_a_rate_given_on_the_command_line_survives_the_problem():
 
 
 def test_the_neuron_and_its_clock_read_the_constants():
-    assert (Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau) == (C.REFRACTORY, C.REFRACTORY_HOPS, C.BORED_AFTER, C.TAU)
+    assert (Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.tau) == (C.REFRACTORY, C.HOP, C.BORED_AFTER, C.TAU)
     assert build_parser().parse_args([]).tau == C.TAU
     assert build_parser().parse_args([]).bored_after == C.BORED_AFTER
-    assert Neuron.hop() == C.REFRACTORY / C.REFRACTORY_HOPS
+    # §3.2: the hop is specified directly, and two of them clear the refractory wall by the LAG
+    assert Neuron.hop == C.HOP == 2.55 == (C.REFRACTORY + C.LAG) / 2.0
+    assert 2 * C.HOP == pytest.approx(C.REFRACTORY + C.LAG) and C.LAG == 0.1
+    assert not hasattr(C, "REFRACTORY_HOPS")  # retired: REFRACTORY / 2.55 is 1.9607843137..., not a register value
     neuron = Neuron()
     assert (neuron.threshold, neuron.minimum_potential) == (C.THRESHOLD, C.MINIMUM_POTENTIAL)
     assert Goo(count=4, across=2).interval == C.INTERVAL

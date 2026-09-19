@@ -9,8 +9,8 @@ record what those files meant when they were written, not what the default is
 now.
 
 The clock values live here but run from `Neuron.refractory` and
-`Neuron.refractory_hops`, the class attributes the command line sets (and
-restores) per run.
+`Neuron.hop`, the class attributes the command line sets (and restores) per
+run.
 """
 
 import math
@@ -60,7 +60,18 @@ TAU = math.inf  # the potential does not leak: the evidence accumulator (AUTHORI
 LEAK_TAU = 2.0  # ms: the leak time constant --tau names when a run wants one, computed lazily on arrival (Byron,
 # September 12, 2026, bringing the leak back; his earlier sweep chose 2). Not the default since September 19, 2026
 REFRACTORY = 5.0  # absolute refractory period: a neuron that fired this recently ignores every signal
-REFRACTORY_HOPS = 2.0  # the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
+LAG = 0.1  # ms: how long after a target could take it a signal actually arrives, so no delivery lands on the end of a
+# refractory period (AUTHORITY.md §3.2). It has a floor as well as a ceiling: far above the clock's slack, far below
+# REFRACTORY
+HOP = (REFRACTORY + LAG) / 2.0  # ms: the time a signal takes to travel one connection, 2.55 ms, specified directly
+# (§3.2). Two hops clear the refractory wall by the LAG, which is the tight case -- a neuron's own earliest return is
+# two connections (§4.4) -- and one hop lands inside the period and is §8.13's. Byron, September 19, 2026: "The current
+# dynamics should be 2.55 ms hops, with 2 hops landing at 5.1 ms after the refractory period they are responsible for
+# ends at 5 ms"; and, on the name, "You just called it a HOP. Let's be consistent and call it a HOP".
+#
+# It replaced REFRACTORY_HOPS, which could not carry this value even in principle: REFRACTORY / 2.55 is
+# 1.9607843137..., not a number to write in a register. That arithmetic is why Byron wanted the hop direct. The old
+# constant read: the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
 # 2026). 3 until September 17, 2026 (Byron: "Please set hops=2 by default"): a hop of 2.5 ms, not 1.67
 INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
 # shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms

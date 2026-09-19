@@ -149,7 +149,7 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
         argv += ["--cv", f"{arm['cv']:.12g}"]
     args = build_parser().parse_args(argv)
     apply_problem(args)
-    Neuron.refractory, Neuron.refractory_hops = args.refractory, args.refractory_hops
+    Neuron.refractory, Neuron.hop = args.refractory, args.hop
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau
     # goo is the only container (AUTHORITY.md §4.1); apply_problem sized it: --goo, or the problem's hidden count and zones
     grid = Goo(count=int(args.goo), across=args.across, weight=None, seed=int(arm["seed"]), threshold=args.threshold, minimum_potential=args.minimum_potential,
@@ -275,7 +275,7 @@ def run_arm(job: tuple) -> dict:
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
         earlier_csv = source.with_name(f"{arm_name(arm)}.csv")
         if earlier_csv.exists():
-            earlier_trace = [(int(r["epoch"]), r["score"]) for r in csv.DictReader(open(earlier_csv))]
+            earlier_trace = [(int(r["epoch"]), r["score"], r.get("right", "")) for r in csv.DictReader(open(earlier_csv))]
     direction = None
     if PROBLEMS[problem].data == "mnist" and hasattr(grid, "outputs"):  # the estimator's correlation over time (§8)
         from walnutbutter.mnist import supervised_direction
@@ -305,11 +305,14 @@ def run_arm(job: tuple) -> dict:
     _save_network(engine, grid, report, path.with_name(path.stem + "-network.json"))  # so an arm can be resumed, not rerun
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["epoch", "score"])
-        for epoch, score in earlier_trace:
-            writer.writerow([epoch, score])
+        writer.writerow(["epoch", "score", "right"])
+        for epoch, score, was_right in earlier_trace:
+            writer.writerow([epoch, score, was_right])
+        traced_right = report.get("right") or []
         for k, score in enumerate(trace, start=1):
-            writer.writerow([offset + k * trace_every, f"{score:.6g}"])
+            was_right = traced_right[k - 1] if k <= len(traced_right) else None
+            writer.writerow([offset + k * trace_every, f"{score:.6g}",
+                             "" if was_right is None else f"{was_right:.6g}"])
     from walnutbutter.neuron import Neuron
     if report.get("estimator") is not None:
         report["estimator"] = earlier_estimator + report["estimator"]
@@ -320,7 +323,7 @@ def run_arm(job: tuple) -> dict:
               "critic": args.critic, "problem": problem, "lr": args.lr,  # the rate the arm ran at, swept or the problem's own
               "population": grid.population, "outputs": getattr(grid, "outputs", None),
               "resumed_from": resume_from, "epoch_offset": offset, "epochs_run": epochs,  # a continuation: from where, and how far
-              "tau": args.tau, "refractory": args.refractory, "refractory_hops": args.refractory_hops,  # the clock the arm ran on
+              "tau": args.tau, "refractory": args.refractory, "hop": args.hop,  # the clock the arm ran on
               "explore_seed": explore_seed,
               "threshold": args.threshold, "minimum_potential": args.minimum_potential, "floor_ratio": floor_ratio,
               "delta": args.delta,  # escape noise (§5.2), 0 when the threshold decided

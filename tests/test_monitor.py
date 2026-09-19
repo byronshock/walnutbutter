@@ -55,7 +55,7 @@ def test_run_epoch_resets_the_mesh_and_presents_a_new_input(capsys):
 
 
 def test_run_epoch_clears_every_neuron_before_firing(capsys, monkeypatch):
-    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
+    monkeypatch.setattr(Neuron, "hop", 5.0 / 3.0)  # a third of the period: a two-hop loop cannot refire, where HOP 2.55 lets it
     grid = main(count=18, across=6, weight=1.0, seed=1)
     fired_before = {n.name: n.fired_in_wave for n in grid.all_neurons()}
     run_epoch(grid, bits=[False, True, False])  # a specific, different input

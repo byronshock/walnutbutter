@@ -211,3 +211,27 @@ def test_checkpoint_carries_the_accuracy_history_and_resume_continues_it(tmp_pat
     resumed.epoch(verbose=False)
     resumed.record(elapsed=0.5)
     assert len(resumed.history) == 4 and resumed.history[-1]["epoch"] == 5
+
+
+def test_a_checkpoint_written_under_refractory_hops_converts_on_load(tmp_path):
+    """A1/A2 (Byron, September 19, 2026): the hop is HOP now, and a file written under REFRACTORY_HOPS still loads.
+
+    The old field is the refractory period divided by the hop, so the hop is the quotient. Converting
+    preserves the timing the run actually used rather than imposing today's -- the field records what a
+    run ran, and refusing it under §12.2 would orphan every checkpoint already on disk.
+    """
+    from walnutbutter.constants import HOP
+    from walnutbutter.persistence import hop_of
+
+    grid = Goo(count=12, across=4, seed=1)
+    path = tmp_path / "w.json"
+    data = checkpoint(grid, path)
+    assert data["hop"] == Neuron.hop == HOP == 2.55  # written under the new name
+    assert hop_of(data) == 2.55
+
+    old = dict(data)  # a file from before the rename: refractory 5 ms over two hops is the 2.5 ms it ran at
+    del old["hop"]
+    old["refractory"], old["refractory_hops"] = 5.0, 2.0
+    assert hop_of(old) == 2.5
+    old["refractory_hops"] = 3.0  # and a run that set the ratio itself keeps its own timing, not the default
+    assert hop_of(old) == pytest.approx(5.0 / 3.0)

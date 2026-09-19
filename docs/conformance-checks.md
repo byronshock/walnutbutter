@@ -57,7 +57,7 @@ unclaimed list leaves PROBLEM open.*
 half — see A1, corrected September 19, 2026. They belong together in one
 re-timing, followed by a re-measurement of mnist — not one at a time.*
 
-**A1. §3.2 — the hop is short by the LAG.** The file fixes
+**A1. ~~§3.2 — the hop is short by the LAG.~~ Done, September 19, 2026.** The file fixes
 $2h = \text{REFRACTORY} + \text{LAG} = 5.1$ ms, so $h = 2.55$ ms, written out
 and with no name of its own since September 18, 2026, and retires the old form
 in Byron's words: *"I no longer want to specify REFRACTORY_HOPS. I want to
@@ -78,7 +78,7 @@ hops landing at 5.1 ms after the refractory period they are responsible for
 ends at 5 ms." §3.2 and §2.5 were corrected to say so, and the code's error is
 2% rather than 50%.*
 
-**A2. Appendix A — LAG has no home, and the code has no hop to add it to.**
+**A2. ~~Appendix A — LAG has no home, and the code has no hop to add it to.~~ Done with A1.**
 `rg '\bLAG\b'` over `src/` and `rust/` returns nothing, so the register's one
 remaining unhoused clock constant is LAG. The hop is now written out as
 REFRACTORY + LAG and has no name to look for: what the code must carry is the
@@ -105,6 +105,22 @@ question the same day — *"You just called it a HOP. Let's be consistent and
 call it a HOP"* — so §3.2 no longer says the hop has no name of its own, the
 register carries HOP at 2.55 ms as (REFRACTORY + LAG) / 2 in place of the
 derived REFRACTORY + LAG row, and §0.12's drive quotes its interval as 2 HOP.
+
+*Applied September 19, 2026, and one thing it changed that was not foreseen.*
+`constants.py` carries `HOP = (REFRACTORY + LAG) / 2` and `LAG`, the class
+attribute is `Neuron.hop` rather than a `hop()` over a ratio, `--hop` replaces
+`--refractory-hops`, checkpoints write `hop`, and `persistence.hop_of`
+converts an old file by `refractory / refractory_hops`, with a test for both
+directions. What was not foreseen: **INTERVAL is no longer a whole number of
+hops.** It was exactly 14 at 2.5 ms and is 13.7255 at 2.55, so under `forced`
+drive each epoch's driven spikes now start a lattice of their own instead of
+continuing the run's — per-epoch alignment falls from 100% to 11%, while the
+run-wide lattice holds at 91%, the missing 9% being the driven spikes
+themselves at multiples of INTERVAL. `forced` is not the default and §4.3
+prefers the rate drive, so nothing in force depends on it; the effect weakens
+the very synchrony Byron struck `forced` for on September 14, 2026. It is
+recorded here because a future INTERVAL chosen as a whole number of hops would
+bring it back without anyone intending it.
 
 **A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~
 Dissolved — Byron took the shaping function out, September 18, 2026.** The

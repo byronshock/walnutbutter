@@ -75,7 +75,7 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE
     engine = rust.Engine(
         len(neurons), source, target, weight, active,
         [n.threshold for n in neurons], [n.minimum_potential for n in neurons],
-        Neuron.tau, Neuron.refractory, Neuron.hop(), Neuron.bored_after, Neuron.rate_tau,
+        Neuron.tau, Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.rate_tau,
     )
     deltas = [n.delta for n in neurons]  # escape noise (§5.2): each neuron's decision width, 0 when off
     if any(d > 0.0 for d in deltas):
@@ -393,6 +393,10 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     # §9.3: a resumed run is the same run continued, so it is paid against the baseline the run had reached
     total = tail = hits = 0.0
     tenth = max(1, epochs // 10)
+    # The fraction right over each trace interval, beside the score (§9.11). One epoch's
+    # class reward is 0 or 1, so a traced point is the mean over the interval and not a
+    # single epoch's: a curve rather than a coin sequence.
+    right, interval_hits = [], 0.0
     trace = []
     estimator = None
     if direction is not None:
@@ -432,12 +436,18 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
         book.step()
         baseline += baseline_rate * (reward - baseline)
         total += reward
+        won = _reward(engine, network, out, "class", want_of) if (
+            critic == "evidence" and (trace_every or epoch >= epochs - tenth)) else None
         if epoch >= epochs - tenth:
             tail += reward
             if critic == "evidence":  # the fraction right beside the log score: did the label's class win outright?
-                hits += _reward(engine, network, out, "class", want_of)
+                hits += won
+        if won is not None:
+            interval_hits += won
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
+            right.append(interval_hits / trace_every if critic == "evidence" else None)
+            interval_hits = 0.0
             if estimator is not None:
                 w = np.array(engine.weights())
                 cum, window = (w - w0)[mask], (w - w_prev)[mask]
@@ -452,6 +462,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
               "expectations": [None if e != e else e for e in engine.expectations()], "decisions": list(engine.decision_counts()),
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
               "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
+              "right": right,  # the fraction right at every trace_every, beside `trace`'s score
               "baseline": baseline,  # §9.3: what b had reached, so a resume is paid against it and not a fresh one
               "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given
     return total / epochs, trace, engine, report

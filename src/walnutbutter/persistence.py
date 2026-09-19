@@ -53,7 +53,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "interval": network.interval,
         "tau": Neuron.tau,
         "refractory": Neuron.refractory,
-        "refractory_hops": Neuron.refractory_hops,
+        "hop": Neuron.hop,
         "bored_after": Neuron.bored_after,
         "horizon": network.horizon,  # the time the schedule has run to
         "connections": len(network.connections),
@@ -117,6 +117,21 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
 def across_of(data: dict) -> int:
     """The count across a checkpoint's input zone: "across", or "columns" in files written before the rename."""
     return data["across"] if "across" in data else data["columns"]
+
+
+def hop_of(data: dict) -> float:
+    """A checkpoint's hop in milliseconds: "hop", or converted from a file written before HOP replaced REFRACTORY_HOPS.
+
+    The old field is the refractory period divided by the hop, so the hop is the
+    quotient -- which preserves the timing the run actually used rather than
+    imposing today's. The field records what a run ran; refusing it under §12.2
+    would orphan every checkpoint already on disk, which is why this converts
+    (AUTHORITY.md §3.2, and A1/A2 of `docs/conformance-checks.md`, as Byron
+    settled it September 19, 2026).
+    """
+    if "hop" in data:
+        return float(data["hop"])
+    return float(data["refractory"]) / float(data["refractory_hops"])
 
 
 def read_checkpoint(path: str | Path) -> dict:

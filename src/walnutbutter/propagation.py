@@ -1,7 +1,7 @@
 """Signalling on a schedule: a time-ordered queue of signals, processed a wave at a time.
 
-AUTHORITY.md §4. A signal takes one hop (`Neuron.hop()`, the refractory
-period over REFRACTORY_HOPS) to travel a connection. Firing a neuron does
+AUTHORITY.md §4. A signal takes one hop (`Neuron.hop`, specified directly
+at 2.55 ms) to travel a connection. Firing a neuron does
 not call its neighbours: each active outgoing connection is scheduled to
 deliver one hop later, and the schedule is a heap of events by time. A
 **wave** is everything scheduled for one moment: the signals arriving, and
@@ -141,7 +141,7 @@ class Schedule:
         or one recovered from a refractory period with enough potential.
         """
         waves = [] if waves is None else waves
-        hop = Neuron.hop()
+        hop = Neuron.hop
         accumulating = Neuron.tau == math.inf  # the evidence accumulator (§5.1): nothing leaks, no decay is evaluated
         heap = self._heap
         while heap and before(heap[0][0], until):

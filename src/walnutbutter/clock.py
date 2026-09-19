@@ -1,7 +1,7 @@
 """The clock's tolerance: two moments closer than this are the same moment (AUTHORITY.md §4.1).
 
-Times are nominal milliseconds in floating point and a hop is REFRACTORY /
-REFRACTORY_HOPS, rarely representable exactly, so a chain of hops that
+Times are nominal milliseconds in floating point and a hop is 2.55 ms,
+rarely representable exactly, so a chain of hops that
 should land on an input's time lands a few ulps off it, and a spike that
 should return the instant a neuron's refractory period ends may compute to
 a hair before it. Every comparison of two moments therefore allows a slack

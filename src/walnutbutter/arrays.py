@@ -226,7 +226,7 @@ class ArrayNetwork(Network):
         """Process every wave due before `until` (see propagation.Schedule.run), appending to this epoch's waves."""
         potential, threshold, floor, fired_wave = self.potential, self.threshold_v, self.floor, self.fired_wave
         n = len(potential)
-        hop = Neuron.hop()
+        hop = Neuron.hop
         out_degree = self._out_degree
         while self._times and before(self._times[0], until):
             self._refresh_matrix()

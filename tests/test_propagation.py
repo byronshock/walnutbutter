@@ -37,7 +37,7 @@ def test_waves_record_the_signals_delivered(capsys):
 
 
 def test_two_way_pair_fires_once_each(capsys, monkeypatch):
-    monkeypatch.setattr(Neuron, "refractory_hops", 3.0)  # at three hops a two-hop loop cannot refire; REFRACTORY_HOPS is 2 since September 17, 2026
+    monkeypatch.setattr(Neuron, "hop", 5.0 / 3.0)  # a third of the period: a two-hop loop cannot refire, where HOP 2.55 lets it
     monkeypatch.setattr(Neuron, "verbose", True)
     a, b = Neuron("a"), Neuron("b")
     a.connect(b)
@@ -49,15 +49,18 @@ def test_two_way_pair_fires_once_each(capsys, monkeypatch):
 
 
 def test_at_two_hops_a_two_way_pair_reverberates(capsys):
-    """REFRACTORY_HOPS = 2 (§1.2, September 17, 2026): a spike sent around a two-way pair comes back after two hops, the
-    moment the refractory period ends, so the pair refires every hop in turn until the clock stops it -- where at three
-    hops each fired once. Every reciprocal pair strong enough to fire its partner is now a two-hop oscillator."""
-    assert Neuron.refractory_hops == 2.0 and Neuron.hop() == 2.5
+    """HOP = 2.55 ms (§3.2, September 19, 2026): a spike sent around a two-way pair comes back after two hops, LAG past
+    the moment the refractory period ends, so the pair refires every hop in turn until the clock stops it -- where at a
+    third of the period each fired once. Every reciprocal pair strong enough to fire its partner is a two-hop
+    oscillator, and the LAG is what keeps the return off the wall rather than on it."""
+    assert Neuron.hop == 2.55 and 2 * Neuron.hop == pytest.approx(Neuron.refractory + 0.1)
     a, b = Neuron("a"), Neuron("b")
     a.connect(b)
     b.connect(a)
     waves = propagate(fire=[a], until=20.0)
-    assert [w.time for w in waves if w.fired] == [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5]
+    times = [w.time for w in waves if w.fired]
+    assert times == pytest.approx([k * 2.55 for k in range(8)])  # 2.55 is not representable: the clock's slack is §3.4's
+    assert times[2] == pytest.approx(5.1) and times[2] > Neuron.refractory  # two hops land past the wall, not on it
     assert [w.fired for w in waves if w.fired] == [[a], [b]] * 4
 
 

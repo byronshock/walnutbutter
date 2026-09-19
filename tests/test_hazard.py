@@ -185,9 +185,9 @@ def test_the_count_scales_every_hazard_down_as_its_square_root():
         neuron = next(iter(g.all_neurons()))
         neuron.exposed_since = 0.0
         # at rest, one hop after its exposure began: the width alone gives e^(-1/Delta); the count scales it, at rest as anywhere
-        assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp((0.0 - neuron.threshold) / neuron.delta)
-        neuron.potential, neuron.last_update = neuron.threshold, Neuron.hop()  # at threshold: sqrt(N0 / N) a hop, not one
-        assert neuron.expected_spikes(Neuron.hop()) == scale * math.exp(0.0)
+        assert neuron.expected_spikes(Neuron.hop) == scale * math.exp((0.0 - neuron.threshold) / neuron.delta)
+        neuron.potential, neuron.last_update = neuron.threshold, Neuron.hop  # at threshold: sqrt(N0 / N) a hop, not one
+        assert neuron.expected_spikes(Neuron.hop) == scale * math.exp(0.0)
     grid = Goo(count=16, across=4)
     grid.set_delta(0.455)
     assert grid.escape_scale == math.sqrt(60.0 / 16.0)  # any container: its count

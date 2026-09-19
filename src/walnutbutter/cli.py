@@ -20,7 +20,7 @@ from .constants import (
     RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
     QUASH_K, QUASH_RATE, TAU, LEAK_TAU,
     ELIGIBILITY, HOMEOSTASIS, INTERVAL, LR,
-    MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, REFRACTORY_HOPS, RULE, TARGET, TARGET_RATE,
+    MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, HOP, LAG, RULE, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
     THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
     cv_for_rate, rate_for_cv,
@@ -469,12 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
         f"without a spike, so a bored neuron fires on its own (default: {BORED_AFTER:g}; 0 = off)",
     )
     parser.add_argument(
-        "--refractory-hops",
+        "--hop",
         type=float,
-        default=REFRACTORY_HOPS,
-        metavar="RATIO",
-        help=f"the refractory period divided by the time a signal takes to travel one hop; not an integer "
-        f"(default: {REFRACTORY_HOPS:g}, so a hop is {REFRACTORY / REFRACTORY_HOPS:g} ms)",
+        default=HOP,
+        metavar="MS",
+        help=f"the time a signal takes to travel one connection, nominal milliseconds (default: {HOP:g}, which is "
+        f"(REFRACTORY + LAG) / 2 at LAG {LAG:g}, so two hops clear the refractory period by the LAG)",
     )
     parser.add_argument(
         "--epochs",
@@ -544,19 +544,19 @@ def cli_main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     apply_container(args)
-    was_verbose, was_refractory, was_hops, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau
+    was_verbose, was_refractory, was_hop, was_bored, was_tau = Neuron.verbose, Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.tau
     Neuron.verbose = bool(args.verbose) and not args.fast and not args.quiet
-    if args.refractory <= 0 or args.refractory_hops <= 0 or args.interval <= 0 or args.tau <= 0:
-        print("error: --tau, --refractory, --refractory-hops and --interval must be positive", file=sys.stderr)
+    if args.refractory <= 0 or args.hop <= 0 or args.interval <= 0 or args.tau <= 0:
+        print("error: --tau, --refractory, --hop and --interval must be positive", file=sys.stderr)
         return 2
     if args.bored_after < 0 or (args.quash is not None and args.quash < 0) or args.quash_k < 0:
         print("error: --bored-after, --quash and --quash-k must not be negative", file=sys.stderr)
         return 2
-    Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = args.refractory, args.refractory_hops, args.bored_after, args.tau
+    Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.tau = args.refractory, args.hop, args.bored_after, args.tau
     try:
         return _run(args)
     finally:
-        Neuron.verbose, Neuron.refractory, Neuron.refractory_hops, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hops, was_bored, was_tau
+        Neuron.verbose, Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.tau = was_verbose, was_refractory, was_hop, was_bored, was_tau
 
 
 def READ_MEANS(args) -> str:
@@ -790,13 +790,13 @@ def _run(args: argparse.Namespace) -> int:
                 grid.rule = args.rule
                 print(f"rule: local — nothing pays at the read (§9.1); "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}"
-                      f"; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms", file=sys.stderr)
+                      f"; hop {Neuron.hop:g} ms, tau {Neuron.tau:g} ms", file=sys.stderr)
             else:
                 # the Teacher zeroes sigma for the Hebbian eligibilities, so the network is deterministic: report what runs
                 print(f"rule: reinforce ({args.eligibility} eligibility), lr {args.lr:g}, "
                       f"escape delta {args.delta:g}"
                       f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}"
-                      f"; hop {Neuron.hop():g} ms, tau {Neuron.tau:g} ms, "
+                      f"; hop {Neuron.hop:g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}",
                       file=sys.stderr)
@@ -920,7 +920,7 @@ def _seed_worker(job: dict) -> dict:
         projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
         wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
     )
-    Neuron.refractory, Neuron.refractory_hops = job.get("refractory", Neuron.refractory), job.get("refractory_hops", Neuron.refractory_hops)
+    Neuron.refractory, Neuron.hop = job.get("refractory", Neuron.refractory), job.get("hop", Neuron.hop)
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
     grid.interval = job.get("interval", grid.interval)
@@ -1012,7 +1012,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "save": save, "goo": args.goo, "engine": args.engine or "objects",
                      "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
-                     "refractory": args.refractory, "refractory_hops": args.refractory_hops,
+                     "refractory": args.refractory, "hop": args.hop,
                      "interval": args.interval, "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window,

@@ -4,7 +4,7 @@ import math
 
 from .clock import slack
 from .connection import Connection
-from .constants import (BORED_AFTER, DECISION_MEMORY, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY, REFRACTORY_HOPS,
+from .constants import (BORED_AFTER, DECISION_MEMORY, HOP, MINIMUM_POTENTIAL, RATE_TAU, REFRACTORY,
                         TAU, THRESHOLD)
 
 
@@ -19,22 +19,17 @@ class Neuron:
     threshold, and resets. A neuron that fired within the last `refractory`
     milliseconds ignores every signal, forced stimulus included. It
     remembers its last two spike times: the gap between them is what its
-    dopamine release depends on (dopamine.py). `refractory` and
-    `refractory_hops` are global properties of neurons, one value for the
-    whole network; a signal takes `hop()` milliseconds to travel a connection.
+    dopamine release depends on (dopamine.py). `refractory` and `hop` are
+    global properties of neurons, one value for the whole network; a signal
+    takes `hop` milliseconds to travel a connection.
     """
 
     verbose = False  # class-wide: print a line each time any neuron fires (off unless asked: walnutbutter -v)
     tau = TAU  # leak time constant, nominal milliseconds (see constants.py); math.inf switches the leak off
     refractory = REFRACTORY  # absolute refractory period, nominal milliseconds (see constants.py)
-    refractory_hops = REFRACTORY_HOPS  # refractory period / hop time (see constants.py)
+    hop = HOP  # ms a signal takes to travel one connection, specified directly (see constants.py, §3.2)
     rate_tau = RATE_TAU  # ms: the exponential window the read estimates a firing rate over (see constants.py, §4.3)
     bored_after = BORED_AFTER  # ms of silence after which the threshold has fallen to zero (see constants.py); 0 = off
-
-    @classmethod
-    def hop(cls) -> float:
-        """The time a signal takes to travel one connection: refractory / refractory_hops."""
-        return cls.refractory / cls.refractory_hops
 
     def __init__(self, name: str = "Neuron", threshold: float = THRESHOLD, minimum_potential: float = MINIMUM_POTENTIAL):
         self.name = name
@@ -232,7 +227,7 @@ class Neuron:
         elapsed = now - self.exposed_since
         if elapsed < 0.0:
             elapsed = 0.0
-        return min(elapsed / Neuron.hop() * self.escape_scale * math.exp(s / self.delta), 1e3)
+        return min(elapsed / Neuron.hop * self.escape_scale * math.exp(s / self.delta), 1e3)
 
     def decide(self, now: float) -> bool:
         """The firing decision at `now`: can_fire when delta is 0, else the escape-noise draw (AUTHORITY.md §5.2).
