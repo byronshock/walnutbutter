@@ -17,8 +17,9 @@ const EXTERNAL: u8 = 0;
 const STIMULUS: u8 = 1;
 const SIGNAL: u8 = 2;
 
-/// clock.py: two moments closer than this are the same moment.
-const TOLERANCE: f64 = 1e-9;
+/// clock.py's TOLERANCE, mirrored: two moments closer than this are the same moment. A.0 allows no
+/// second literal of a register value, so this one is exported and held equal to Python's by a test.
+const TOLERANCE: f64 = 1e-12;
 
 /// exploration.py: the Box-Muller transform's constant.
 const TWO_PI: f64 = std::f64::consts::TAU;

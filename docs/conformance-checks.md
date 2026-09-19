@@ -130,10 +130,17 @@ has `TAU = 2.0` and `--tau` defaults to it, so every run leaks and the
 accumulator — the thing §1.2 and §8 are written on — is the branch a run has to
 ask for.
 
-**A6. §3.4 — TOLERANCE is a thousand times looser than specified.** The
-register fixes $10^{-12}$; `clock.py:12` has `1e-9`, and
-`rust/src/lib.rs:21` carries a **second literal** of the same quantity at the
-same wrong value, which A.0 forbids on its own.
+**A6. ~~§3.4 — TOLERANCE is a thousand times looser than specified.~~ Done,
+September 19, 2026.** The register fixes $10^{-12}$; `clock.py` had `1e-9` and
+`rust/src/lib.rs` a **second literal** of the same quantity at the same wrong
+value, which A.0 forbids on its own. Both now read $10^{-12}$.
+
+*What became of the second literal.* A Rust compile-time constant cannot be
+taken from Python, so it stays — and a test holds it equal to `clock.TOLERANCE`
+and skips when the loop is not built, which is what makes it a mirror rather
+than an independent value. That is A.0's guarantee for this quantity: if the
+two ever part, every comparison of two moments parts with them and the engines
+stop agreeing on which events share a wave.
 
 **A7. §5.4a — the presentation window is not built.** The clause is new, of
 September 18, 2026: the drive runs to $t_e + \text{PRESENTATION\_TIME}$ and not

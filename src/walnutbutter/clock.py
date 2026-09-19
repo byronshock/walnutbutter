@@ -9,7 +9,7 @@ proportional to the clock, and an input's exact time anchors any wave it
 joins, so that chains never drift off the input clock.
 """
 
-TOLERANCE = 1e-9  # relative, per millisecond of clock time (at least 1 ms)
+TOLERANCE = 1e-12  # relative, per millisecond of clock time (at least 1 ms): AUTHORITY.md §3.4's register value
 
 
 def slack(time: float) -> float:

@@ -227,3 +227,22 @@ def test_cli_clock_options_and_validation(tmp_path, capsys):
     assert cli_main(["--headless", "--refractory-hops", "0"]) == 2
     assert cli_main(["--headless", "--interval", "-1"]) == 2
     assert "must be positive" in capsys.readouterr().err
+
+
+def test_the_clocks_tolerance_is_the_registers_and_rust_mirrors_it():
+    """AUTHORITY.md §3.4 and A.0: TOLERANCE is 1e-12, and a second literal of a register value is a bug.
+
+    The Rust loop cannot take a compile-time constant from Python, so it keeps its own and exports
+    it; this test is what makes that a mirror rather than an independent literal. It is the whole of
+    A.0's guarantee for this quantity -- if the two ever part, every comparison of two moments parts
+    with them and the engines stop agreeing on which events share a wave.
+    """
+    import pytest
+    from walnutbutter import clock, fast
+
+    assert clock.TOLERANCE == 1e-12
+    assert clock.slack(0.5) == 1e-12 and clock.slack(1000.0) == 1e-9  # relative, and at least 1 ms
+    if not fast.available():
+        pytest.skip("the Rust schedule is not built")
+    import walnutbutter_schedule
+    assert walnutbutter_schedule.TOLERANCE == clock.TOLERANCE
