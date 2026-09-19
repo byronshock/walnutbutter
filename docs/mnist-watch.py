@@ -73,13 +73,12 @@ def main() -> int:
             fixed += [f"--{flag.replace('_', '-')}", str(getattr(args, flag))]
     grid, cli = rs.grid_of("mnist", arm, args.eligibility, True, args.floor_ratio, args.wiring, tuple(fixed))
     patterns, labels = dataset_stream("mnist", args.seed)
-    offset, reference, explore_seed, baseline = 0, None, args.seed, None
-    if args.resume:
-        grid, offset, reference, baseline = rs.resume_grid(grid, Path(args.resume))
+    offset, reference, explore_seed, baseline, explore_state = 0, None, args.seed, None, None
+    if args.resume:  # §12.11: the streams continue where the checkpoint left them
+        grid, offset, reference, baseline, explore_state = rs.resume_grid(grid, Path(args.resume))
         grid.use_input_stream(patterns, labels)
         grid.input_at = offset
         patterns = labels = None
-        explore_seed += 1_000_000
     edges = [c for n in grid.all_neurons() for c in n.outgoing]  # the engine's order
     d, mask = mnist.supervised_direction(grid)(edges)
     d_masked = d[mask]
@@ -128,7 +127,7 @@ def main() -> int:
 
     try:
         fast.train(grid, args.epochs, lr=cli.lr, target="label", trace_every=0, patterns=patterns, labels=labels,
-                   eligibility=args.eligibility, seed=explore_seed, homeostasis=0.0, unstick=0.0, critic="evidence",
+                   eligibility=args.eligibility, seed=explore_seed, explore_state=explore_state, homeostasis=0.0, unstick=0.0, critic="evidence",
                    probe=probe, probe_every=1, reference_weights=reference, epoch_offset=offset, baseline=baseline)
     except KeyboardInterrupt:
         print(f"\nstopped at epoch {offset + state['epoch']:,}", flush=True)

@@ -10,6 +10,7 @@ inspected later.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -58,6 +59,13 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "bored_after": Neuron.bored_after,
         "horizon": network.horizon,  # the time the schedule has run to
         "connections": len(network.connections),
+        "wiring_digest": wiring_digest(network),  # §12.11: proof the rebuild is edge for edge the same mesh
+        # §12.11: each generator's state, not its seed and a count of draws, so the next number is the number the
+        # uninterrupted run would have taken. The network's own stream has drawn the wiring and the weights and goes
+        # on drawing the drive's arrival times; the exploration stream supplies the firing decisions (§7.3).
+        "network_state": _stream_state(getattr(network, "_rng", None)),
+        "explore_state": _stream_state(getattr(network, "explore_rng", None)),
+        "input_at": getattr(network, "input_at", 0),  # how far through a pre-drawn input stream the run has got
         "weights": [network.connections[i].weight for i in range(1, len(network.connections) + 1)],
         "thresholds": [n.threshold for n in network.all_neurons()],
         # per neuron since §5.2: a container that scales with fan-in gives each its own floor, not the one scalar
@@ -118,6 +126,41 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
 def across_of(data: dict) -> int:
     """The count across a checkpoint's input zone: "across", or "columns" in files written before the rename."""
     return data["across"] if "across" in data else data["columns"]
+
+
+def _stream_state(rng) -> list | None:
+    """A `random.Random`'s Mersenne state as a list of ints, or None where there is no stream.
+
+    `getstate()` is `(3, tuple_of_625, None)`; only the middle matters, the
+    version being fixed and the Gaussian spare unused by any draw this project
+    takes. §12.11 wants the state and not the seed and a count of draws.
+    """
+    return None if rng is None else list(rng.getstate()[1])
+
+
+def _restore_stream(rng, state) -> None:
+    """Put a stream back where the checkpoint left it, if both the stream and the state are there."""
+    if rng is not None and state:
+        rng.setstate((3, tuple(int(x) for x in state), None))
+
+
+def wiring_digest(network) -> str:
+    """A digest of every synapse: the (source, target) index pairs in connection-id order, and the neuron count.
+
+    §12.11 wants a resumed network "checked neuron for neuron and synapse for
+    synapse against a fresh build from the seed, and refused if they differ".
+    Comparing counts alone lets a checkpoint whose wiring differs edge for edge
+    load silently, which is D3 of `docs/conformance-checks.md`. A digest checks
+    every edge without putting a second copy of the topology in the file -- the
+    mesh is rebuilt from the seed either way, so what is needed is proof the
+    rebuild matches, not the edges themselves.
+    """
+    order = {id(neuron): i for i, neuron in enumerate(network.all_neurons())}
+    h = hashlib.sha256(f"{len(order)} neurons".encode())
+    for connection_id in range(1, len(network.connections) + 1):
+        c = network.connections[connection_id]
+        h.update(f"{order[id(c.source)]}>{order[id(c.target)]}:{c.kind};".encode())
+    return h.hexdigest()
 
 
 def hop_of(data: dict) -> float:
@@ -221,6 +264,15 @@ def load_weights(network: Goo, data: dict) -> None:
         raise ValueError(
             f"checkpoint has {data['connections']} connections but the mesh has {len(network.connections)}"
         )
+    # §12.11: neuron for neuron and synapse for synapse against a fresh build, and refused if they differ.
+    # A file written before the digest existed carries none and keeps the count check alone.
+    recorded = data.get("wiring_digest")
+    if recorded is not None and recorded != wiring_digest(network):
+        raise ValueError(
+            "checkpoint's wiring differs from the mesh rebuilt from its seed: the same neuron count and the same "
+            "number of synapses, but not the same synapses. §12.11 refuses this rather than loading weights that "
+            "were scored against another topology"
+        )
     for connection_id, weight in enumerate(data["weights"], start=1):
         network.connections[connection_id].weight = weight
     neurons = list(network.all_neurons())
@@ -246,6 +298,12 @@ def resume_teacher(teacher, data: dict) -> None:
 
 def _restore_clock(network, data: dict) -> None:
     """Continue the clock: time, horizon, each neuron's potential and spikes, the synapse stamps, the signals in flight."""
+    # §12.11: the streams first, so the next draw is the one the uninterrupted run would have taken. A file written
+    # before the states were carried has none, and a run resumed from it is a new run rather than the same one.
+    _restore_stream(getattr(network, "_rng", None), data.get("network_state"))
+    _restore_stream(getattr(network, "explore_rng", None), data.get("explore_state"))
+    if data.get("input_at") is not None:
+        network.input_at = data["input_at"]
     network.time = data.get("time", 0.0)
     network.interval = data.get("interval", network.interval)
     network.horizon = data.get("horizon", network.time)

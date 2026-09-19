@@ -235,3 +235,82 @@ def test_a_checkpoint_written_under_refractory_hops_converts_on_load(tmp_path):
     assert hop_of(old) == 2.5
     old["refractory_hops"] = 3.0  # and a run that set the ratio itself keeps its own timing, not the default
     assert hop_of(old) == pytest.approx(5.0 / 3.0)
+
+
+def test_a_checkpoint_refuses_a_mesh_whose_wiring_differs_edge_for_edge(tmp_path):
+    """§12.11 (D3): "checked neuron for neuron and synapse for synapse ... and refused if they differ".
+
+    The count check alone let a checkpoint load against a mesh with the same totals and different
+    edges, so weights scored on one topology were copied onto another. The digest is over the
+    (source, target, kind) of every connection in id order plus the neuron count -- every synapse
+    checked, without a second copy of the topology in the file, since the mesh is rebuilt from the
+    seed either way and what is needed is proof the rebuild matches.
+    """
+    from walnutbutter.persistence import wiring_digest
+
+    grid = Goo(count=24, across=6, seed=1)
+    path = tmp_path / "w.json"
+    data = checkpoint(grid, path)
+    assert data["wiring_digest"] == wiring_digest(grid)
+    load_weights(Goo(count=24, across=6, seed=1), data)  # the same build: accepted
+
+    # the same neuron count and the same number of synapses, but not the same synapses
+    other = Goo(count=24, across=6, seed=1)
+    a, b = other.connections[1], other.connections[2]
+    a.target, b.target = b.target, a.target
+    assert len(other.connections) == data["connections"]
+    with pytest.raises(ValueError, match="not the same synapses"):
+        load_weights(other, data)
+
+    del data["wiring_digest"]  # a file written before the digest keeps the count check alone
+    load_weights(other, data)
+
+
+def test_a_resume_is_the_same_run_continued(tmp_path):
+    """§12.11 (D1): "A resume is not a new run that starts where an old one left off; it is the same run, continued".
+
+    Twenty epochs uninterrupted against ten, a checkpoint, and ten more. Every weight, every spike
+    count and every expectation must match, which they can only do if the checkpoint carried each
+    generator's *state* -- the network's own stream, which draws the drive's arrival times every
+    epoch, and the exploration stream that supplies the firing decisions (§7.3). A seed and a count
+    of draws is not enough and was what this replaced.
+    """
+    import math
+    from walnutbutter.constants import ESCAPE_DELTA
+
+    was = Neuron.tau
+    Neuron.tau = math.inf
+    try:
+        def build(seed=11):
+            grid = Goo(count=36, across=6, weight=None, seed=seed)
+            grid.readout, grid.read, grid.drive = "top", "count", "rate"
+            grid.set_delta(ESCAPE_DELTA)
+            return grid
+
+        whole = build()
+        straight = Teacher(whole, seed=11, rule="reinforce", eligibility="hazard", target="copy")
+        for _ in range(20):
+            straight.epoch(verbose=False)
+
+        part = build()
+        teacher = Teacher(part, seed=11, rule="reinforce", eligibility="hazard", target="copy")
+        part.explore_rng = teacher.rng  # §7.3: the stream the decisions draw from is the one the checkpoint carries
+        for _ in range(10):
+            teacher.epoch(verbose=False)
+        path = tmp_path / "half.json"
+        data = checkpoint(part, path, teacher)
+        assert data["explore_state"] and data["network_state"], "§12.11 wants each generator's state"
+
+        back, data = restore(path)
+        resumed = Teacher(back, seed=999, rule="reinforce", eligibility="hazard", target="copy")
+        back.explore_rng = resumed.rng
+        resumed.rng.setstate((3, tuple(data["explore_state"]), None))  # the seed 999 is overwritten by the state
+        resume_teacher(resumed, data)
+        for _ in range(10):
+            resumed.epoch(verbose=False)
+
+        assert [c.weight for c in back.connections.values()] == [c.weight for c in whole.connections.values()]
+        assert [n.spikes for n in back.all_neurons()] == [n.spikes for n in whole.all_neurons()]
+        assert [n.expectation for n in back.all_neurons()] == [n.expectation for n in whole.all_neurons()]
+    finally:
+        Neuron.tau = was

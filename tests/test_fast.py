@@ -118,7 +118,7 @@ def test_a_resumed_run_measures_from_its_first_start_and_counts_its_epochs_on(tm
     assert [e["epoch"] for e in report["estimator"]] == [3, 6] and fresh.input_at == 6
     rs._save_network(engine, fresh, report, tmp_path / "arm-network.json")
     again, _ = rs.grid_of("copy", arm, "hazard", True, -4.0)
-    grid, offset, reference, baseline = rs.resume_grid(again, tmp_path / "arm-network.json")
+    grid, offset, reference, baseline, explore_state = rs.resume_grid(again, tmp_path / "arm-network.json")
     assert baseline == report["baseline"]  # §9.3: the run's own b comes back with it
     assert offset == 6 and reference == first and grid is not again
     assert [c.weight for n in grid.all_neurons() for c in n.outgoing] == list(engine.weights())  # the saved state, whole

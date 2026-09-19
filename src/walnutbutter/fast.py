@@ -304,7 +304,7 @@ def benchmark(network, epochs=200, bits=None):
 
 
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
-          eligibility="hebb", seed=None, homeostasis=0.0, target_rate=TARGET_RATE,
+          eligibility="hebb", seed=None, explore_state=None, homeostasis=0.0, target_rate=TARGET_RATE,
           unstick=0.0, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           direction=None, reference_weights=None, epoch_offset=0, baseline=None):
     """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
@@ -371,6 +371,8 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
                          "from the randomness of the decision, and with no width there is no randomness to estimate from. "
                          "network.set_delta(ESCAPE_DELTA > 0) first (§8.3)")
     explore_rng = random.Random(seed)  # §7.3: the exploration stream the firing decisions draw from
+    if explore_state:  # §12.11: a resume continues that stream where the checkpoint left it, rather than seeding afresh
+        explore_rng.setstate((3, tuple(int(x) for x in explore_state), None))
 
     if critic not in ("row", "class", "graded", "evidence"):
         raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")

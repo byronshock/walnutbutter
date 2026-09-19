@@ -223,7 +223,7 @@ def resume_grid(fresh, source):
     for attr in RESUMED_SETTINGS:
         setattr(restored, attr, getattr(fresh, attr))
     restored.rule = "reinforce"
-    return restored, int(data["epoch"]), reference, data.get("baseline")
+    return restored, int(data["epoch"]), reference, data.get("baseline"), data.get("explore_state")
 
 
 def _rate_by_zone(grid, rates: list[float]) -> dict:
@@ -269,7 +269,7 @@ def run_arm(job: tuple) -> dict:
         source = ROOT / "runs" / resume_from / f"{arm_name(arm)}-network.json"
         if not source.exists():
             return {"arm": arm_name(arm), "missing": str(source)}
-        grid, offset, reference, baseline = resume_grid(grid, source)
+        grid, offset, reference, baseline, resumed_explore_state = resume_grid(grid, source)
         earlier = source.with_name(f"{arm_name(arm)}.json")
         if earlier.exists():
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
@@ -287,16 +287,16 @@ def run_arm(job: tuple) -> dict:
         patterns, labels = input_stream(offset + epochs, grid.raw_bit_count(), int(arm["seed"])), None
     else:
         patterns, labels = data
-    explore_seed = int(arm["seed"])
-    if resume_from:  # the stream is attached here and advanced to the epoch reached; the exploration stream starts afresh
+    explore_seed, explore_state = int(arm["seed"]), None
+    if resume_from:  # §12.11: the streams continue where the checkpoint left them -- a resume is the same run, continued
         grid.use_input_stream(patterns, labels)
         grid.input_at = offset
         patterns = labels = None
-        explore_seed += 1_000_000
+        explore_state = resumed_explore_state
     started = time.perf_counter()
     mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
-        eligibility=args.eligibility, seed=explore_seed,
+        eligibility=args.eligibility, seed=explore_seed, explore_state=explore_state,
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
         reference_weights=reference, epoch_offset=offset, baseline=baseline,

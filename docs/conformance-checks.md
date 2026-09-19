@@ -302,7 +302,7 @@ presence as the file endorsing them: they belong to a read, not to a teacher.
 
 ## D. Resume and checkpoints
 
-**D1. §12.11 — a resume is exact, and nothing carries a generator's state.**
+**D1. ~~§12.11 — a resume is exact, and nothing carries a generator's state.~~ Done, September 19, 2026.**
 *"A run resumed from a checkpoint produces, bit for bit, what the uninterrupted
 run would have produced... A checkpoint carries each generator's state, not its
 seed and a count of draws."* `getstate` appears nowhere in `persistence.py`;
@@ -323,11 +323,25 @@ notes or signals in flight — and zeroes $E_j$. A Rust arm's checkpoint is then
 written from the object network the engine was built from, which never ran, so
 the fields §12.9 requires are recorded as fresh-build values.
 
-**D3. §12.11 — the rebuild is not checked.** The clause wants a network
+**D3. ~~§12.11 — the rebuild is not checked.~~ Done, September 19, 2026.** The clause wants a network
 "checked neuron for neuron and synapse for synapse against a fresh build from
 the seed, and refused if they differ". `load_weights` compares `across`, `rows`,
 `seed` and the connection **count**, so a checkpoint whose wiring differs edge
-for edge loads silently as long as the totals match.
+for edge loaded silently as long as the totals match. A checkpoint now carries
+`wiring_digest`, a SHA-256 over every connection's (source, target, kind) in id
+order plus the neuron count, and `load_weights` refuses a mismatch. A digest
+rather than the edge list because the mesh is rebuilt from the seed either way:
+what is needed is proof the rebuild matches, not a second copy of the topology.
+A file written before it keeps the count check alone.
+
+*And D1, in the same commit.* A checkpoint carries `network_state` and
+`explore_state` — each generator's Mersenne state, not its seed and a count of
+draws — and `input_at`. `fast.train` takes an `explore_state` that overrides
+its seed, and both drivers stop restarting the exploration stream at
+`seed + 1,000,000`. The test is the clause: twenty epochs uninterrupted against
+ten, a checkpoint, and ten more, with every weight, spike count and expectation
+equal. **It passes on the object engine and is not yet true of a Rust arm** —
+that is D2, which is what remains of section D.
 
 ---
 
