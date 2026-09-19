@@ -423,3 +423,49 @@ def test_copy_asks_each_output_for_exactly_its_input_place(capsys):
     assert len(goo.input_row()) == len(goo.output_row()) == 8
     assert cli_main(["--problem", "copy", "--goo", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     assert "learning copy (" in capsys.readouterr().err  # the Teacher's status names the target it teaches
+
+
+def test_the_drive_stops_at_the_presentation_time_and_the_tail_is_not_silent():
+    """§5.4a (Byron, September 18, 2026): the drive runs to t_e + PRESENTATION_TIME and not past it.
+
+    Three things are checked because each can fail on its own: no arrival lands past the window --
+    which is the clause, and the only test that can catch a wrong window, since all three engines
+    share `input_schedule` and a wrong one would be wrong in all three at once; the default draws the
+    whole epoch, so nothing measured moves until a run shortens it; and the tail is *undriven*, not
+    silent -- every neuron still decides at every wave (§6.8) and carries the hazard's rest (§7.2).
+    """
+    from walnutbutter.goo import Goo
+    from walnutbutter.neuron import Neuron
+
+    Neuron.verbose = False
+    grid = Goo(count=60, across=12, weight=None, seed=1)
+    grid.readout, grid.read, grid.drive = "top", "fired", "rate"
+    grid.set_input_bits([True] * 6)
+
+    assert grid.presentation is None and grid.presentation_time == grid.interval == 35.0
+    whole = grid.input_schedule()
+    assert whole and max(t for _, t in whole) < grid.time + 35.0
+
+    grid.presentation = 10.0
+    short = grid.input_schedule()
+    assert short, "a ten-millisecond window still draws arrivals"
+    assert max(t for _, t in short) < grid.time + 10.0  # the clause: nothing past the window
+    assert len(short) < len(whole)  # and fewer draws, which is what shifts the stream (§12.6)
+
+    grid.presentation = 99.0  # §0.5: refused, not clipped
+    with pytest.raises(ValueError, match="longer than the epoch"):
+        grid.input_schedule()
+
+
+def test_the_presentation_window_round_trips_and_defaults_to_the_whole_epoch(tmp_path):
+    """§12.9: the window is a run's setting, so a checkpoint carries it or §12.11's exact resume breaks."""
+    from walnutbutter.goo import Goo
+    from walnutbutter.persistence import checkpoint, read_checkpoint
+
+    grid = Goo(count=12, across=4, seed=1)
+    data = checkpoint(grid, tmp_path / "whole.json")
+    assert data["presentation_time"] is None  # the default is the whole epoch, written as such
+
+    grid.presentation = 12.5
+    data = checkpoint(grid, tmp_path / "short.json")
+    assert read_checkpoint(tmp_path / "short.json")["presentation_time"] == 12.5

@@ -18,7 +18,7 @@ from .inputs import parse_bits
 from .constants import (
     ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
     RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
-    QUASH_K, QUASH_RATE, TAU, LEAK_TAU,
+    QUASH_K, QUASH_RATE, TAU, LEAK_TAU, PRESENTATION_TIME,
     ELIGIBILITY, HOMEOSTASIS, INTERVAL, LR,
     MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, HOP, LAG, RULE, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
@@ -437,6 +437,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="zero every potential between inputs (the old epoch-by-epoch behaviour) instead of keeping it",
     )
     parser.add_argument(
+        "--presentation-time",
+        type=float,
+        default=PRESENTATION_TIME,
+        metavar="MS",
+        help="how far into each epoch the drive runs (AUTHORITY.md §5.4a; default: the whole epoch). Past it the "
+        "input zone is undriven, which is not silent: every neuron still decides at every wave. Longer than the "
+        "epoch is refused",
+    )
+    parser.add_argument(
         "--interval",
         type=float,
         default=None,
@@ -743,6 +752,8 @@ def _run(args: argparse.Namespace) -> int:
                         file=sys.stderr,
                     )
             grid.interval = args.interval
+            grid.presentation = args.presentation_time  # §5.4a; None is the whole epoch
+            grid.presentation_time  # refuse a window past the horizon now, not at the first draw
             if not loaded or args.delta != ESCAPE_DELTA:
                 grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
             if args.eligibility is None:  # the eligibility follows the neuron (§1.3)
@@ -924,6 +935,7 @@ def _seed_worker(job: dict) -> dict:
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
     Neuron.tau = job.get("tau", Neuron.tau)
     grid.interval = job.get("interval", grid.interval)
+    grid.presentation = job.get("presentation_time", grid.presentation)  # §5.4a, in each worker
     grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's
     grid.problem = job.get("problem")
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
@@ -1013,7 +1025,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "scale_with_fan_in": args.scale_with_fan_in, "projection": args.projection,
                      "wiring": args.wiring, "scaling_factor": args.scaling_factor,
                      "refractory": args.refractory, "hop": args.hop,
-                     "interval": args.interval, "problem": args.problem, "bored_after": args.bored_after,
+                     "interval": args.interval, "presentation_time": args.presentation_time,
+                     "problem": args.problem, "bored_after": args.bored_after,
                      "tau": args.tau,
                      "readout": args.readout, "read": args.read, "read_window": args.read_window,
                      "quash": (args.quash, args.quash_k),

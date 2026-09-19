@@ -16,7 +16,8 @@ import random
 from typing import Iterable
 
 from .constants import (
-    ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, TEMPERATURE,
+    ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, PRESENTATION_TIME,
+    TEMPERATURE,
     QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, THRESHOLD_FAN_IN,
 )
 
@@ -80,6 +81,7 @@ class Network:
         self.epoch = 0  # how many inputs have been presented
         self.time = 0.0  # the clock, nominal milliseconds: the time of the last input
         self.interval = INTERVAL  # default spacing of inputs when no time is given
+        self.presentation = PRESENTATION_TIME  # §5.4a: ms into the epoch the drive runs; None is the whole epoch
         self.input_time: float | None = None  # when the pending input arrives
         self.horizon = 0.0  # the time the schedule has run to: the next input may not come before it
         self.schedule = Schedule()  # signals in flight, across epochs
@@ -376,14 +378,32 @@ class Network:
             return []
         return [neuron for neuron, bit in zip(self.input_row(), self.input_pattern) if bit]
 
+    @property
+    def presentation_time(self) -> float:
+        """How far into the epoch the drive runs (AUTHORITY.md §5.4a): `presentation`, or the whole epoch when None.
+
+        More than the epoch is **refused** and not clipped (§0.5): a window past
+        the horizon would schedule arrivals into an epoch already read (§3.10).
+        """
+        if self.presentation is None:
+            return self.interval
+        if self.presentation > self.interval:
+            raise ValueError(
+                f"presentation time {self.presentation:g} ms is longer than the epoch's {self.interval:g} ms; "
+                "§5.4a refuses a window past the horizon rather than clipping it"
+            )
+        return float(self.presentation)
+
     def input_schedule(self) -> list[tuple[int, float]]:
         """When each input place is stimulated this epoch, as (place, time) in time order (AUTHORITY.md §4.3).
 
         Under `drive = "forced"` every place whose bit is 1 is stimulated once
         at the epoch's moment: the behaviour this has always had. Under
         `drive = "rate"` an independent Poisson process **drives** each place
-        across the epoch, at `input_rate` where its bit is 1 and
-        `input_rate_off` where it is 0.
+        across the presentation window (§5.4a -- the whole epoch by default), at
+        `input_rate` where its bit is 1 and `input_rate_off` where it is 0. Past
+        the window there are no arrivals and what the input zone does is its own
+        (§7.2): undriven is not the same as silent.
 
         These are arrivals, not spikes. An arrival that lands while the neuron
         is refractory is dropped by the schedule, so the neuron fires at the
@@ -404,7 +424,7 @@ class Network:
             raise ValueError("no input pattern set; call set_input() first")
         if self.drive != "rate":
             return [(place, self.time) for place, bit in enumerate(pattern) if bit]
-        end = self.time + self.interval
+        end = self.time + self.presentation_time
         events: list[tuple[int, float]] = []
         for place, bit in enumerate(pattern):
             rate = self.input_rate if bit else self.input_rate_off

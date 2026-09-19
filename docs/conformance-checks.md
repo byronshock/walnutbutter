@@ -166,7 +166,8 @@ than an independent value. That is A.0's guarantee for this quantity: if the
 two ever part, every comparison of two moments parts with them and the engines
 stop agreeing on which events share a wave.
 
-**A7. §5.4a — the presentation window is not built.** The clause is new, of
+**A7. ~~§5.4a — the presentation window is not built.~~ Done, September 19,
+2026.** The clause is new, of
 September 18, 2026: the drive runs to $t_e + \text{PRESENTATION\_TIME}$ and not
 past it, defaulting to INTERVAL. No engine carries the constant, and all three
 draw arrivals to $t_e + \text{INTERVAL}$. At the default the behaviour is
@@ -181,6 +182,18 @@ default there is nothing to see, and away from the default every engine that
 shares the same drawing code would be wrong together. The test has to be
 against the clause — that no arrival lands past the window — and not against
 another engine. §12.11's exact resume needs the constant in the checkpoint.
+
+*How it was built, and why the traps did not bite.* One function draws the
+arrivals — `Network.input_schedule` — and all three engines take its list, the
+Rust loop included, so the three shorten identically by construction and there
+is no second drawing site to keep in step. `PRESENTATION_TIME` is a sentinel
+`None` meaning the whole epoch rather than the number 35, because INTERVAL is a
+per-run and per-problem value and the default window must follow it. The
+refusal of §0.5 is raised when the window is set, not at the first draw, so a
+run that asks for a window past the horizon fails before it starts. The test is
+against the clause — no arrival past the window, fewer draws than the whole
+epoch, and the default drawing the whole of it — and the engines were compared
+at windows of 35, 10 and 2.55 ms, all three agreeing to the bit.
 
 ---
 

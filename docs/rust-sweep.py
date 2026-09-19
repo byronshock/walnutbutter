@@ -193,7 +193,7 @@ def _save_network(engine, grid, report: dict, path) -> None:
     path.write_text(_json.dumps(data))
 
 
-RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "drive", "input_rate", "input_rate_off",
+RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "presentation", "drive", "input_rate", "input_rate_off",
                     "temperature", "population", "clock", "quash_rate", "quash_k",
                     )  # what the arm's settings decide, applied to a restored network over its checkpoint
 

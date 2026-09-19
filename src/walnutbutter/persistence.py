@@ -51,6 +51,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "epoch": network.epoch,
         "time": network.time,  # the clock, nominal milliseconds
         "interval": network.interval,
+        "presentation_time": network.presentation,  # §5.4a; None is the whole epoch, which is the default
         "tau": Neuron.tau,
         "refractory": Neuron.refractory,
         "hop": Neuron.hop,

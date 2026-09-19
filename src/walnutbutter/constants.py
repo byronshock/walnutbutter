@@ -73,6 +73,10 @@ HOP = (REFRACTORY + LAG) / 2.0  # ms: the time a signal takes to travel one conn
 # 1.9607843137..., not a number to write in a register. That arithmetic is why Byron wanted the hop direct. The old
 # constant read: the refractory period divided by the time a signal takes to travel one hop; not an integer (Byron, September 11,
 # 2026). 3 until September 17, 2026 (Byron: "Please set hops=2 by default"): a hop of 2.5 ms, not 1.67
+PRESENTATION_TIME = None  # ms into the epoch that the drive runs, or None for the whole of it -- which is the default
+# and is what the register means by "INTERVAL" (AUTHORITY.md §5.4a). A sentinel rather than the number, because
+# INTERVAL is a per-run and per-problem value and the default window must follow it. More than the epoch is refused
+# (§0.5): a window past the horizon would schedule arrivals into an epoch already read (§3.10)
 INTERVAL = 35.0  # ms: the epoch's length, the spacing of inputs when no time is given. Swept September 14, 2026 on
 # shallow_copy over 5 to 45 ms: the optimum is a plateau at 35-40 and 35 is the cheaper of the two, against the 20 ms
 # the problems had inherited and never chosen (Byron, same day, defaulting it here and removing every override)
