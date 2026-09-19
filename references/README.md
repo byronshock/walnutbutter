@@ -222,4 +222,5 @@ Balasubramanian, Kimber & Berry came from arXiv. One of the literature is still 
 
 - Levy & Baxter (1996), *Energy Efficient Neural Codes*, Neural Computation 8(3), 531-543: the paper that
   started this line, deriving an optimal firing rate from a cost per spike. **Closed** at MIT Press,
-  nothing free found: a library request.
+  nothing free found. A library request, with an issue open for it; Laughlin et al. (1998), above, is the
+  other half of the pair and its issue is a library request from September 19, 2026 too.
