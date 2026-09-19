@@ -49,6 +49,9 @@ and not ours to redistribute (see "Closed access, and how a copy gets here"). It
 | `AttwellLaughlin01.pdf` | Attwell & Laughlin (2001), Journal of Cerebral Blood Flow and Metabolism 21(10), 1133-1145 -- the energy budget itself; not in BIBLIOGRAPHY.md | https://journals.sagepub.com/doi/pdf/10.1097/00004647-200110000-00001 | the published Lippincott typesetting (13 pages), free at SAGE (bronze); the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `a77d667defcb5df9…` |
 | `LevyBaxter02.pdf` | Levy & Baxter (2002), Journal of Neuroscience 22(11), 4746-4755 -- synaptic failure as an energy optimum; not in BIBLIOGRAPHY.md | https://www.jneurosci.org/content/jneuro/22/11/4746.full.pdf | the published typesetting (10 pages), free at the Journal of Neuroscience; the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `415a65bbf5909fca…` |
 | `HarrisJolivetAttwell12.pdf` | Harris, Jolivet & Attwell (2012), Neuron 75(5), 762-777 -- the budget redone at the synapse; not in BIBLIOGRAPHY.md | https://www.cell.com/article/S0896627312007568/pdf | the published Cell Press typesetting (16 pages), free in Elsevier's open archive; the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `3ceceffd2c5c6ebd…` |
+| `HasenstaubEtAl10.pdf` | Hasenstaub, Otte, Callaway & Sejnowski (2010), PNAS 107(27), 12329-12334 -- metabolic cost down in the channel kinetics; not in BIBLIOGRAPHY.md | https://pmc.ncbi.nlm.nih.gov/articles/PMC2901447/ | the published PNAS typesetting (6 pages) from PubMed Central, which refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `0b50b67d0fa4600a…` |
+| `NivenLaughlin08.pdf` | Niven & Laughlin (2008), Journal of Experimental Biology 211(11), 1792-1804 -- the same accounting as an evolutionary pressure; not in BIBLIOGRAPHY.md | https://journals.biologists.com/jeb/article-pdf/211/11/1792/1262412/1792.pdf | the published Company of Biologists typesetting (13 pages), free (bronze); the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `d9348a519efac989…` |
+| `Lennie03.pdf` | Lennie (2003), Current Biology 13(6), 493-497 -- one cortical neuron in a hundred; not in BIBLIOGRAPHY.md | https://doi.org/10.1016/S0960-9822(03)00135-0 | the published Elsevier typesetting (5 pages), free (bronze); the site refuses a scripted download, so Byron saved it from a browser | September 19, 2026 | `c2a17d3179a3b562…` |
 | `KorcsakGorzoEtAl25-arxiv.pdf` | Korcsak-Gorzo, Espinoza Valverde, Stapmanns, Plesser, Dahmen, Bolten, van Albada & Diesmann (2025), *Event-driven eligibility propagation in large sparse networks* -- asked for by Byron, September 19, 2026; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/2511.21674 | the arXiv preprint (2511.21674v1, November 26, 2025), 34 pages, cs.NE and q-bio.NC; no journal version yet | September 19, 2026 | `5cedf2a9c670835c…` |
 
 | `Jefferson85.pdf` | Jefferson (1985), "Virtual Time", ACM Transactions on Programming Languages and Systems 7(3), 404-425 | https://worrydream.com/refs/Jefferson_1985_-_Virtual_Time.pdf | the published ACM typesetting, freely served; optimistic simulation and the rollback-by-antimessage scheme (Time Warp) | September 19, 2026 | `66ef780b7182c0da…` |
@@ -211,22 +214,12 @@ requests (see "Closed access, and how a copy gets here" above); the highest-scor
 
 *Byron asked which references speak to the energy budget of neurons and how it bears on computation.
 `Laughlin, de Ruyter van Steveninck & Anderson (1998)` is already BIBLIOGRAPHY.md entry 13 and is the one
-paper of it we could not get (above, and issue #4). These are the rest of that literature. All are free to
-a reader and all refuse a script -- SAGE, Biologists, Cell Press, PubMed Central and the Journal of
-Neuroscience each answer 403 -- so each needs saving from a browser under the name given. **Byron saved Attwell & Laughlin, Levy & Baxter
-(2002) and Harris, Jolivet & Attwell on September 19, 2026**; they are rows in the table above, and what
-remains below is what is still to fetch.*
+paper of it we could not get (above, and issue #4). The rest of that literature is in the table above:
+Attwell & Laughlin, Levy & Baxter (2002), Harris, Hasenstaub, Niven and Lennie, every one of them free to
+a reader and every one refusing a script -- SAGE, Biologists, Cell Press, PubMed Central and the Journal
+of Neuroscience each answer 403 -- so Byron saved all six from a browser on September 19, 2026, and
+Balasubramanian, Kimber & Berry came from arXiv. One of the literature is still out:*
 
-- Hasenstaub, Otte, Callaway & Sejnowski (2010), *Metabolic cost as a unifying principle governing
-  neuronal biophysics*, PNAS 107(27), 12329-12334: the cost argument run down into the channel kinetics.
-  Free at https://pmc.ncbi.nlm.nih.gov/articles/PMC2901447/ -- save as `HasenstaubEtAl10.pdf`.
-- Niven & Laughlin (2008), *Energy limitation as a selective pressure on the evolution of sensory
-  systems*, Journal of Experimental Biology 211(11), 1792-1804: the same accounting as an evolutionary
-  argument. Free (bronze) at https://journals.biologists.com/jeb/article-pdf/211/11/1792/1262412/1792.pdf
-  -- save as `NivenLaughlin08.pdf`.
-- Lennie (2003), *The cost of cortical computation*, Current Biology 13(6), 493-497: the arithmetic that
-  gives the famous figure of roughly one cortical neuron in a hundred active at a time. Free (bronze) at
-  https://doi.org/10.1016/S0960-9822(03)00135-0 -- save as `Lennie03.pdf`.
 - Levy & Baxter (1996), *Energy Efficient Neural Codes*, Neural Computation 8(3), 531-543: the paper that
   started this line, deriving an optimal firing rate from a cost per spike. **Closed** at MIT Press,
   nothing free found: a library request.
