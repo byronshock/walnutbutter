@@ -93,6 +93,19 @@ principle — the period over 2.55 ms is 1.9607843137…, not a number to write 
 a register — which is the arithmetic behind Byron's wanting $h$ direct. A.0 wants one home for every value in the
 register.
 
+*The fix, as Byron settled it September 19, 2026.* The code carries **HOP**,
+specified directly, and REFRACTORY_HOPS is retired — it cannot hold the
+specified hop in any case, REFRACTORY / 2.55 being 1.9607843137… LAG joins the
+register beside it, and HOP is what the two make: (REFRACTORY + LAG) / 2. A
+checkpoint written with `refractory_hops` **converts on load**, hop =
+refractory / refractory_hops, preserving the timing the run actually used,
+rather than being refused under §12.2: the field records what a run ran, and
+refusing would orphan every checkpoint already on disk. *Open, and Byron's:*
+§3.2 says the hop "has no name of its own" and is written out wherever the file
+needs it. That is a statement about the file's prose, and naming the code's
+constant HOP does not contradict it — but the register is the file's, so the
+entry may want a word saying which of the two it is.
+
 **A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~
 Dissolved — Byron took the shaping function out, September 18, 2026.** The
 register's derived TARGET_ISI = 10.2 ms and the code's free 5.1 disagreed; the
