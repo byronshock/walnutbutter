@@ -296,7 +296,7 @@ def run_arm(job: tuple) -> dict:
     started = time.perf_counter()
     mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
-        eligibility=args.eligibility, sigma=args.sigma, seed=explore_seed,
+        eligibility=args.eligibility, seed=explore_seed,
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
         reference_weights=reference, epoch_offset=offset, baseline=baseline,
@@ -318,7 +318,7 @@ def run_arm(job: tuple) -> dict:
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
               "read": grid.read, "pickiness": grid.pickiness,  # what "on" meant at the read (§5.10, §9.5)
               "critic": args.critic, "problem": problem, "lr": args.lr,  # the rate the arm ran at, swept or the problem's own
-              "output_coding": grid.output_coding, "population": grid.population, "outputs": getattr(grid, "outputs", None),
+              "population": grid.population, "outputs": getattr(grid, "outputs", None),
               "resumed_from": resume_from, "epoch_offset": offset, "epochs_run": epochs,  # a continuation: from where, and how far
               "tau": args.tau, "refractory": args.refractory, "refractory_hops": args.refractory_hops,  # the clock the arm ran on
               "explore_seed": explore_seed,
@@ -336,7 +336,7 @@ def run_arm(job: tuple) -> dict:
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
               "estimator": report.get("estimator"),  # the estimator's correlation over time (§8), for a dataset on goo
               "output_counts_last": _output_counts(engine, grid),  # the last epoch's output spikes, in order
-              "container": repr(grid) if hasattr(grid, "count") else f"{args.across}x{args.rows} hex grid, omega {args.omega:g}"}
+              "container": repr(grid)}  # goo is the only container (§4.1)
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result
 

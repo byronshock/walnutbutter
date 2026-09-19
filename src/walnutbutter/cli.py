@@ -366,8 +366,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lr",
         type=float,
-        default=LR,
-        help=f"learning rate, either rule (default: {LR:g})",
+        default=None,
+        help=f"learning rate, either rule (default: the problem's own, else {LR:g})",
     )
     parser.add_argument(
         "--delta",
@@ -587,8 +587,8 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.homeostasis = problem.homeostasis if problem.homeostasis is not None else 0.0
     if args.unstick is None:  # §9.10, the same
         args.unstick = problem.unstick if problem.unstick is not None else 0.0
-    if problem.lr is not None and args.lr == LR:  # the problem's own rate, unless --lr was given (a value equal to LR counts as not given)
-        args.lr = problem.lr
+    if args.lr is None:  # the problem's own rate, unless --lr was given: a sentinel, so every rate given on the command line survives
+        args.lr = problem.lr if problem.lr is not None else LR
     if problem.target is not None:
         args.target = problem.target
     if args.critic is None:

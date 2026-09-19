@@ -29,7 +29,7 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.eligibility is None and C.ELIGIBILITY == "hazard"  # §8.3: where a run names none, the eligibility is hazard
     assert args.delta == C.ESCAPE_DELTA == 0.455  # escape noise on by default (§5.2, Byron, September 15, 2026)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
-    assert (args.lr, args.target_rate) == (C.LR, C.TARGET_RATE)
+    assert (args.lr, args.target_rate) == (None, C.TARGET_RATE)  # the problem's rate, else LR
     # §9.9, §9.10, §10.1: the three are latent knobs -- off unless a run asks, and the constant is what asking gets
     assert (args.homeostasis, args.unstick, args.quash) == (None, None, None)
     for argv, want in ((['--homeostasis'], C.HOMEOSTASIS), (['--unstick'], C.UNSTICK), (['--quash'], C.QUASH_RATE)):
@@ -38,6 +38,24 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.unstick_target == C.UNSTICK_TARGET
     assert args.pickiness == C.ROW_CRITIC_PICKINESS_IN_SPIKES == 2 and not hasattr(C, "THRESHOLD_RANGE")  # the clamp is gone
 
+
+
+def test_a_rate_given_on_the_command_line_survives_the_problem():
+    """--lr names the rate, whatever its value (September 18, 2026).
+
+    The rate used to be taken from the problem whenever `args.lr` still equalled
+    LR, so `--lr 0.03` -- exactly the constant -- was indistinguishable from not
+    passing it, and ran at mnist's 0.002 under an arm named lr0.03. The default
+    is a sentinel now, so only an absent flag defers to the problem.
+    """
+    from walnutbutter.cli import apply_problem
+
+    for problem, given, want in (("mnist", None, 0.002), ("mnist", 0.03, 0.03), ("mnist", 0.0075, 0.0075),
+                                 ("reversal", None, C.LR), ("reversal", 0.03, C.LR)):
+        argv = ["--problem", problem] + ([] if given is None else ["--lr", str(given)])
+        args = build_parser().parse_args(argv)
+        apply_problem(args)
+        assert args.lr == want, (problem, given, args.lr)
 
 
 def test_the_neuron_and_its_clock_read_the_constants():

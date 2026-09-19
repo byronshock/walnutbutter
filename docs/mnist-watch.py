@@ -5,7 +5,7 @@
     .venv/bin/python docs/mnist-watch.py --seed 4 --epochs 30000 --every 500
     .venv/bin/python docs/mnist-watch.py --wiring ff2 --seed 1 --interval 100 --every 100   # one fully connected goo, from the start
     .venv/bin/python docs/mnist-watch.py --resume runs/mnist-ff-interval/interval100-threshold0.6-hidden_neurons0-temperature2-seed1-network.json \\
-        --seed 1 --interval 100 --output-coding population --population 5 --outputs 50   # on from that arm's saved network
+        --seed 1 --interval 100 --population 3 --outputs 60   # on from that arm's saved network
 
 From the start: a seed reruns bit for bit, so the arm is rebuilt as the
 sweep built it (the same knobs through the same `grid_of`, the same stream,
@@ -16,8 +16,8 @@ saves one per arm since the morning of September 16, 2026): the checkpoint's
 state whole, the stream advanced to the epoch reached, the estimator still
 measured from the first start's weights, the epochs counted on -- not to the
 bit, the exploration stream starting afresh (seed + 1,000,000). The knobs
-given must rebuild the arm's layout (`--interval`, `--output-coding`,
-`--population`, `--outputs` for a layout the problem no longer defaults to).
+given must rebuild the arm's layout (`--interval`, `--population`,
+`--outputs` for a layout the problem no longer defaults to).
 
 Every `--every` epochs one line: the epoch, the reward and the fraction right
 over the window, the cumulative correlation and sign agreement of the weight
@@ -45,7 +45,6 @@ def main() -> int:
     parser.add_argument("--floor-ratio", type=float, default=-4.0)
     parser.add_argument("--interval", type=float, default=None, help="the epoch's length in ms; the problem's unless given")
     parser.add_argument("--tau", type=float, default=None, help="the potential's leak in ms; the constant unless given")
-    parser.add_argument("--output-coding", choices=("population", "complement"), default=None, help="the problem's unless given")
     parser.add_argument("--population", type=int, default=None, help="the problem's unless given")
     parser.add_argument("--outputs", type=int, default=None, help="the problem's unless given")
     parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
@@ -69,7 +68,7 @@ def main() -> int:
         if getattr(args, knob) is not None:
             arm[knob] = getattr(args, knob)
     fixed = []
-    for flag in ("output_coding", "population", "outputs"):
+    for flag in ("population", "outputs"):
         if getattr(args, flag) is not None:
             fixed += [f"--{flag.replace('_', '-')}", str(getattr(args, flag))]
     grid, cli = rs.grid_of("mnist", arm, args.eligibility, True, args.floor_ratio, args.wiring, tuple(fixed))
@@ -90,7 +89,7 @@ def main() -> int:
     out_dir = ROOT / "runs" / "watch"
     print(f"{grid!r}; {args.eligibility} eligibility, LR {cli.lr:g}, T {args.temperature:g}, threshold {args.threshold:g}, "
           f"floor {cli.minimum_potential:g}, delta {cli.delta:g} (hazard x {grid.escape_scale:.3f}), tau {cli.tau:g} ms, epoch {grid.interval:g} ms, "
-          f"{grid.output_coding} outputs, seed {args.seed}; {int(mask.sum())} input-to-output synapses"
+          f"complement-coded outputs, seed {args.seed}; {int(mask.sum())} input-to-output synapses"
           f"{f'; resumed at epoch {offset:,} from {args.resume}' if args.resume else ''}; a line every {args.every:,} epochs, Ctrl-C to stop",
           flush=True)
     print(f"{'epoch':>8} {'reward':>8} {'right':>6} {'corr cum':>9} {'sign':>6} {'corr win':>9} {'out/neuron':>10} {'epochs/s':>8}", flush=True)
@@ -111,7 +110,7 @@ def main() -> int:
     def probe(epoch, engine, grid, out, book):
         state["engine"], state["book"], state["epoch"] = engine, book, epoch
         counts = engine.epoch_spike_counts()
-        groups = class_evidence([int(counts[i]) for i in out], grid.population, grid.output_coding)
+        groups = class_evidence([int(counts[i]) for i in out], grid.population)
         y = grid.input_label
         state["rewards"].append(fast._reward(engine, grid, out, "evidence", None))
         state["hits"].append(1.0 if all(groups[y] > g for c, g in enumerate(groups) if c != y) else 0.0)
