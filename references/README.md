@@ -78,7 +78,9 @@ standing request list. When Byron acquires one, its bullet becomes a row whose s
 
 *Byron, September 19, 2026, of Korcsak-Gorzo et al. (2025), arXiv:2511.21674: "This preprint is THE
 state of the art right now." Every one of its 96 references was scored for the project; the scored list
-with a paragraph on each is `docs/eprop-reading-list.md` in walnutbutter. What follows is what could be
+with a paragraph on each is `docs/eprop-reading-list.md` in walnutbutter, and reaches this folder as
+`references/eprop-reading-list.md`, a symlink Byron made on September 19, 2026 -- the text is tracked in the
+public repository, since it is our own prose and no one's copyright; this repository carries the link. What follows is what could be
 fetched of them, all on September 19, 2026. The score in brackets is that list's.*
 
 Fetched by script from the sources named -- open access journals, arXiv, free proceedings and authors'
