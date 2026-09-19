@@ -1,0 +1,8 @@
+# Build the engine for the machine that will run it. Both of us build here, on our own
+# boxes, so there is no reason to compile for a baseline CPU neither of us owns: native
+# lets LLVM use everything the chip has. Measured September 19, 2026 on a 7950X3D, this
+# is worth about 7% on the wave loop, and it stays bit-exact -- Rust never fuses a
+# multiply-add or reorders a float reduction, so the engines still agree under `==`
+# (AUTHORITY.md: every rule in every engine, compared exactly).
+[build]
+rustflags = ["-C", "target-cpu=native"]

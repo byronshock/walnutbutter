@@ -76,6 +76,7 @@ Read a number from the record only with the configuration it was taken at.
 - [11. The problem](#11-the-problem)
 - [12. The invariants](#12-the-invariants)
 - [Appendix A — the constant register](#appendix-a--the-constant-register)
+- [Appendix B — building the engine](#appendix-b--building-the-engine)
 
 ## 0. Standing values — non-negotiable
 
@@ -1725,3 +1726,12 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 
 **Constants no clause yet claims,** named here so they are decided rather than lost: PROBLEM (the default problem, still "reversal" in the code, a problem the specification does not carry — it becomes mnist or it goes); ACROSS (8 — the zone width a goo takes when no problem names one; mnist names its own); WEIGHT_EPSILON (0.001 — under `--positive-weights` the weight range becomes [ε, 1], a network with no inhibition); RULE (the record's four rules are one now that only the reinforce rule survives); TARGET (the record's default is the reversed pattern, whose problem is dropped; mnist's target is the label, 11.10); LATE (what a signal arriving after its target fired earns — it does not apply under either surviving eligibility).
 
+---
+
+## Appendix B — building the engine
+
+**The engine is built for the machine that will run it.** `rust/.cargo/config.toml` carries `-C target-cpu=native`, so a build uses everything the chip has rather than a baseline processor nobody here owns. Both of us build on our own machines, which is what makes this the right default rather than a preference; it would have to be revisited only if the engine were ever built somewhere neither of us controls.
+
+*Byron, September 19, 2026: "We both want native CPU optimizations when we build things. That is the right way to do things: Build them for the target system."*
+
+**Native does not cost the bit agreement of 12.4.** Rust keeps IEEE semantics operation by operation: it never fuses a multiply-add and never reorders a float reduction, so wider registers change which instructions do the arithmetic, not the arithmetic itself. Measured September 19, 2026 on a 7950X3D: the built engine carries AVX-512 and AVX2 instructions and no fused multiply-add at all, the object engine and the Rust loop agreed to the bit over 300 epochs, and the wave loop ran about 7% faster than the same source built for the baseline. A change of build flags is checked with that comparison (12.8), not assumed to be safe.
