@@ -45,6 +45,7 @@ and not ours to redistribute (see "Closed access, and how a copy gets here"). It
 | `Schwalger21.pdf` | Schwalger (2021), Biological Cybernetics 115(5), 539-562 -- cited September 17, 2026 for the mapping from input noise to an escape rate; not in BIBLIOGRAPHY.md | https://link.springer.com/content/pdf/10.1007/s00422-021-00899-1.pdf | the published Springer typesetting, CC BY 4.0 (24 pages, the journal's 539-562); the site refuses a scripted download, so Byron saved it from a browser, September 19, 2026. The arXiv preprint (2109.07416v1) is a six-page short version and was taken out of the folder when this arrived | September 19, 2026 | `2880a4051cc240ad…` |
 | `PlesserGerstner00.pdf` | Plesser & Gerstner (2000), Neural Computation 12(2), 367-384 -- the ancestor of the level-crossing mapping, cited September 19, 2026; not in BIBLIOGRAPHY.md | https://arken.nmbu.no/~plesser/publications/NEURCOMP_2000_367.pdf | the published MIT Press typesetting (18 pages, the journal's 367-384) on the first author's own page at NMBU; MIT Press's own copy is paywalled and Unpaywall and OpenAlex both list the article closed | September 19, 2026 | `c613d2e0bff3cff6…` |
 | `PlesserPhD99.pdf` | Plesser (1999), *Aspects of Signal Processing in Noisy Neurons*, dissertation, Georg-August-Universitat zu Gottingen (a thesis) -- the long form of the paper above; chapter 3 tests five hazard shapes against the exact answer. Cited September 19, 2026; not in BIBLIOGRAPHY.md | https://arken.nmbu.no/~plesser/publications/HEPlesser_PhD.pdf | the whole thesis (162 pages) on the author's own page at NMBU; the university's own record is at https://doi.org/10.53846/goediss-2910, whose repository serves a script nothing but its JavaScript shell | September 19, 2026 | `cf014c0978755abb…` |
+| `BalasubramanianKimberBerry01-arxiv.pdf` | Balasubramanian, Kimber & Berry (2001), Neural Computation 13(4), 799-815 -- cited September 19, 2026, when Byron asked what refers to the energy budget of neurons; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/cond-mat/0105127 | the arXiv preprint (cond-mat/0105127, May 6, 2001), 19 pages, stamped "Neural Comp. MS 2132"; MIT Press's own copy is paywalled | September 19, 2026 | `b2cbd883b78e722d…` |
 | `KorcsakGorzoEtAl25-arxiv.pdf` | Korcsak-Gorzo, Espinoza Valverde, Stapmanns, Plesser, Dahmen, Bolten, van Albada & Diesmann (2025), *Event-driven eligibility propagation in large sparse networks* -- asked for by Byron, September 19, 2026; not in BIBLIOGRAPHY.md | https://arxiv.org/pdf/2511.21674 | the arXiv preprint (2511.21674v1, November 26, 2025), 34 pages, cs.NE and q-bio.NC; no journal version yet | September 19, 2026 | `5cedf2a9c670835c…` |
 
 | `Jefferson85.pdf` | Jefferson (1985), "Virtual Time", ACM Transactions on Programming Languages and Systems 7(3), 404-425 | https://worrydream.com/refs/Jefferson_1985_-_Virtual_Time.pdf | the published ACM typesetting, freely served; optimistic simulation and the rollback-by-antimessage scheme (Time Warp) | September 19, 2026 | `66ef780b7182c0da…` |
@@ -203,3 +204,34 @@ requests (see "Closed access, and how a copy gets here" above); the highest-scor
 - **0.3** [94] Budik & Elhanany (2006), "TRTRL: A localized resource-efficient learning algorithm for recurrent neural networks", 49th IEEE International Midwest Symposium on Circuits and Systems, vol. 1, 371–374, doi:10.1109/MWSCAS.2006.382075 -- paywalled (free version: Budik's 2006 University of Tennessee master's thesis, which develops the same TRTRL algorithm at length); https://trace.tennessee.edu/utk_gradthes/1513/
 - **0.2** [86] Caio Seguin, Olaf Sporns and Andrew Zalesky (2023), "Brain network communication: concepts, models and applications", Nature Reviews Neuroscience 24(9):557-574, doi:10.1038/s41583-023-00718-5 -- paywalled; https://www.nature.com/articles/s41583-023-00718-5
 
+## The energy budget of neurons, September 19, 2026
+
+*Byron asked which references speak to the energy budget of neurons and how it bears on computation.
+`Laughlin, de Ruyter van Steveninck & Anderson (1998)` is already BIBLIOGRAPHY.md entry 13 and is the one
+paper of it we could not get (above, and issue #4). These are the rest of that literature. All are free to
+a reader and all refuse a script -- SAGE, Biologists, Cell Press, PubMed Central and the Journal of
+Neuroscience each answer 403 -- so each needs saving from a browser under the name given.*
+
+- Attwell & Laughlin (2001), *An Energy Budget for Signaling in the Grey Matter of the Brain*, JCBFM
+  21(10), 1133-1145: the budget itself -- action potentials 47%, postsynaptic glutamate effects 34%,
+  resting potential 13% -- and the conclusion that the numbers imply a distributed code with at most 15%
+  of neurons active at once. Free (bronze) at https://journals.sagepub.com/doi/pdf/10.1097/00004647-200110000-00001 -- save as `AttwellLaughlin01.pdf`.
+- Levy & Baxter (2002), *Energy-Efficient Neuronal Computation via Quantal Synaptic Failures*, Journal of
+  Neuroscience 22(11), 4746-4755: synaptic failure argued as an energy optimum rather than a defect. Free
+  at https://www.jneurosci.org/content/jneuro/22/11/4746.full.pdf -- save as `LevyBaxter02.pdf`.
+- Harris, Jolivet & Attwell (2012), *Synaptic Energy Use and Supply*, Neuron 75(5), 762-777: the budget
+  redone at the synapse a decade on. Free (hybrid) at https://www.cell.com/article/S0896627312007568/pdf
+  -- save as `HarrisJolivetAttwell12.pdf`.
+- Hasenstaub, Otte, Callaway & Sejnowski (2010), *Metabolic cost as a unifying principle governing
+  neuronal biophysics*, PNAS 107(27), 12329-12334: the cost argument run down into the channel kinetics.
+  Free at https://pmc.ncbi.nlm.nih.gov/articles/PMC2901447/ -- save as `HasenstaubEtAl10.pdf`.
+- Niven & Laughlin (2008), *Energy limitation as a selective pressure on the evolution of sensory
+  systems*, Journal of Experimental Biology 211(11), 1792-1804: the same accounting as an evolutionary
+  argument. Free (bronze) at https://journals.biologists.com/jeb/article-pdf/211/11/1792/1262412/1792.pdf
+  -- save as `NivenLaughlin08.pdf`.
+- Lennie (2003), *The cost of cortical computation*, Current Biology 13(6), 493-497: the arithmetic that
+  gives the famous figure of roughly one cortical neuron in a hundred active at a time. Free (bronze) at
+  https://doi.org/10.1016/S0960-9822(03)00135-0 -- save as `Lennie03.pdf`.
+- Levy & Baxter (1996), *Energy Efficient Neural Codes*, Neural Computation 8(3), 531-543: the paper that
+  started this line, deriving an optimal firing rate from a cost per spike. **Closed** at MIT Press,
+  nothing free found: a library request.
