@@ -100,11 +100,11 @@ register beside it, and HOP is what the two make: (REFRACTORY + LAG) / 2. A
 checkpoint written with `refractory_hops` **converts on load**, hop =
 refractory / refractory_hops, preserving the timing the run actually used,
 rather than being refused under §12.2: the field records what a run ran, and
-refusing would orphan every checkpoint already on disk. *Open, and Byron's:*
-§3.2 says the hop "has no name of its own" and is written out wherever the file
-needs it. That is a statement about the file's prose, and naming the code's
-constant HOP does not contradict it — but the register is the file's, so the
-entry may want a word saying which of the two it is.
+refusing would orphan every checkpoint already on disk. Byron closed the naming
+question the same day — *"You just called it a HOP. Let's be consistent and
+call it a HOP"* — so §3.2 no longer says the hop has no name of its own, the
+register carries HOP at 2.55 ms as (REFRACTORY + LAG) / 2 in place of the
+derived REFRACTORY + LAG row, and §0.12's drive quotes its interval as 2 HOP.
 
 **A3. ~~§7.4 — TARGET_ISI is derived, and the code's is the superseded one.~~
 Dissolved — Byron took the shaping function out, September 18, 2026.** The

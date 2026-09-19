@@ -307,13 +307,13 @@ it.
 
 **3.2 The hop.** A signal generated at time $t$ is delivered at
 $t + h$, one hop later, and no whole number of hops ever falls at
-$t + \text{REFRACTORY}$. The hop has no name of its own: wherever this file
-needs it, it is written out,
+$t + \text{REFRACTORY}$. The hop is HOP, and it is derived: wherever this file
+needs the arithmetic it is written out,
 
-$$2h = \text{REFRACTORY} + \text{LAG} = 5.1\ \text{ms},\qquad h = 2.55\ \text{ms},$$
+$$2h = \text{REFRACTORY} + \text{LAG} = 5.1\ \text{ms},\qquad h = \text{HOP} = 2.55\ \text{ms},$$
 
-where $h$ is this file's shorthand in arithmetic and not a constant —
-REFRACTORY and LAG are the two constants and two hops are what they add to.
+where $h$ is this file's shorthand for HOP in arithmetic — REFRACTORY and LAG
+are the two constants it is made of, and two hops are what they add to.
 LAG $= 0.1$ ms, and there is no other delay: the time in signalling is
 carried by the hop alone. It is a delay and not a decay — a signal arrives
 whole, one hop after it was sent (§0.3).
@@ -349,7 +349,9 @@ directly as TIME_CONSTANT_OF_TRANSMISSION." The first half of that stands: the
 hop is specified directly and not as a count of refractory periods. The name
 did not — Byron retired TIME_CONSTANT_OF_TRANSMISSION on September 18, 2026,
 "REFRACTORY+LAG", leaving the quantity, its two constants and its 5.1 ms
-untouched; only the name went. It was
+untouched; only the name went — and a name came back on September 19, 2026,
+when the quantity was halved to 2.55 ms and became HOP, Byron: "Let's be
+consistent and call it a HOP." It was
 REFRACTORY / REFRACTORY_HOPS with REFRACTORY_HOPS 2 until then, and Byron on
 why that form went rather than being renamed: "refractory_hops was a nice
 convenience when we were working on an integer hex grid." There a trip had a
@@ -920,8 +922,8 @@ said a resumed network keeps the setting it was saved under. LAG stays: it is
 §3.2's and belongs to the hop. What §0.12's deterministic drive and §9.13's
 rate teacher were to be quoted in, having quoted TARGET_ISI, was answered
 twice over on September 18, 2026. The drive's interval is REFRACTORY + LAG —
-"REFRACTORY+LAG" — written as the sum because it has no name of its own any
-more (§3.2); that is not TARGET_ISI restored under another name, since being
+"REFRACTORY+LAG" — which is 2 HOP, written as the sum because that is how
+Byron gave it (§3.2); that is not TARGET_ISI restored under another name, since being
 the unit the drive quotes makes the hop no more a set point than it was, no
 rule in force reading a neuron's own interval, which is this clause. The rate
 teacher's 1-target is not quoted in the hop at all: it is ONE_TARGET, a
@@ -1673,7 +1675,7 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 | REFRACTORY | 5 ms | the absolute refractory period | §2.5 [record §1.2] |
 | LAG | 0.1 ms | how long after a target could take it a signal actually arrives, so no delivery lands on the end of a refractory period | §3.2 [Byron, September 17, 2026] |
 | TOLERANCE | 10⁻¹² | the clock's slack, relative: two moments within slack(t) = TOLERANCE × max(1, \|t\|) are one moment | §3.4 [Byron, September 17, 2026] |
-| REFRACTORY + LAG | 5.1 ms | **derived.** The hop: how long a signal takes to travel any connection, and the only delay in signalling. A delay, not a decay; it has no name of its own | §3.2 [Byron, September 17, 2026; the name TIME_CONSTANT_OF_TRANSMISSION retired September 18, 2026] |
+| HOP | 2.55 ms | **derived:** (REFRACTORY + LAG) / 2. How long a signal takes to travel any connection, and the only delay in signalling. A delay, not a decay. Two hops are REFRACTORY + LAG = 5.1 ms, which is what clears a neuron's own return of its wall | §3.2 [Byron, September 17, 2026; TIME_CONSTANT_OF_TRANSMISSION retired September 18, 2026; halved and named HOP September 19, 2026] |
 | INTERVAL | 35 ms | the epoch's length: the spacing of inputs when no time is given | §3 [record §1.2, §4.2] |
 | THRESHOLD | 0.25 | the starting θ of a container that does not set its own, quoted at THRESHOLD_FAN_IN | §6 [record §1.2, §5.2] |
 | GOO_THRESHOLD | 0.2 | goo's starting θ, quoted the same way | §6 [record §1.2] |
