@@ -62,7 +62,7 @@ def flatten(network):
     return neurons, index, source, target, weight, active
 
 
-def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE, explore_rng=None):
+def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE, explore_rng=None, pending_events=None):
     """An Engine carrying this network's topology and state, ready to run epochs.
 
     `explore_rng` -- a `random.Random` -- is the exploration stream the firing
@@ -87,11 +87,25 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE
     engine.set_deltas(deltas)
     engine.set_escape_scales([n.escape_scale for n in neurons])  # §5.2: the count's scaling of every hazard
     # the single-spike rule (§6.7): the centred rule when the network runs it, and each neuron's expectation and decisions
-    # to date, so a resumed run charges from where it was; the traces, notes and expected counts start at zero with
-    # the traces, as the engine holds no signal in a potential yet
+    # to date, so a resumed run charges from where it was, and its expected counts with them (§12.11); the notes are
+    # rebuilt from the traces and the expected counts at the first reset
     engine.set_centred(bool(getattr(network, "centred", False)), DECISION_MEMORY)
     engine.set_centred_state([float("nan") if n.expectation is None else n.expectation for n in neurons],
-                             [n.decisions for n in neurons], [0.0] * len(neurons))
+                             [n.decisions for n in neurons], [n.expected for n in neurons])
+    # §12.11: what reset(false) carries across epochs comes with a restored network -- the potentials, the per-synapse
+    # traces and the expected counts above; all zero on a fresh build, so a fresh run is unchanged
+    engine.set_potentials([n.potential for n in neurons])
+    engine.set_traces([c.trace for n in neurons for c in n.outgoing])
+    engine.set_last_updates([n.last_update for n in neurons])  # and the times the lazy decays run from (§2.3, the leak)
+    engine.set_trace_ats([c.trace_at for n in neurons for c in n.outgoing])
+    engine.set_spike_counts([n.spikes for n in neurons])  # cumulative, so the run's counts carry on
+    never = float("-inf")  # the engine's "never fired"; the objects say None
+    engine.set_fired_at([never if n.fired_at is None else n.fired_at for n in neurons])
+    engine.set_previous_fired_at([never if n.previous_fired_at is None else n.previous_fired_at for n in neurons])
+    engine.set_exposed_since([n.exposed_since for n in neurons])  # since when each hazard has run (§6.5)
+    engine.set_last_signals([never if c.last_signal is None else c.last_signal for n in neurons for c in n.outgoing])
+    if pending_events:  # §12.11: the signals a checkpoint found in flight, back in the queue in delivery order
+        engine.push_events([t for t, _, _ in pending_events], [k for _, k, _ in pending_events], [p for _, _, p in pending_events])
     return engine, neurons, index
 
 
@@ -304,7 +318,7 @@ def benchmark(network, epochs=200, bits=None):
 
 
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
-          eligibility="hebb", seed=None, explore_state=None, homeostasis=0.0, target_rate=TARGET_RATE,
+          eligibility="hebb", seed=None, explore_state=None, pending_events=None, homeostasis=0.0, target_rate=TARGET_RATE,
           unstick=0.0, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           direction=None, reference_weights=None, epoch_offset=0, baseline=None):
     """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
@@ -382,7 +396,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
 
     engine, neurons, index = build(
         network, quash_rate=network.quash_rate, quash_k=network.quash_k,
-        weight_range=network.weight_range, explore_rng=explore_rng,
+        weight_range=network.weight_range, explore_rng=explore_rng, pending_events=pending_events,
     )
     row = network.output_row()
     out = [index[neuron] for neuron in row]

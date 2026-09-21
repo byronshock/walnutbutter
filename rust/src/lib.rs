@@ -678,6 +678,104 @@ impl Engine {
         self.weight = weights;
         Ok(())
     }
+    fn set_potentials(&mut self, potentials: Vec<f64>) -> PyResult<()> {
+        // §12.11: a resumed engine takes the potentials the run had reached; reset(false) keeps them across epochs
+        if potentials.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of potentials"));
+        }
+        self.potential = potentials;
+        Ok(())
+    }
+    fn set_traces(&mut self, traces: Vec<f64>) -> PyResult<()> {
+        // §12.11: and the per-synapse traces of §6.7, in edge order; noted is rebuilt from them at the next reset
+        if traces.len() != self.trace.len() {
+            return Err(PyValueError::new_err("wrong number of traces"));
+        }
+        self.trace = traces;
+        Ok(())
+    }
+    fn exposed_since(&self) -> Vec<f64> {
+        self.exposed_since.clone()
+    }
+    fn set_fired_at(&mut self, fired_at: Vec<f64>) -> PyResult<()> {
+        // §12.11: the absolute times the refractory test and the hazard's elapsed run from persist across epochs
+        if fired_at.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of fired_at"));
+        }
+        self.fired_at = fired_at;
+        Ok(())
+    }
+    fn set_previous_fired_at(&mut self, previous: Vec<f64>) -> PyResult<()> {
+        if previous.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of previous_fired_at"));
+        }
+        self.previous_fired_at = previous;
+        Ok(())
+    }
+    fn set_exposed_since(&mut self, since: Vec<f64>) -> PyResult<()> {
+        if since.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of exposed_since"));
+        }
+        self.exposed_since = since;
+        Ok(())
+    }
+    /// §12.11: the events still in the queue, in the order the heap would deliver them -- signals in flight across an
+    /// epoch boundary, which reset(false) keeps. (time, kind, payload); a resume pushes them back in this order.
+    fn pending_events(&self) -> Vec<(f64, u8, u32)> {
+        let mut events: Vec<(f64, u8, u64, u32)> = self.heap.iter().map(|e| (e.time, e.kind, e.seq, e.payload)).collect();
+        events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        events.into_iter().map(|(t, k, _, p)| (t, k, p)).collect()
+    }
+    fn push_events(&mut self, times: Vec<f64>, kinds: Vec<u8>, payloads: Vec<u32>) -> PyResult<()> {
+        if times.len() != kinds.len() || times.len() != payloads.len() {
+            return Err(PyValueError::new_err("one time, kind and payload per event"));
+        }
+        for k in 0..times.len() {
+            self.push(times[k], kinds[k], payloads[k]); // fresh seqs, same relative order
+        }
+        Ok(())
+    }
+    fn last_signals(&self) -> Vec<f64> {
+        self.last_signal.clone()
+    }
+    fn set_last_signals(&mut self, last: Vec<f64>) -> PyResult<()> {
+        if last.len() != self.last_signal.len() {
+            return Err(PyValueError::new_err("wrong number of last_signal"));
+        }
+        self.last_signal = last;
+        Ok(())
+    }
+    /// §12.11 under the leak (§2.3): the times the lazy decays run from -- the potential's and each trace's.
+    fn last_updates(&self) -> Vec<f64> {
+        self.last_update.clone()
+    }
+    fn set_last_updates(&mut self, at: Vec<f64>) -> PyResult<()> {
+        if at.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of last_update"));
+        }
+        self.last_update = at;
+        Ok(())
+    }
+    fn trace_ats(&self) -> Vec<f64> {
+        self.trace_at.clone()
+    }
+    fn set_trace_ats(&mut self, at: Vec<f64>) -> PyResult<()> {
+        if at.len() != self.trace_at.len() {
+            return Err(PyValueError::new_err("wrong number of trace_at"));
+        }
+        self.trace_at = at;
+        Ok(())
+    }
+    /// The spike counts to date, so a resumed engine's cumulative counts are the run's; the epoch's count, which the
+    /// read thresholds, is the difference from the epoch's start either way.
+    fn set_spike_counts(&mut self, spikes: Vec<u64>) -> PyResult<()> {
+        if spikes.len() != self.neurons {
+            return Err(PyValueError::new_err("wrong number of spike counts"));
+        }
+        self.spikes_at_reset.copy_from_slice(&spikes);
+        self.spikes = spikes;
+        Ok(())
+    }
     fn set_thresholds(&mut self, thresholds: Vec<f64>) -> PyResult<()> {
         if thresholds.len() != self.neurons {
             return Err(PyValueError::new_err("wrong number of thresholds"));
