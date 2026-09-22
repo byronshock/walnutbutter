@@ -1,0 +1,99 @@
+# mnist-accumulator-floor: mnist on the goo, 10,000 epochs an arm, the Rust wave loop (§6.15), hazard eligibility
+
+Mean score over the last tenth of each run, averaged over seeds.
+
+| minimum_potential \ delta | 0.25 | 0.3125 | 0.4 |
+|---|---|---|---|
+| -2.4 | -1.7213 | -2.3181 | -4.1105 |
+| -1.6 | -3.2559 | -2.5948 | -2.9360 |
+| -1.2 | -3.3441 | -2.8040 | -3.1327 |
+| -0.8 | -3.0791 | -2.6320 | -3.4190 |
+| -0.6 | -3.4501 | -2.1796 | -4.5156 |
+| -0.4 | -2.0014 | -2.7073 | -3.2102 |
+| -0.3 | -2.1797 | -1.9496 | -3.0260 |
+| -0.2 | -2.3382 | -1.8089 | -2.8246 |
+| -0.1 | -2.5579 | -2.1630 | -2.8845 |
+
+| arm | first tenth | last tenth | best |
+|---|---|---|---|
+| delta0.3125-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed7 | -2.0678 | -0.7993 | -0.7993 |
+| delta0.3125-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed7 | -1.6186 | -0.8106 | -0.7681 |
+| delta0.4-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed7 | -2.3213 | -0.9255 | -0.9255 |
+| delta0.25-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed7 | -3.6475 | -0.9398 | -0.9147 |
+| delta0.4-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed7 | -2.8934 | -0.9883 | -0.9883 |
+| delta0.3125-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed7 | -2.2400 | -1.1956 | -1.1956 |
+| delta0.25-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed9 | -3.3523 | -1.2107 | -1.2107 |
+| delta0.3125-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed9 | -2.4814 | -1.2813 | -1.2813 |
+| delta0.25-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed9 | -3.9539 | -1.3191 | -1.3191 |
+| delta0.25-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed8 | -8.1529 | -1.4015 | -1.4015 |
+| delta0.25-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed8 | -9.0412 | -1.4367 | -0.9066 |
+| delta0.3125-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed7 | -2.1609 | -1.5358 | -1.0312 |
+| delta0.25-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed7 | -1.4118 | -1.5805 | -1.4118 |
+| delta0.3125-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed7 | -3.8746 | -1.6218 | -1.6218 |
+| delta0.3125-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed8 | -6.1418 | -1.7251 | -1.3443 |
+| delta0.25-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed9 | -2.0956 | -1.7741 | -1.5929 |
+| delta0.3125-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed8 | -8.3063 | -1.7783 | -1.3092 |
+| delta0.25-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed7 | -1.4017 | -1.7791 | -1.3095 |
+| delta0.4-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed7 | -1.8737 | -1.7937 | -1.5386 |
+| delta0.3125-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed9 | -3.6241 | -1.8854 | -1.0252 |
+| delta0.25-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed8 | -7.6543 | -1.8997 | -1.8997 |
+| delta0.25-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed7 | -2.2534 | -1.9081 | -1.7119 |
+| delta0.3125-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed9 | -3.6257 | -1.9725 | -1.1293 |
+| delta0.3125-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed7 | -2.7765 | -1.9801 | -1.8337 |
+| delta0.4-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed8 | -6.1538 | -2.1538 | -2.1031 |
+| delta0.4-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed8 | -6.2191 | -2.3056 | -0.5954 |
+| delta0.4-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed7 | -1.4273 | -2.3571 | -1.4273 |
+| delta0.25-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed9 | -2.6742 | -2.3962 | -1.8753 |
+| delta0.4-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed7 | -1.2025 | -2.4042 | -0.9951 |
+| delta0.25-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed7 | -0.4628 | -2.4081 | -0.4628 |
+| delta0.3125-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed7 | -2.6981 | -2.4177 | -2.4177 |
+| delta0.25-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed8 | -6.7329 | -2.4460 | -1.8164 |
+| delta0.4-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed7 | -4.5232 | -2.4710 | -2.2114 |
+| delta0.4-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed7 | -3.4527 | -2.4877 | -2.0414 |
+| delta0.25-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed9 | -3.1565 | -2.5111 | -1.5407 |
+| delta0.3125-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed9 | -3.3255 | -2.5347 | -1.4381 |
+| delta0.4-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed8 | -7.8765 | -2.5472 | -1.1340 |
+| delta0.3125-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed8 | -7.5759 | -2.5487 | -1.5210 |
+| delta0.4-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed8 | -6.0970 | -2.5847 | -0.5452 |
+| delta0.4-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed9 | -1.8695 | -2.5868 | -1.3947 |
+| delta0.3125-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed8 | -8.7396 | -2.5902 | -1.9772 |
+| delta0.4-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed7 | -1.0402 | -2.6468 | -1.0402 |
+| delta0.25-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed8 | -8.5084 | -2.7104 | -1.2431 |
+| delta0.3125-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed7 | -3.6966 | -2.7389 | -1.4460 |
+| delta0.3125-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed9 | -2.6307 | -2.7390 | -0.7792 |
+| delta0.3125-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed8 | -7.7609 | -2.7419 | -2.3715 |
+| delta0.3125-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed9 | -4.5952 | -2.7445 | -1.2096 |
+| delta0.4-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed9 | -3.5475 | -2.7448 | -1.2824 |
+| delta0.25-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed7 | -2.4265 | -2.7728 | -1.8303 |
+| delta0.3125-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed8 | -6.8802 | -2.8397 | -2.2252 |
+| delta0.25-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed7 | -1.7816 | -2.8937 | -1.7816 |
+| delta0.25-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed8 | -9.6874 | -2.8967 | -1.2656 |
+| delta0.25-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed9 | -3.3699 | -2.9745 | -0.8470 |
+| delta0.3125-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed7 | -1.7890 | -2.9775 | -1.1183 |
+| delta0.3125-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed8 | -8.6179 | -3.0730 | -1.5439 |
+| delta0.4-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed8 | -9.6289 | -3.0742 | -0.5482 |
+| delta0.25-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed7 | -4.0049 | -3.1223 | -0.3600 |
+| delta0.25-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed8 | -7.6110 | -3.1266 | -0.2095 |
+| delta0.3125-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed9 | -3.1038 | -3.1540 | -1.9522 |
+| delta0.3125-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed8 | -7.8639 | -3.1770 | -1.7114 |
+| delta0.4-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed8 | -6.3955 | -3.3650 | -0.4522 |
+| delta0.4-threshold0.6-minimum_potential-0.2-hidden_neurons0-seed9 | -2.1549 | -3.4014 | -1.1788 |
+| delta0.3125-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed9 | -2.1571 | -3.4193 | -0.9321 |
+| delta0.3125-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed9 | -2.2593 | -3.5537 | -1.5436 |
+| delta0.25-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed9 | -3.1433 | -3.5572 | -1.8638 |
+| delta0.3125-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed8 | -7.8862 | -3.6364 | -2.6532 |
+| delta0.25-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed8 | -10.4476 | -3.6710 | -1.4555 |
+| delta0.25-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed7 | -2.2630 | -3.8295 | -1.9934 |
+| delta0.4-threshold0.6-minimum_potential-0.1-hidden_neurons0-seed9 | -2.4126 | -3.8769 | -1.5131 |
+| delta0.25-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed9 | -1.3659 | -3.9405 | -0.9637 |
+| delta0.4-threshold0.6-minimum_potential-0.3-hidden_neurons0-seed8 | -8.2680 | -4.0869 | -0.1454 |
+| delta0.4-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed8 | -5.9607 | -4.2962 | -2.0668 |
+| delta0.4-threshold0.6-minimum_potential-0.8-hidden_neurons0-seed9 | -1.8647 | -4.5359 | -1.7773 |
+| delta0.25-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed8 | -10.6459 | -4.6309 | -0.8706 |
+| delta0.4-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed9 | -1.7478 | -4.6928 | -1.0223 |
+| delta0.4-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed8 | -6.3052 | -4.9718 | -0.6453 |
+| delta0.4-threshold0.6-minimum_potential-0.4-hidden_neurons0-seed9 | -2.6806 | -5.3403 | -2.1224 |
+| delta0.4-threshold0.6-minimum_potential-2.4-hidden_neurons0-seed9 | -1.2212 | -5.5660 | -1.2070 |
+| delta0.4-threshold0.6-minimum_potential-1.6-hidden_neurons0-seed9 | -3.4808 | -5.6661 | -0.8977 |
+| delta0.4-threshold0.6-minimum_potential-0.6-hidden_neurons0-seed7 | -2.8367 | -6.3069 | -0.8157 |
+| delta0.25-threshold0.6-minimum_potential-1.2-hidden_neurons0-seed9 | -3.9569 | -6.6464 | -1.8431 |
