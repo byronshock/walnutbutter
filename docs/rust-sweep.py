@@ -188,7 +188,34 @@ def _save_network(engine, grid, report: dict, path) -> None:
         n.decisions = decisions
     for n, rate in zip(grid.all_neurons(), report.get("rates") or []):
         n.rate = rate  # the Teacher's rate memory, so a continuation's stuck counts and homeostasis start where they were
+    for n, potential in zip(grid.all_neurons(), engine.potentials()):
+        n.potential = potential  # §12.11: what reset(false) carried across epochs, so the checkpoint holds the run's state
+    for c, trace in zip(edges, engine.traces()):
+        c.trace = trace  # the per-synapse traces of §6.7, in the engine's edge order
+    for n, expected in zip(grid.all_neurons(), engine.expected_since_spike()):
+        n.expected = expected  # and the expected counts the traces are debited against
+    import math as _math
+    _none = lambda t: None if _math.isinf(t) and t < 0 else t  # the engine's -inf is the objects' None
+    for n, at in zip(grid.all_neurons(), engine.fired_times()):
+        n.fired_at = _none(at)  # the refractory test and the hazard run from absolute times that outlive an epoch
+    for n, at in zip(grid.all_neurons(), engine.previous_fired_times()):
+        n.previous_fired_at = _none(at)
+    for n, since in zip(grid.all_neurons(), engine.exposed_since()):
+        n.exposed_since = since
+    for c, last in zip(edges, engine.last_signals()):
+        c.last_signal = _none(last)  # when each synapse last carried a signal, in the engine's edge order
+    for n, at in zip(grid.all_neurons(), engine.last_updates()):
+        n.last_update = at  # when the potential was last brought up to date: the leak's decay runs from it (§2.3)
+    for c, at in zip(edges, engine.trace_ats()):
+        c.trace_at = at  # and each trace's
+    for n, count in zip(grid.all_neurons(), engine.spike_counts()):
+        n.spikes = count  # the run's spike counts to date
+    import random as _random
+    from walnutbutter.fast import sync_explore
+    grid.explore_rng = _random.Random()  # §12.11: the checkpoint carries the exploration stream's state. The Rust
+    sync_explore(engine, grid.explore_rng)  # engine advanced it; without this it is saved null and a resume reseeds
     data = checkpoint(grid, path)
+    data["engine_pending"] = engine.pending_events()  # §12.11: signals in flight at the boundary, in delivery order
     data["baseline"] = report.get("baseline")  # §9.3: b as the run left it, so a resume is paid against it
     path.write_text(_json.dumps(data))
 
@@ -223,6 +250,7 @@ def resume_grid(fresh, source):
     for attr in RESUMED_SETTINGS:
         setattr(restored, attr, getattr(fresh, attr))
     restored.rule = "reinforce"
+    restored.engine_pending = data.get("engine_pending")  # §12.11: for fast.train(pending_events=...)
     return restored, int(data["epoch"]), reference, data.get("baseline"), data.get("explore_state")
 
 
@@ -296,7 +324,7 @@ def run_arm(job: tuple) -> dict:
     started = time.perf_counter()
     mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
-        eligibility=args.eligibility, seed=explore_seed, explore_state=explore_state,
+        eligibility=args.eligibility, seed=explore_seed, explore_state=explore_state, pending_events=getattr(grid, "engine_pending", None),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
         reference_weights=reference, epoch_offset=offset, baseline=baseline,
