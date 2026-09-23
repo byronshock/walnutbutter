@@ -46,6 +46,14 @@ Rules:
           at every wave the output is between zero and threshold.
   none    no learning: the mechanism's own dynamics.
 
+  --trace all       the trace counts every delivery standing in the target,
+                    relayed with the source's spike or ventured by the synapse.
+  --trace ventured  Byron and Cedric's idea of September 23 (note 7.12): a
+                    synapse that fired deterministically does not try to learn
+                    from it, so the trace counts the ventured deliveries only.
+                    The potential still takes every delivery; only the credit
+                    changes. Not Williams's estimator.
+
 Reported per checkpoint: accuracy, output spikes an epoch, outputs stuck
 off, the correlation of the weight change with the supervised direction
 d_ij = P(input i on | class j) - P(input i on) (11.16's instrument), whispers
@@ -82,7 +90,7 @@ def task(B, K, rng):
     return protos, d_sup
 
 
-def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes",
+def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="all",
         refractory=2, checkpoints=20):
     rng = np.random.default_rng(seed)
     I, O = 2 * B, K
@@ -145,7 +153,7 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes",
             deliver = spk_in[:, None] | esc
             contrib = (deliver * W).sum(0)
             p_out += np.where(act_out, contrib, 0.0)
-            x += deliver * act_out[None, :]
+            x += (esc if trace == "ventured" else deliver) * act_out[None, :]
             if rule == "local":
                 e += np.where(deciding[:, None], (esc - P_in[:, None]) * np.sign(W), 0.0)
             esc_on += esc[onmask].sum()
@@ -202,7 +210,7 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes",
             esc_on = esc_off = 0.0
             fired_any[:] = False
     return dict(rule=rule, B=B, K=K, fan_in=d, waves=waves, drive=drive, h0=h0, lr=lr, read=read,
-                seed=seed, epochs=epochs, hist=hist)
+                trace=trace, seed=seed, epochs=epochs, hist=hist)
 
 
 def _job(kw):
@@ -217,6 +225,7 @@ def main():
     ap.add_argument("--rule", nargs="+", default=["local"], choices=["local", "exact", "none"])
     ap.add_argument("--drive", nargs="+", default=["forced"], choices=["forced", "potential"])
     ap.add_argument("--read", default="spikes", choices=["spikes", "transmissions"])
+    ap.add_argument("--trace", default="all", choices=["all", "ventured"])
     ap.add_argument("--B", type=int, nargs="+", default=[32])
     ap.add_argument("--K", type=int, default=5)
     ap.add_argument("--waves", type=int, default=20)
@@ -228,7 +237,7 @@ def main():
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     jobs = [dict(rule=rule, B=B, K=args.K, waves=args.waves, drive=drive, h0=h0, lr=lr,
-                 epochs=args.epochs, seed=seed, read=args.read)
+                 epochs=args.epochs, seed=seed, read=args.read, trace=args.trace)
             for rule, drive, B, h0, lr, seed
             in product(args.rule, args.drive, args.B, args.h0, args.lr, args.seeds)]
     print(f"{len(jobs)} runs, {args.workers} workers", file=sys.stderr)
@@ -244,7 +253,7 @@ def main():
             json.dump(results, f)
     for r in results:
         h = r["hist"][-1]
-        print(f"{r['rule']:6s} {r['drive']:9s} read {r['read']:13s} fan-in {r['fan_in']:3d} h0 {r['h0']:<6g} "
+        print(f"{r['rule']:6s} {r['drive']:9s} read {r['read']:13s} trace {r['trace']:8s} fan-in {r['fan_in']:3d} h0 {r['h0']:<6g} "
               f"lr {r['lr']:<6g} seed {r['seed']} acc {h['acc']:.3f} spikes/ep {h['spikes']:5.2f} "
               f"stuck {h['stuck_off']} corr {h['corr']:+.3f} whisper on/off {h['whisper_on']:.2f}/{h['whisper_off']:.2f} "
               f"flipped {h['flipped']:.2f} ({r['seconds']:.0f} s)")
