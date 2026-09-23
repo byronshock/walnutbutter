@@ -149,13 +149,15 @@ AUTHORITY.md.
 16. Gerstner, W., & Kistler, W. M. (2002). *Spiking neuron models: Single
     neurons, populations, plasticity*. Cambridge University Press.
     https://doi.org/10.1017/CBO9780511815706
-    The textbook of the escape-noise neuron. Chapter 5 gives the firing
+    The textbook statement of escape noise. Chapter 5 gives the firing
     hazard as a function of the distance to threshold, the exponential form
-    among its choices, and §5.7 the mapping from diffusive input noise to an
-    escape rate; chapter 4 the spike response model it is written in. The
-    hazard of AUTHORITY.md §6.5 is §5.3's, placed at the neuron. Its
-    successor, *Neuronal Dynamics* (2014), chapter 9, is where Byron read it.
-    Added at Byron's request.
+    among its choices (eq. 5.45), the chance of a spike in a step as one
+    minus the exponential of the summed hazard (eq. 5.52), and in §5.7 the
+    mapping from diffusive input noise to an escape rate; §5.3 states the
+    rule for the integrate-and-fire neuron as well as the book's spike
+    response model, so what AUTHORITY.md §6.5 takes is the rule and not the
+    neuron. Its successor, *Neuronal Dynamics* (2014), chapter 9, is where
+    Byron read it. Added at Byron's request.
     In `references/`: `GerstnerKistler02-extracts.pdf`, the author's own
     200-page extract (chapters 1, 4 and 10-12 whole; §5.3 is not in it). The
     whole book is free as HTML from the authors,
