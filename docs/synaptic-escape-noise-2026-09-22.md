@@ -10,7 +10,7 @@ issue [#15](https://github.com/byronshock/walnutbutter/issues/15) holds: the
 synapse as the learner. Nothing here is a clause; §6 lists the decisions a
 clause would need, and §7 records what Byron said to them: a mechanism of his
 own for the first, which is not the one this note measured and resets the
-rest. The short answer is **yes, and the price is known**: the
+rest, and his answers to the questions it raised (7.10). The short answer is **yes, and the price is known**: the
 rule becomes exactly local to the synapse, and the estimator it leaves behind
 is noisier by about the fan-in, which is the factor Werfel, Xie and Seung
 measured between node perturbation and weight perturbation twenty years ago.
@@ -665,6 +665,26 @@ response in Byron's sense. What it delivers, `w_ij`, stays a weight learned by
 the non-local rule or fixed, with Seung's limit (§2): the sign of a synapse is
 the sign of its weight, and no threshold can change it.
 
+*Closed by Byron's first answer (7.10): V_threshold is the neuron's, a
+universal constant of the system, so the local case does not arise and the
+rule is the one of the paragraph before.*
+
+**A local rule on this mechanism that is not the gradient.** Seung's rules R1
+and R2 can be laid on the weight instead of on a release probability: a
+speculative transmission followed by reward strengthens the synapse, a
+failure followed by reward weakens it — `(y - P) * A * sign(w_ij)` from the
+synapse's own outcome and expectation, nothing of the neuron. It is not
+Williams's estimator here, because the weight does not shape the draw; it
+estimates the reward's sensitivity to a delivery along the synapse at the
+moments the synapse speculated, and assumes that sensitivity is the same at
+the moments the neuron fired. Its expected step is proportional to the
+weight's own size, so a weight near zero learns nothing from its escapes — a
+transmission of nothing tests nothing — and no weight can cross zero by it.
+That is Seung's limit in another form: a synapse's own events can teach it
+how much of what it delivers to deliver, never the opposite of it. Whether
+such a rule is worth carrying beside the exact one is a measurement, not a
+derivation, and the toy can make it once it runs Byron's mechanism.
+
 **What follows either way.** The neuron's spike is deterministic and §6.9 is
 the rule; the draws a wave are one per synapse whose source is below
 threshold; a silent neuron's synapses escape at the hazard's value at
@@ -674,7 +694,7 @@ because the credit still crosses from a decision to a fan-in. §5's
 measurement does not apply to this mechanism: the toy's synapse rule jittered
 what was delivered, and this jitters when.
 
-**The questions only Byron can answer.**
+**The questions only Byron can answer** — answered in 7.10.
 
 1. Is V_threshold the neuron's threshold or the synapse's own? Locality turns
    on it.
@@ -682,6 +702,73 @@ what was delivered, and this jitters when.
 3. What is the hazard at V_pre = 0: zero, or a rest rate?
 4. Does the neuron keep its threshold and its deterministic spike, or is θ
    deprecated (§0.12) — and then what resets the potential?
+
+### 7.10 Byron's answers, September 23, 2026
+
+Byron, September 23, 2026, about 04:00 MDT, to the four questions of 7.9,
+verbatim:
+
+> 1. V_threshold is a universal constant of the system. This already exists
+> as the firing threshold voltage of a neuron. The synapse will still fire
+> deterministically when the presynaptic (soma) voltage exceeds V_threshold,
+> but may fire speculatively in advance of the presynaptic neuron's action
+> potential.
+> 2. Given that there are ~100000 presynaptic terminals, I don't think we need
+> to account for the voltage drop at the soma (which would not be
+> instantaneous anyway) for each synapse.
+> 3. To be determined through rigorous investigation.
+> 4. The neuron keeps its threshold and its deterministic spike.
+>
+> One thing I should note right now while it occurs to me is that this may
+> not agree with the literature. In the literature escape noise at the soma is
+> most often noticed during a neuron's rest period, not when it is close to
+> saturation. However, close to saturation, it would be less noticeable
+> according to the formulation above.
+
+**What is settled by them.** The threshold is the neuron's, so the exact
+reinforce rule on this mechanism is the non-local one of 7.9: a synapse's
+speculative transmission is scored to the synapses into its source, through
+their traces, and a synapse's own weight is scored by its target's
+transmissions, as today. Every synapse whose source is below threshold makes
+a decision every wave, all of a neuron's synapses at the same hazard, so the
+wave's entry to a neuron's fan-in is what the neuron counted — its
+speculative transmissions this wave against the number it expected, each
+transmission credited by the hazard row of §8.4 — times each incoming
+synapse's trace, and the note carries it as §8.11 does. A speculative
+transmission leaves the source's potential where it was; the neuron keeps
+its threshold and its deterministic spike, so §0.12's deprecation of θ is
+off and §6.9 becomes the rule in force. The hypothesis, in §0.11's sense of
+the exploring object being the credited object, is not borne out by this
+mechanism; what the mechanism does is move the randomness to the synapse and
+make an exploration event one transmission rather than one spike.
+
+**What is open.** The hazard at rest, `h(0)`, to be measured: it sets whether
+a silent neuron's synapses whisper (the off-pixel finding of September 16)
+and whether the network has spontaneous activity at all. The draw's transform
+and order. The scaling of the hazard with the fan-in or the count (the
+record's `1/d` per hop, §0.3). And whether the local approximation of 7.9 is
+carried beside the exact rule.
+
+**On the literature, Claude's reading.** The escape noise of the literature
+(Plesser and Gerstner, `references/PlesserGerstner00.pdf`) is a spike of the
+whole neuron at a hazard that rises with the potential, and it is the
+soma-side abstraction of the diffusive noise of many small synaptic inputs.
+Byron's mechanism puts the noise back on the synaptic side and one hop
+upstream: a neuron of fan-out `F` transmits speculatively at `F` times the
+per-synapse hazard, each event delivering one weight rather than all `F` at
+once, and none of them resetting the neuron. With the per-synapse hazard
+equal to the literature's neuron hazard, what a target receives has the same
+mean and a smaller variance — the same drift, spread over many small
+independent steps — which is why, near threshold, the speculation is "less
+noticeable": it is a trickle ahead of a spike that was coming anyway. At rest
+the two differ in kind. The literature's rest-period noise is a rare whole
+spike that resets its neuron; here it is a tonic leak through the synapses at
+`h(0)` that resets nothing, and a spontaneous spike at rest arises only
+downstream, where leakage from many sources accumulates in a neuron with no
+leak of its own until its deterministic threshold is crossed. So the
+mechanism agrees with the literature on the mean, differs on the granularity
+and the reset, and puts the whole of the rest-period question into `h(0)` —
+which is Byron's third answer.
 
 ## 8. Sources
 
