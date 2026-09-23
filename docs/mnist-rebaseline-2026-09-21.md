@@ -177,6 +177,59 @@ under the accumulator: on this cell, not measurably. A hidden layer tuned on
 its own terms (count, floor, lr) is a different question from one dropped
 into a cell tuned without it, and that question is open.
 
+### 4.3 What the learning rate and the floor are bracketed to
+
+Three accumulator cells have now run the full million, and each moved the
+floor along with the learning rate to keep the network alive. That is the
+first thing to say about them: **there is no pair at 1M that differs in the
+floor alone**, so the two axes are confounded and what follows brackets them
+together. Accuracy and the score are each arm's own record; the score is the
+engine's last tenth.
+
+| lr | floor | n | accuracy | sd | score | out spk/ep | silent | stuck_off |
+|---|---|---|---|---|---|---|---|---|
+| 0.002 | −0.2 | 10 | **0.2577** | 0.0139 | −2.0671 | 0.83 | 61% | 0 |
+| 0.003 | −0.4 | 10 | 0.2335 | 0.0176 | −2.1045 | 0.48 | 77% | 0 |
+| 0.0075 | −0.1 | 10 | 0.1446 | 0.0171 | −2.3691 | 0.54 | 65% | 0 |
+
+Every arm at a given seed sees the same images in the same order (§4.5), so
+the cells compare seed by seed: lr 0.002 over lr 0.003 is +0.0242 ± 0.0081,
+winning 9 of 10; over lr 0.0075 it is +0.1130 ± 0.0046, winning 10 of 10.
+
+**The learning rate is bracketed above and open below.** Accuracy over each
+tenth of the run:
+
+```
+lr 0.002    0.130  0.183  0.212  0.221  0.230  0.240  0.248  0.247  0.253  0.258
+lr 0.003    0.128  0.182  0.202  0.218  0.227  0.226  0.231  0.233  0.230  0.233
+lr 0.0075   0.112  0.129  0.137  0.140  0.139  0.141  0.144  0.147  0.146  0.145
+```
+
+The higher rates are not faster early — all three are level in the first
+tenth — they stop sooner. lr 0.0075 is flat from the fourth tenth, lr 0.003
+from the sixth, and lr 0.002 is still climbing at a million. What a larger
+rate costs here is a ceiling, and it does not buy the thing a larger rate is
+usually paid for. Below 0.002 nothing has been run: it is mnist's default and
+the lowest rate ever given to a long run, so the low end of the bracket is
+the edge of the grid and not a measurement. Since the best cell had not
+finished climbing, a lower rate is the live hypothesis rather than a
+formality.
+
+**The floor is bracketed only as fatal against alive.** At −2.4, the grid's
+inherited floor, the accumulator pins and produces nothing (§2). Between −0.1
+and −0.4 every one of the thirty 1M arms ended with `stuck_off` zero. Within
+that band nothing ranks the floors: the one clean floor axis,
+`mnist-accumulator-floor` at a fixed lr 0.002 over nine seeds, ran 10,000
+epochs and landed between 0.067 and 0.083 — at or below the 0.1 chance line,
+which separates dead from alive and nothing finer: a measurement taken where
+nothing has learned yet ranks noise. The busiest cell is also the
+best, which fits a shallow floor keeping more neurons in play, but with the
+rate moving too that is a reading and not a result.
+
+Two probes close the two corners, and neither is expensive beside a 1M sweep:
+rates below 0.002 at a held floor of −0.2, and a floor axis at a held lr
+0.002 run long enough to be above chance.
+
 ## 5. A resumed run is not the same run continued
 
 The four 1M cells were first run as 100k then `--resume-from` for 900k, and
@@ -233,6 +286,41 @@ down at 06:21 on the 22nd to install a graphics card, which was dead on
 arrival. Arms write only on completion: all ten were lost within minutes of
 finishing. The ten-against-ten of §4 waits on a relaunch of the same command,
 ~23 hours at the leaky neuron's 12.3 epochs/s, which no load lightens.
+
+Relaunched September 22 at 17:58, the same command on ten workers: ten arms on
+sixteen cores hold a core each rather than an SMT thread, so the arms run at the
+leak's own rate instead of the 12.09 average the thirty-arm launch managed. The
+engines were compared on this cell first, on the binary rebuilt that afternoon
+after the resume fix landed — forty epochs, no disagreement. It is the last
+sweep that will be able to lose a day this way: see §7.
+
+## 7. A sweep cut short costs the epochs since its last checkpoint
+
+The loss above was not that the machine went down; it was that an arm wrote
+nothing until it was finished, so 98 per cent of a run was worth the same as
+none of it. `--checkpoint-every N` (25,000 epochs by default) writes each arm's
+checkpoint as the run goes, with the arm's record so far inside it, and an arm
+that has a checkpoint and no `.csv` was cut short — so running the sweep's own
+command again picks every such arm up where it stopped and finishes the epochs
+asked for. Recovery is the same line again.
+
+What makes this safe is §12.11. A checkpoint is a read of the engine, never a
+touch, so a run that writes them is the run that does not: the tests hold a
+checkpointed run against an unchecked one, score for score and weight for
+weight, and hold an arm killed just after a checkpoint against the
+uninterrupted arm, whose record it must reproduce row for row. The file is
+moved into place once written, so a crash during a write leaves the checkpoint
+before it standing rather than a half-written one.
+
+One number is not recoverable that way. `fast.train` measures the last tenth of
+the run it was asked for, so a leg that finishes an interrupted arm would
+measure a tenth of the leg — a tenth of 25,000 epochs where its siblings report
+a tenth of a million, which read beside them is simply a wrong number. A
+continued arm's summary is therefore taken from its record over the last tenth
+of the whole run, and says so in `last_tenth_over`. The fraction right comes
+back exactly (each traced point is the mean over its own interval); the log
+score is those points' mean, sampled every `--trace-every` epochs rather than
+counted over all of them.
 
 ## Provenance
 
