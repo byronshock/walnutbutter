@@ -23,6 +23,14 @@ noise does not slow its average progress at a given learning rate; it caps
 the rate, and in the toy the cap is a runaway of the dynamics that hits both
 rules alike.
 
+That answer is for the reading this note first took, a jitter on what a
+synapse delivers (§3a). On Byron's own mechanism — a synapse that escapes on
+its *source's* potential, stated in §7 — the answer is no: the one local rule
+it admits is not a gradient, is blind to the pattern under the file's drive,
+and learns a third of the task under a charged one, while the exact rule is
+the neuron rule's shape one hop over and is silent wherever a neuron's
+transmissions do not reach the reward (7.9 to 7.11).
+
 ## 1. What the hypothesis says, in the file's words
 
 **Today the neuron takes the chance.** At every wave, each neuron draws one
