@@ -72,6 +72,7 @@ def main():
         ax.set_xscale("log")
         ax.set_xticks(waves)
         ax.set_xticklabels([str(w) for w in waves])
+        ax.minorticks_off()
         ax.set_ylim(0, 1)
         ax.axhline(0.2, color="gray", lw=0.5)
         ax.set_xlabel("waves an epoch (one wave is one hop)")

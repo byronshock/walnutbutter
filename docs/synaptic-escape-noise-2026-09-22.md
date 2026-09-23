@@ -957,6 +957,66 @@ synapse can afford to learn only from what it ventured where an input's
 subthreshold potential carries the pattern, and not where the input is forced.
 On the mnist goo as driven today it would learn nothing.
 
+### 7.13 Byron's sweep: epoch length by rest hazard, ten seeds
+
+Byron, September 23, 2026, about 10:20 MDT: "sweep my current mechanism for
+epoch length in {20 35 60 100} x rest hazard in {0, 0.001, 0.003} across 10
+seeds for 25000 epochs on the toy problem", then at 10:25 dropping the zero
+and asking for fifteen workers with priority over the running mnist sweeps.
+Run 10:28 to 10:50 MDT; `runs/synaptic-noise-toy/toy2_epoch_*.json`, tabled
+and drawn by `docs/synaptic-noise-toy2-epoch-report.py`.
+
+**Two things had to be decided to run it, and both are Claude's.** First the
+hazard family: in the family of 7.11, `h0^(1 - u)`, a rest hazard of zero
+means no speculation anywhere below threshold, so the toy gained Byron's
+statement read literally — "monotonically increasing as u" —
+`h(u) = h0 + (1 - h0) u`, zero at rest when `h0` is and rising in proportion
+to the source's potential; a four-run check at 20 waves found it learning
+faster than any arm before it, 0.993 in 3,000 epochs with no whispering at
+rest at all. Second the drive: the file's drive is a rate, so the toy's
+became one, 0.15 spikes per on-input per wave, three in twenty waves as
+before and fifteen in a hundred. The configuration is the one his mechanism
+learns on: the exact rule with the read on transmissions, the full trace, the
+forced drive. Epoch length is in waves, a wave one hop of 2.55 ms, so 20 to
+100 waves is 51 to 255 ms, bracketing mnist's 100 ms at 39. The learning rate
+was not in his sweep, and because the score an epoch grows with the
+deliveries an epoch, the 80 runs were made twice, at LR 0.03 and at 0.01.
+Accuracy over the last 1,250 of 25,000 epochs, mean ± sd over ten seeds, with
+the epochs to 0.8 on the seed-mean curve:
+
+| waves an epoch | LR 0.01, `h0` 0.001 | LR 0.01, `h0` 0.003 | LR 0.03, `h0` 0.001 | LR 0.03, `h0` 0.003 |
+|---|---|---|---|---|
+| 20 | 0.987 ± 0.004 (3,750) | 0.985 ± 0.004 (3,750) | 0.971 ± 0.057 (2,500) | 0.967 ± 0.058 (3,750) |
+| 35 | 0.994 ± 0.004 (3,750) | 0.994 ± 0.003 (3,750) | 0.949 ± 0.083 (6,250) | 0.972 ± 0.056 (5,000) |
+| 60 | 0.942 ± 0.114 (5,000) | 0.894 ± 0.099 (10,000) | 0.753 ± 0.176 (—) | 0.630 ± 0.185 (—) |
+| 100 | 0.860 ± 0.176 (16,250) | 0.943 ± 0.084 (11,250) | 0.475 ± 0.174 (—) | 0.466 ± 0.081 (—) |
+
+![accuracy against epoch length at two learning rates, one line per rest hazard](synaptic-noise-toy2-epoch.png)
+
+**Three readings.**
+
+*The rest hazard does not matter between 0.001 and 0.003.* No cell separates
+the two by more than its seed spread, and the whispers they make are 0.02 to
+0.3 a synapse an epoch. Together with 7.11 and the check at zero, the linear
+family's answer to Byron's third question is that a rest hazard at or near
+zero costs nothing on this mechanism, so long as the speculation above rest
+remains.
+
+*Longer epochs learn worse, and it is the learning rate they run into.* At
+LR 0.01 the short epochs reach 0.99 and the long ones 0.86 to 0.94 with the
+seeds spread wide; at LR 0.03 the long epochs run away — output spikes fall
+from seven an epoch to one or two and accuracy to 0.47 — while the short
+ones hold 0.95 to 0.97. A hundred waves carry five times the deliveries of
+twenty, so the score an epoch is five times larger and a fixed learning rate
+is five times the step: the runaway of §5.3 again, reached by lengthening
+the epoch instead of raising the rate. The epoch length the mnist runs use,
+39 hops, sits where LR 0.01 is safe and LR 0.03 is not.
+
+*What to carry.* On this mechanism the epoch wants to be short, 20 to 35
+waves, or the learning rate wants to fall with the deliveries an epoch — a
+rate quoted per delivery rather than per epoch, which is a clause the file
+does not have and §8.1 would need. The rest hazard can be zero.
+
 ## 8. Sources
 
 All in `references/` already; none fetched for this note.
