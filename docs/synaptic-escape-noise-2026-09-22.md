@@ -13,10 +13,12 @@ rule becomes exactly local to the synapse, and the estimator it leaves behind
 is noisier by about the fan-in, which is the factor Werfel, Xie and Seung
 measured between node perturbation and weight perturbation twenty years ago.
 §5 measures it on a network shaped like ours and finds the factor in the
-estimator but not in the learning: the local rule learns as fast as the
+estimator's noise and not in the epochs: the local rule learns as fast as the
 neuron rule below a fan-in of about twenty — where the September mnist point
-runs — and two to four times slower at 64 and 256, because neither rule's
-learning rate is limited by the estimator's noise there.
+runs — and two to four times slower at 64 and 256. An unbiased estimator's
+noise does not slow its average progress at a given learning rate; it caps
+the rate, and in the toy the cap is a runaway of the dynamics that hits both
+rules alike.
 
 ## 1. What the hypothesis says, in the file's words
 
@@ -276,10 +278,13 @@ comparison, and the synapse posts `xi` (the `1 / sigma` folded into LR as
   accumulate the update they would have made over 4,000 epochs. Per synapse,
   the mean update over epochs is the signal and its variance is the noise;
   summed over the synapses, `SNR = sum(mean^2) / sum(var)` per epoch, with the
-  mean's own sampling noise removed. The number of epochs a rule needs to
-  average before its update points more signal than noise is about `1 / SNR`,
-  and the *ratio* of the two rules' SNR is the price of locality, free of any
-  learning rate. Beside it, the correlation of the accumulated update with the
+  mean's own sampling noise removed. `1 / SNR` is about how many epochs
+  one synapse's own update takes to point more signal than noise. It is a
+  property of the estimator, per synapse, and it is **not** the price in
+  epochs: the reward answers to all the synapses together, the signal adds
+  across them and the noise averages out, so learning moves long before any
+  one weight's update is reliable (5.3). The *ratio* of the two rules' SNR is
+  how much noisier the local estimator is, free of any learning rate. Beside it, the correlation of the accumulated update with the
   supervised direction `d_ij = P(input i on | class j) - P(input i on)`
   (§11.16's instrument) says whether each rule points the right way at all.
 - *Learning.* A grid of (exploration, LR) for each rule at fan-ins 16, 64 and
@@ -292,7 +297,7 @@ accumulated update with the supervised direction. The local rule is an
 unbiased estimator in practice as well as on paper: it learns the right
 weights, from its own draws alone.
 
-### 5.2 The price grows with the fan-in
+### 5.2 The estimator's noise grows with the fan-in
 
 Signal-to-noise of the update per epoch, without learning, 4,000 epochs, five
 seeds, each rule at the exploration that gave it the most signal (`Delta` 0.6
@@ -374,19 +379,58 @@ its faster arm against the neuron rule's 2,250, and by 15,000 epochs stands
 at 0.93 against 0.99. At fan-in 256 it reaches 0.8 in 3,750 against 1,500 or
 2,250, reaches 0.95 in 7,500 against 1,500 or 3,750, and ends at 0.998
 against 1.000. The estimator is five and twenty-nine times noisier; the
-learning is two to four times slower. The gap is Werfel's own distinction: the factor of the
-fan-in is paid in the *largest usable learning rate*, and in this network
-neither rule's usable rate is set by the estimator's noise. Both break between
-LR 0.03 and 0.1 at fan-in 256 — the neuron rule at 0.1 falls to 0.53 with its
-outputs going quiet, the synapse rule to 0.33 — which is a runaway of the
-dynamics, the kind the mnist accumulator showed at the floor of -2.4, not a
-divergence of the estimate. Capped at the same rate, the two learn at nearly
-the same average rate (Werfel's second criterion, "equal average updates")
-and differ by the learning noise the local rule carries, which is what the
-slower early curve is. So the price in epochs, at the fan-ins we run, is a
-factor of a few that grows slowly with fan-in; the factor of the fan-in is
-the ceiling, reached only where nothing but the estimator's noise limits the
-learning rate.
+learning is two to four times slower. Two reasons, both Werfel's, and one
+check.
+
+*An unbiased estimator's noise does not slow its average progress.* Each
+epoch's update is the gradient plus zero-mean noise; over many epochs the
+gradient adds in a straight line and the noise random-walks, growing only as
+the square root of the count. At the same learning rate the two rules make
+the same average progress whatever their noise — Werfel's second criterion,
+"equal average updates". What a noisier estimator loses is the right to a
+large learning rate, and in this network the largest usable rate is not set
+by the estimator's noise: both rules break between LR 0.03 and 0.1 at fan-in
+256 — the neuron rule at 0.1 falls to 0.53 with its outputs going quiet, the
+synapse rule to 0.33 — a runaway of the dynamics, the kind the mnist
+accumulator showed at the floor of -2.4, and not a divergence of the
+estimate. Capped at the same rate, the two learn at nearly the same rate and
+differ by the noise the local rule carries, which is the slower early curve.
+
+*The per-synapse yardstick is not the one learning waits on.* `1 / SNR` is
+the epochs before one weight's own update is reliable: 26,000 or more for the
+synapse rule at fan-in 256. It reached half accuracy in 2,250. The reward
+answers to all 1,280 weights at once; their signals add coherently and their
+independent noise averages out, so the reward moves while every single
+weight's update is still mostly noise.
+
+*It is not the clip doing the containing.* The best arms were rerun with the
+fraction of weights on the rails of WEIGHT_RANGE and the spread of the
+weights recorded (`rails` and `wstd` in the toy's history;
+`runs/synaptic-noise-toy/rails.json`, seed 1):
+
+| arm | on the rails at 15,000 | spread, start to end |
+|---|---|---|
+| fan-in 256, neuron, `Delta` 0.3125, LR 0.01 | 14% | 0.58 to 0.63 |
+| fan-in 256, synapse, `sigma` 0.05, LR 0.03 | 2% | 0.58 to 0.59 |
+| fan-in 256, synapse, `sigma` 0.1, LR 0.03 | 2% | 0.58 to 0.63 |
+| fan-in 64, neuron, `Delta` 0.3125, LR 0.03 | 3% | 0.57 to 0.66 |
+| fan-in 64, synapse, `sigma` 0.15, LR 0.01 | 3% | 0.58 to 0.61 |
+
+The synapse rule's weights stay interior and barely spread: its learning is
+a small coherent drift on the random start, and the noise diffuses nothing to
+the rails. The neuron rule is the one that pushes weights onto them.
+
+*The cost that does show is the residual.* Late in learning the synapse
+rule's steps stay several times to an order of magnitude larger than the
+neuron rule's in the sampled epochs: a unit-normal draw per arrival does not
+shrink as the network becomes confident, while the hazard's entries vanish at
+decisive margins. That is the plateau at 0.998 and 0.93 rather than 1.00 and
+0.99, and it is Werfel's residual term. Where the local rule *would* be blown
+out is where the noise ceiling on the learning rate falls below the runaway
+ceiling. The noise ceiling falls as the fan-in; the toy's runaway ceiling fell
+too, from LR 0.1 to 0.03 between fan-in 64 and 256, and the toy never left the
+runaway-limited regime. Whether the goo at fan-in 23 or 395 is in it is a
+measurement the toy cannot make.
 
 **The right knob is the noise standing in the potential, not the jitter per
 arrival.** The jitter that learns best falls with fan-in — `sigma` 0.6 at 16,
@@ -440,8 +484,9 @@ they bind each other in.
 7. **The learning rate.** `1 / sigma` folded in as `1 / Delta` is today (§8.7),
    and the usable range moved by the fan-in (§4).
 8. **The fraction of the price paid.** §4's factor is the ceiling; §5 finds
-   nothing to pay at the fan-in the September point runs at and a factor of
-   two to four at 64 and 256, in a toy. The decision is whether locality — no
+   nothing to pay in epochs at the fan-in the September point runs at and a
+   factor of two to four at 64 and 256, in a toy, with the noise showing as a
+   residual rather than a wall. The decision is whether locality — no
    gather, no broadcast, one sparse matrix updated elementwise, which is the
    second half of §0.11, and three hundred times fewer draws and decisions an
    epoch — is worth that many more epochs where it costs any, or whether the

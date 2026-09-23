@@ -152,7 +152,9 @@ def run(rule, B, K, waves, arrivals, delta, sigma, lr, epochs, seed,
             noise = float(var.sum())
             hist.append(dict(epoch=ep, acc=right / per, spikes=spikes / per,
                              stuck_off=int((~fired_any).sum()), corr=corr,
-                             snr=signal / noise if noise > 0 else 0.0))
+                             snr=signal / noise if noise > 0 else 0.0,
+                             rails=float((np.abs(W) > 0.99).mean()),   # weights on the rails of WEIGHT_RANGE
+                             wstd=float(W.std())))                     # the weights' spread (0.577 at the start)
             right = 0
             spikes = 0
             fired_any[:] = False
