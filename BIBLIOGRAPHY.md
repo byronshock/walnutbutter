@@ -146,6 +146,21 @@ AUTHORITY.md.
     neuron's reader. Added at Byron's request.
     In `references/`: `BialekZee90.pdf`, the first author's copy (a scan).
 
+16. Gerstner, W., & Kistler, W. M. (2002). *Spiking neuron models: Single
+    neurons, populations, plasticity*. Cambridge University Press.
+    https://doi.org/10.1017/CBO9780511815706
+    The textbook of the escape-noise neuron. Chapter 5 gives the firing
+    hazard as a function of the distance to threshold, the exponential form
+    among its choices, and §5.7 the mapping from diffusive input noise to an
+    escape rate; chapter 4 the spike response model it is written in. The
+    hazard of AUTHORITY.md §6.5 is §5.3's, placed at the neuron. Its
+    successor, *Neuronal Dynamics* (2014), chapter 9, is where Byron read it.
+    Added at Byron's request.
+    In `references/`: `GerstnerKistler02-extracts.pdf`, the author's own
+    200-page extract (chapters 1, 4 and 10-12 whole; §5.3 is not in it). The
+    whole book is free as HTML from the authors,
+    https://lcnwww.epfl.ch/gerstner/SPNM/SPNM.html, §5.3 at node35.html.
+
 ## The values
 
 - Asimov, I. (1985). *Robots and Empire*. Doubleday. The novel in which the
