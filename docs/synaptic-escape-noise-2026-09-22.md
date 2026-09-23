@@ -705,7 +705,7 @@ what was delivered, and this jitters when.
 
 ### 7.10 Byron's answers, September 23, 2026
 
-Byron, September 23, 2026, about 04:00 MDT, to the four questions of 7.9,
+Byron, September 23, 2026, about 03:45 MDT, to the four questions of 7.9,
 verbatim:
 
 > 1. V_threshold is a universal constant of the system. This already exists
