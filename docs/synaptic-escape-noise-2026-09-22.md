@@ -10,7 +10,8 @@ issue [#15](https://github.com/byronshock/walnutbutter/issues/15) holds: the
 synapse as the learner. Nothing here is a clause; §6 lists the decisions a
 clause would need, and §7 records what Byron said to them: a mechanism of his
 own for the first, which is not the one this note measured and resets the
-rest, and his answers to the questions it raised (7.10). The short answer is **yes, and the price is known**: the
+rest, his answers to the questions it raised (7.10), and a second toy that
+measures his mechanism (7.11). The short answer is **yes, and the price is known**: the
 rule becomes exactly local to the synapse, and the estimator it leaves behind
 is noisier by about the fan-in, which is the factor Werfel, Xie and Seung
 measured between node perturbation and weight perturbation twenty years ago.
@@ -769,6 +770,129 @@ leak of its own until its deterministic threshold is crossed. So the
 mechanism agrees with the literature on the mean, differs on the granularity
 and the reset, and puts the whole of the rest-period question into `h(0)` —
 which is Byron's third answer.
+
+### 7.11 The second toy: Byron's mechanism, measured
+
+`docs/synaptic-noise-toy2.py`, September 23, 2026, on Byron's "make, build,
+and run toys"; `docs/synaptic-noise-toy2-report.py` prints every arm and draws
+the figure, and `runs/synaptic-noise-toy/toy2_*.json` holds the arms.
+
+**The model.** The first toy's network — 32 bits complement-coded into 64
+inputs, five classes with one output each, every output hearing every input,
+accumulator outputs on the September axis with the floor and a two-wave
+refractory period, mnist's critic and baseline, 20 waves an epoch — with the
+inputs now neurons whose potentials their synapses read. Every synapse of a
+source that is awake and below threshold decides every wave, with hazard
+`h(u) = h0^(1 - u)` spikes per hop times `sqrt(60 / N)`, `u` the source's
+potential as a fraction of its threshold clipped to `[0, 1]`: `h0` is the
+hazard at rest and the sweep's variable, and at threshold the source spikes
+for certain and every synapse it has transmits. A speculative transmission
+delivers the weight and leaves the source alone. Two drives: **forced**, the
+file's — an on-input is forced to spike three times an epoch, resets, and
+sits at zero between, so every input's synapses whisper at `h0` whether the
+input is on or off; and **potential** — an on-input is charged by nine
+deliveries of a third of its threshold, spikes about three times, and sits
+between at a potential its synapses can read. Three rules: **local**, Seung's
+R1 and R2 on the weight, `(escaped - P) * sign(w)` at every decision from
+the synapse alone; **exact**, Williams's rule, which credits a synapse by the
+escapes of its target's outgoing synapses; and **none**. Five rest hazards,
+four learning rates, three seeds, 15,000 epochs; each arm below is the best
+learning rate for its rest hazard.
+
+**What the mechanism does by itself** — the no-learning control: whispers an
+epoch per synapse, from an on-input and from an off-input.
+
+| `h0` | forced: on / off | potential: on / off | output spikes an epoch, forced |
+|---|---|---|---|
+| 0.3 | 3.65 / 4.89 | 5.53 / 4.89 | 12.6 |
+| 0.1 | 1.33 / 1.78 | 3.31 / 1.78 | 9.8 |
+| 0.03 | 0.41 / 0.56 | 1.95 / 0.56 | 7.7 |
+| 0.01 | 0.14 / 0.19 | 1.24 / 0.19 | 6.8 |
+| 0.003 | 0.04 / 0.06 | 0.78 / 0.06 | 6.4 |
+
+Under the forced drive an off-input's synapses whisper *more* than an
+on-input's, by the waves the on-input spends refractory: the whisper carries
+no pattern. Under the potential drive the on-input's whisper is 1.1 times the
+off-input's at `h0` = 0.3 and 13 times at 0.003: the smaller the rest hazard,
+the more of the pattern the whisper carries.
+
+**The exact rule posts nothing in two layers.** An output projects nowhere,
+so no draw's odds depend on any weight into it, and Williams's estimator is
+identically zero: on a network of inputs onto outputs — the mnist goo with no
+hidden neurons — Byron's mechanism with the exact rule does not learn, by
+construction rather than by measurement. The estimator is nonzero for a
+synapse whose target transmits onward: in the scaled goo, the hidden neurons'
+incoming synapses, and the outputs' incoming synapses only through the
+outputs' projections back onto hidden neurons.
+
+**With the read counting the outputs' transmissions, the exact rule learns.**
+Each output given one outgoing synapse to a read neuron that counts whatever
+it receives, spikes and speculation alike, so that the output's escapes reach
+the reward:
+
+| `h0` | accuracy at 15,000 | corr with `d` | to 0.8 |
+|---|---|---|---|
+| 0.3 | 0.17 | +0.35 | — |
+| 0.1 | 0.73 | +0.71 | — |
+| 0.03 | 0.977 | +0.72 | 5,250 |
+| 0.01 | 0.983 | +0.81 | 4,500 |
+| 0.003 | 0.983 | +0.83 | 5,250 |
+
+Today's rule on the same network reaches 0.8 in 2,250 epochs and 0.994 at
+15,000 (§5.3). At `h0` = 0.3 the whispers swamp the outputs, which fire once
+an epoch, and nothing is learned.
+
+**The local rule learns nothing under the file's drive, and part of the task
+under a charged one.**
+
+| `h0` | forced: accuracy, corr | potential: accuracy, corr |
+|---|---|---|
+| 0.3 | 0.15, -0.03 | 0.16, -0.05 |
+| 0.1 | 0.15, -0.06 | 0.30, +0.12 |
+| 0.03 | 0.16, -0.08 | 0.51, +0.20 |
+| 0.01 | 0.17, -0.04 | 0.62, +0.18 |
+| 0.003 | 0.16, -0.06 | 0.69, +0.22 |
+
+Chance is about 0.15 here, a tie not being a win. Under the forced drive
+every arm of twenty is at chance with a correlation at or below zero: the
+whispers being pattern-blind, a synapse's own events tell it only whether its
+output wanted more or less excitation in general, which is no pattern. Under
+the potential drive the rule climbs as the rest hazard falls and the whisper
+carries more of the pattern, to 0.69 at `h0` = 0.003 — and no arm reaches 0.8
+in 15,000 epochs, against 0.98 for the exact rule and 0.99 for today's.
+
+![accuracy and the correlation with the supervised direction against the rest hazard, for each rule and drive](synaptic-noise-toy2.png)
+
+**Three readings.**
+
+*The rest hazard wants to be small.* Every arm that learned did best at the
+smallest rest hazards swept, 0.003 to 0.01 spikes per hop before the count's
+factor — an order of magnitude below today's `e^(-1/Delta)` = 0.04 at `Delta`
+0.3125. Whether zero is better still is the next sweep; under the forced drive
+zero would mean no speculation from any input at all, and so nothing for a
+two-layer network to explore with.
+
+*Under the file's drive the local rule has nothing to learn from.* A forced
+input sits at zero between its spikes, so its synapses speculate exactly as
+an off-input's do. The one local rule this mechanism admits is therefore
+blind to the pattern on the mnist goo as it is driven today, and would need
+the drive to charge an input rather than force it.
+
+*The exact rule is non-local and needs the speculation to reach the reward.*
+Where it does, it learns at about half today's speed; where it does not —
+the last layer of any feedforward network, and the mnist goo without hidden
+neurons — it is zero.
+
+**For the hypothesis.** On Byron's mechanism as answered in 7.10, escape
+noise generated at the synapse does not give a local reinforcement rule that
+learns: the local rule available is not a gradient, is pattern-blind under
+the file's drive, and reaches 0.69 where the non-local rules reach 0.98 and
+0.99; the exact rule is the neuron rule's shape one hop over, and is silent
+wherever a neuron's transmissions do not reach the reward. What would give a
+local rule is a parameter of the synapse's own in its hazard — Seung's
+release probability, or a threshold of the synapse's own — which the first
+answer of 7.10 rules out. The toy is a toy: the goo can be measured once a
+clause says how an input is driven.
 
 ## 8. Sources
 
