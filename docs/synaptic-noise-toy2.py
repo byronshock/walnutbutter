@@ -9,12 +9,23 @@
   leaves the source's potential alone. V_threshold is the neuron's. The neuron
   keeps its threshold and its deterministic spike.
 
-Here the hazard is h(u) = h0 ** (1 - u) spikes per hop, scaled by sqrt(60/N)
-as the file scales every hazard (6.6): h0 is the hazard at rest, the quantity
-Byron's third answer leaves "to be determined through rigorous investigation",
-and it is what this toy sweeps. (Today's exponential hazard is this same
-family with h0 = exp(-1/Delta), clipped at zero potential and cut off at
-threshold, where the neuron now fires for certain.)
+Two hazard families, both h0 at rest and 1 spike per hop at threshold, both
+scaled by sqrt(60/N) as the file scales every hazard (6.6); h0 is the hazard
+at rest, the quantity Byron's third answer leaves "to be determined through
+rigorous investigation", and it is what this toy sweeps:
+
+  --hazard loglinear   h(u) = h0 ** (1 - u). Today's exponential hazard is
+                       this family with h0 = exp(-1/Delta), clipped at zero
+                       potential and cut off at threshold. h0 = 0 leaves no
+                       speculation anywhere below threshold.
+  --hazard linear      h(u) = h0 + (1 - h0) * u: Byron's statement read
+                       literally, "monotonically increasing as u". h0 = 0 is
+                       a synapse that never speculates at rest and speculates
+                       in proportion to its source's potential above it.
+
+The drive is a rate, as the file's is: --rate spikes per on-input per wave,
+so a longer epoch carries proportionally more input spikes (0.15 gives the
+first toy's three spikes in twenty waves).
 
 The network is the first toy's: two layers, complement-coded, K classes, one
 output each, every output hearing every input; accumulator outputs with the
@@ -79,7 +90,7 @@ TEMPERATURE = 2.0
 BASELINE_RATE = 0.05
 FLIP = 0.1
 DRIVE_STEPS = 3          # a charged input takes this many drive deliveries to reach its threshold
-SPIKES_PER_ON = 3        # about this many spikes an epoch from an on-input, either drive
+RATE = 0.15              # spikes an on-input makes per wave: three in the first toy's twenty waves
 
 
 def task(B, K, rng):
@@ -90,8 +101,15 @@ def task(B, K, rng):
     return protos, d_sup
 
 
+def hazard(family, h0, u):
+    if family == "linear":
+        return h0 + (1.0 - h0) * u
+    return h0 ** (1.0 - u)
+
+
 def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="all",
-        refractory=2, checkpoints=20):
+        hazard_family="loglinear", rate=RATE, refractory=2, checkpoints=20):
+    spikes_per_on = max(1, int(round(rate * waves)))
     rng = np.random.default_rng(seed)
     I, O = 2 * B, K
     N = I + O
@@ -122,10 +140,10 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="al
         on = np.flatnonzero(onmask)
         if drive == "forced":
             F = np.zeros((waves, I), dtype=bool)
-            F[rng.integers(waves, size=on.size * SPIKES_PER_ON), np.repeat(on, SPIKES_PER_ON)] = True
+            F[rng.integers(waves, size=on.size * spikes_per_on), np.repeat(on, spikes_per_on)] = True
         else:
             D = np.zeros((waves, I))
-            n = SPIKES_PER_ON * DRIVE_STEPS
+            n = spikes_per_on * DRIVE_STEPS
             np.add.at(D, (rng.integers(waves, size=on.size * n), np.repeat(on, n)), theta_in / DRIVE_STEPS)
         counts = np.zeros(O, dtype=np.int64)
         extra = np.zeros(O, dtype=np.int64)     # the read neuron's count of speculative transmissions (toy 3)
@@ -146,7 +164,7 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="al
                 spk_in = act_in & (p_in >= theta_in)
             # every synapse of a source that is awake and below threshold decides, on its source's potential
             u = np.clip(p_in, 0.0, theta_in) / theta_in
-            m_in = kappa * h0 ** (1.0 - u)
+            m_in = kappa * hazard(hazard_family, h0, u)
             P_in = -np.expm1(-m_in)
             deciding = act_in & ~spk_in
             esc = deciding[:, None] & (rng.random((I, O)) < P_in[:, None])
@@ -170,7 +188,7 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="al
                 # each output's one outgoing synapse, to its read neuron, decides on the output's potential
                 dec_o = act_out & ~spk_out
                 u_o = np.clip(p_out, 0.0, theta_out) / theta_out
-                m_o = kappa * h0 ** (1.0 - u_o)
+                m_o = kappa * hazard(hazard_family, h0, u_o)
                 P_o = -np.expm1(-m_o)
                 y_o = dec_o & (rng.random(O) < P_o)
                 extra += y_o
@@ -210,7 +228,8 @@ def run(rule, B, K, waves, drive, h0, lr, epochs, seed, read="spikes", trace="al
             esc_on = esc_off = 0.0
             fired_any[:] = False
     return dict(rule=rule, B=B, K=K, fan_in=d, waves=waves, drive=drive, h0=h0, lr=lr, read=read,
-                trace=trace, seed=seed, epochs=epochs, hist=hist)
+                trace=trace, hazard=hazard_family, rate=rate, spikes_per_on=spikes_per_on,
+                seed=seed, epochs=epochs, hist=hist)
 
 
 def _job(kw):
@@ -226,9 +245,11 @@ def main():
     ap.add_argument("--drive", nargs="+", default=["forced"], choices=["forced", "potential"])
     ap.add_argument("--read", default="spikes", choices=["spikes", "transmissions"])
     ap.add_argument("--trace", default="all", choices=["all", "ventured"])
+    ap.add_argument("--hazard", default="loglinear", choices=["loglinear", "linear"])
+    ap.add_argument("--rate", type=float, default=RATE)
     ap.add_argument("--B", type=int, nargs="+", default=[32])
     ap.add_argument("--K", type=int, default=5)
-    ap.add_argument("--waves", type=int, default=20)
+    ap.add_argument("--waves", type=int, nargs="+", default=[20])
     ap.add_argument("--h0", type=float, nargs="+", default=[0.03])
     ap.add_argument("--lr", type=float, nargs="+", default=[0.01])
     ap.add_argument("--epochs", type=int, default=2000)
@@ -236,10 +257,11 @@ def main():
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
-    jobs = [dict(rule=rule, B=B, K=args.K, waves=args.waves, drive=drive, h0=h0, lr=lr,
-                 epochs=args.epochs, seed=seed, read=args.read, trace=args.trace)
-            for rule, drive, B, h0, lr, seed
-            in product(args.rule, args.drive, args.B, args.h0, args.lr, args.seeds)]
+    jobs = [dict(rule=rule, B=B, K=args.K, waves=waves, drive=drive, h0=h0, lr=lr,
+                 epochs=args.epochs, seed=seed, read=args.read, trace=args.trace,
+                 hazard_family=args.hazard, rate=args.rate)
+            for rule, drive, B, waves, h0, lr, seed
+            in product(args.rule, args.drive, args.B, args.waves, args.h0, args.lr, args.seeds)]
     print(f"{len(jobs)} runs, {args.workers} workers", file=sys.stderr)
     t0 = time.time()
     if args.workers > 1 and len(jobs) > 1:
@@ -253,7 +275,7 @@ def main():
             json.dump(results, f)
     for r in results:
         h = r["hist"][-1]
-        print(f"{r['rule']:6s} {r['drive']:9s} read {r['read']:13s} trace {r['trace']:8s} fan-in {r['fan_in']:3d} h0 {r['h0']:<6g} "
+        print(f"{r['rule']:6s} {r['drive']:9s} {r['hazard']:9s} read {r['read']:13s} trace {r['trace']:8s} waves {r['waves']:3d} h0 {r['h0']:<6g} "
               f"lr {r['lr']:<6g} seed {r['seed']} acc {h['acc']:.3f} spikes/ep {h['spikes']:5.2f} "
               f"stuck {h['stuck_off']} corr {h['corr']:+.3f} whisper on/off {h['whisper_on']:.2f}/{h['whisper_off']:.2f} "
               f"flipped {h['flipped']:.2f} ({r['seconds']:.0f} s)")
