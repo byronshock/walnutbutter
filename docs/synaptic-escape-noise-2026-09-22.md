@@ -902,6 +902,28 @@ release probability, or a threshold of the synapse's own — which the first
 answer of 7.10 rules out. The toy is a toy: the goo can be measured once a
 clause says how an input is driven.
 
+### 7.12 An idea from Byron and Cedric, September 23, 2026
+
+Byron, September 23, 2026, about 06:55 MDT, asking that it be added to the
+synapse's chapter of the file (it is, at the end of `AUTHORITY.md` §1, as an
+idea and not a clause):
+
+> IDEA (Byron and Cedric discussed): What if the synapse discounts spikes it
+> passed on as signal with fidelity after V_pre exceeds threshold? In other
+> words, when the synapse fires deterministically, it does not try to learn at
+> all.
+
+*Claude's reading, for the record and to be corrected in a word.* Under the
+local rule of 7.9 this is already so: the rule posts only at escape
+decisions, and a deterministic transmission is no draw, so a synapse that
+fired with its source's spike posts nothing for it. Under the exact rule it
+is a change: the trace `x_ij` that carries a synapse's credit at its target's
+decisions counts every delivery, deterministic and speculative alike, and the
+idea would have it count the speculative ones only — the synapse credited for
+what it ventured and not for what it relayed. That estimator is not Williams's
+and would be biased toward the ventured deliveries; whether it learns better
+or worse is a measurement the second toy can make with one flag.
+
 ## 8. Sources
 
 All in `references/` already; none fetched for this note.
