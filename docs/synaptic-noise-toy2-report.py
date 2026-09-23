@@ -108,8 +108,9 @@ def main():
     ax2.axhline(0, color="gray", lw=0.5)
     ax2.set_ylabel("correlation of the weight change with d")
     ax2.set_title("Does it learn the pattern?")
-    ax1.legend(fontsize=7)
-    fig_.tight_layout()
+    handles, labels = ax1.get_legend_handles_labels()
+    fig_.legend(handles, labels, loc="lower center", ncol=2, fontsize=7, frameon=False)
+    fig_.tight_layout(rect=[0, 0.2, 1, 1])
     fig_.savefig(fig, dpi=120)
     print(f"\nfigure: {fig}")
 

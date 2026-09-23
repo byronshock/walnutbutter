@@ -924,6 +924,39 @@ what it ventured and not for what it relayed. That estimator is not Williams's
 and would be biased toward the ventured deliveries; whether it learns better
 or worse is a measurement the second toy can make with one flag.
 
+**Measured, September 23, 2026, on Byron's "Run the toy with that flag."**
+`--trace ventured` in `docs/synaptic-noise-toy2.py`: the trace counts the
+deliveries the synapse ventured and not the ones it relayed with its source's
+spike; the potential still takes every delivery. The exact rule with the read
+on transmissions, both drives, both traces, five rest hazards, four learning
+rates, three seeds, 15,000 epochs; each cell the best learning rate's arm,
+accuracy at 15,000 with the epochs to 0.8 in brackets:
+
+| `h0` | forced drive, all | forced, ventured | charged drive, all | charged, ventured |
+|---|---|---|---|---|
+| 0.3 | 0.17 | 0.15 | 0.35 | 0.19 |
+| 0.1 | 0.73 | 0.14 | 0.83 (12,000) | 0.79 |
+| 0.03 | 0.977 (5,250) | 0.17 | 0.984 (4,500) | 0.971 (6,750) |
+| 0.01 | 0.983 (4,500) | 0.18 | 0.993 (3,000) | 0.975 (6,000) |
+| 0.003 | 0.983 (5,250) | 0.19 | 0.984 (4,500) | 0.989 (3,750) |
+
+Under the file's forced drive the idea ends learning: every ventured arm sits
+at chance, with the weight change anticorrelated with the supervised
+direction (-0.07 to -0.32). A forced input sits at zero between its spikes,
+so what its synapses venture carries no pattern, and the deliveries that do
+carry it are exactly the relayed ones the idea discounts. Under the charged
+drive the idea costs little and at the smallest rest hazard nothing: 0.97 to
+0.99 against 0.98 to 0.99, reaching 0.8 in 3,750 to 6,750 epochs against
+3,000 to 4,500, along a direction a little further from the supervised one
+(correlation 0.60 to 0.66 against 0.70 to 0.82). The charged drive with the
+full trace is the best exact-rule arm measured on this mechanism, 0.993 at
+`h0` = 0.01 and 0.8 in 3,000 epochs against today's 2,250.
+
+So the idea is a statement about the drive as much as about the synapse: a
+synapse can afford to learn only from what it ventured where an input's
+subthreshold potential carries the pattern, and not where the input is forced.
+On the mnist goo as driven today it would learn nothing.
+
 ## 8. Sources
 
 All in `references/` already; none fetched for this note.
