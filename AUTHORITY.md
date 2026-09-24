@@ -194,7 +194,7 @@ Under the evidence accumulator the trace is the count of the arrivals the
 target integrated along this synapse since the target's last spike — an
 integer, raised by one at each arrival integrated. It is the derivative of
 the target's potential with respect to this weight, exactly while the floor
-has not bitten: $p_j = \sum_i w_{ij} x_{ij}$, so $\partial p_j / \partial w_{ij} = x_{ij}$. It is cleared when the target spikes, when the floor
+has not bitten: $V_j = \sum_i w_{ij} x_{ij}$, so $\partial V_j / \partial w_{ij} = x_{ij}$. It is cleared when the target spikes, when the floor
 bites, and when a run's epoch reset discharges the potential (§3.9) — the
 three events after which what the weights delivered is no longer the
 potential. Under the leak, which stays as a per-run option (TAU finite),
@@ -263,8 +263,8 @@ written from it, and the synapse's learning stays what §8 says until it is.*
 
 **2.1 What a neuron holds.** One of each, per neuron:
 
-- its potential $p_j$, and the clock time that potential was last brought up to date;
-- its threshold $\theta_j$ — the starting value its container gave it (§4.10), and wherever homeostasis or un-sticking have since taken it when a run turns those on (§9.9, §9.10) — and its floor $p^{\min}_j$, which is the starting value its container gave it and does not move;
+- its potential $V_j$, and the clock time that potential was last brought up to date;
+- its threshold $\theta_j$ — the starting value its container gave it (§4.10), and wherever homeostasis or un-sticking have since taken it when a run turns those on (§9.9, §9.10) — and its floor $V^{\min}_j$, which is the starting value its container gave it and does not move;
 - the width of its firing decision $\Delta_j$, the hazard's scaling by the network's count, and the moment its hazard has run from (§6.4, §6.5, §6.6);
 - the time of its last spike $t^{\text{fired}}_j$ and of the spike before it; the number of spikes it has ever fired, and the number it had fired when the epoch began, whose difference is the count read (§5.10);
 - whether it has fired in the epoch so far, and whether the drive forced it in this epoch;
@@ -276,21 +276,21 @@ Its refractory state is not held: it is read from the time of its last spike (§
 
 **2.2 The potential is an accumulator of evidence.** The potential is the sum of the weights of the signals the neuron has integrated since its last spike, undiminished: nothing decays. With $x_{ij}$ the number of arrivals $j$ integrated along the synapse $i \to j$ since its last spike,
 
-$$p_j = \sum_i w_{ij}\,x_{ij}, \qquad \frac{\partial p_j}{\partial w_{ij}} = x_{ij},$$
+$$V_j = \sum_i w_{ij}\,x_{ij}, \qquad \frac{\partial V_j}{\partial w_{ij}} = x_{ij},$$
 
-exactly while the floor has not bitten (§6.2). Once inhibition has taken the potential to $p^{\min}_j$ the potential is the floor whatever the weights; the floor clears every open arrival, so the derivative identity resumes at the next arrival and $x_{ij}$ counts from the floor rather than from the last spike (§6.3). A signal that reaches a refractory neuron is not integrated and is not counted (§2.5).
+exactly while the floor has not bitten (§6.2). Once inhibition has taken the potential to $V^{\min}_j$ the potential is the floor whatever the weights; the floor clears every open arrival, so the derivative identity resumes at the next arrival and $x_{ij}$ counts from the floor rather than from the last spike (§6.3). A signal that reaches a refractory neuron is not integrated and is not counted (§2.5).
 *Byron, September 17, 2026, 14:56 MDT, choosing it for the rewrite: "neuron: NOT leaky, but please leave the leak option with its analysis. 2 hops." [`docs/rewrite-answers.md` §2] And his statement of it the same morning: "since we are keeping weighted synapses the potential is a weighted count of evidence, and its derivative delta functions of spike arrivals weighted by the evidence each carries." [RECORD §5.1]*
 
 **2.3 The leak, as a per-run option.** A run may select a leaky potential instead of the accumulator: with the leak on, a signal of weight $w$ arriving at time $t$ first decays the potential for the time since it was last brought up to date, and is then added,
 
-$$p \leftarrow p\,e^{-(t - t_{\text{last}})/\tau}, \qquad t_{\text{last}} \leftarrow t, \qquad p \leftarrow p + w,$$
+$$V \leftarrow V\,e^{-(t - t_{\text{last}})/\tau}, \qquad t_{\text{last}} \leftarrow t, \qquad V \leftarrow V + w,$$
 
 with $\tau$ = TAU = 2 ms. The accumulator of §2.2 is the default and is $\tau = \infty$; a checkpoint carries which of the two its network ran under, and a resumed network keeps it. *Engines:* under the accumulator no engine evaluates a decay anywhere — Byron, September 17, 2026: "we DO need to skip the exponential decay calculation when we select evidence-accumulator since it's just going to slow things down" — and the skip must change no result, the factors it skips being exactly 1.
 *Byron, September 17, 2026, 14:56 MDT: "please leave the leak option with its analysis." The analysis stays with it in the record and no part of it is a clause [RECORD §1.2, §5.1, §8].*
 
 **2.4 What a spike does to the potential.** A spike resets the potential to zero and is remembered, along with the spike before it:
 
-$$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t^{\text{fired}}, \qquad t^{\text{fired}} \leftarrow t,$$
+$$V \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t^{\text{fired}}, \qquad t^{\text{fired}} \leftarrow t,$$
 
 and the neuron's spike count rises by one. Nothing any synapse delivered is still in the potential, so every incoming synapse's trace $x_{ij}$ goes to zero with it. Under the accumulator the spike is the moment the learning rule settles every open arrival; under the leak the entries were posted at each decision and the spike only clears the traces (§8.11, §8.12). The neuron is then refractory (§2.5).
 *Byron and Cedric, from the beginning [RECORD §0, §5.2]. The memory of the spike before last is the record's, stated there without a date; the quash reads it (§10.1).*
@@ -552,7 +552,7 @@ each input-to-output pair its own draw, nothing else projecting — so an output
 **4.10 The potential axis scales with fan-in.** The container gives neuron $j$, of in-degree $d_j$, its starting threshold and its floor:
 
 $$\theta_j = \text{GOO\_THRESHOLD} \cdot \frac{d_j}{F}, \qquad
-p^{\min}_j = \text{GOO\_MINIMUM\_POTENTIAL} \cdot \frac{d_j}{F}, \qquad
+V^{\min}_j = \text{GOO\_MINIMUM\_POTENTIAL} \cdot \frac{d_j}{F}, \qquad
 F = \text{THRESHOLD\_FAN\_IN} = 18,$$
 
 with GOO_THRESHOLD = 0.2 and the floor at $-4 \times$ GOO_THRESHOLD, so GOO_MINIMUM_POTENTIAL = −0.8 and follows the threshold if that constant moves: the ratio is the rule and the number is its value. Both points of the axis are rescaled by the same factor [RECORD §5.2]. The scaling is applied after the wiring, since it reads the in-degree; it is a per-run switch, on for goo unless a run turns it off, and a checkpoint restores under the setting it was saved with. These are **starting** values only: homeostasis and un-sticking (non-defaults) move a threshold from where it starts, the firing section quotes the escape width in units of the starting threshold, and a checkpoint stores the threshold and floor a run actually reached rather than recomputing them.
@@ -830,7 +830,7 @@ each driven neuron its own phase and not one lattice for the network.*
 *Firing is escape noise: at every wave each neuron that is not refractory makes a stochastic decision on its own margin above the threshold. This section states that decision as the working runs made it. Byron, September 17, 2026, 14:50 MDT, choosing it: "first we must tackle neural spike escape noise as a potential mechanism… we have a learning rule derived for it right now that is working right now"; and at 14:53 MDT, on the level it is measured from: "We are going to keep the level. The system must implement what I was just using. We can make changes later to this."*
 
 **6.1 The axis a neuron decides on is the one its container gave it.** The
-threshold $\theta_j$ and the floor $p^{\min}_j$ a neuron faces are the
+threshold $\theta_j$ and the floor $V^{\min}_j$ a neuron faces are the
 container's, scaled by its fan-in (§4.10); THRESHOLD_FAN_IN $= 18$ is the
 in-degree they are quoted at, THRESHOLD and MINIMUM_POTENTIAL are that
 quotation for a container that sets no pair of its own, and goo's are
@@ -845,7 +845,7 @@ than recomputing them.
 *The axis and its scaling are §4.10's, and the provenance is there. [RECORD
 §5.2, §1.2]*
 
-**6.2 The floor applies once a wave, to the wave's total.** After every signal of a wave has been delivered and before any neuron decides, each neuron touched this wave takes $p_j \leftarrow \max(p_j,\, p^{\min}_j)$, so the floor acts on the wave's summed input and the result does not depend on the order the signals arrived in. Of the engines this requires one floor per touched neuron per wave, not one per arrival.
+**6.2 The floor applies once a wave, to the wave's total.** After every signal of a wave has been delivered and before any neuron decides, each neuron touched this wave takes $V_j \leftarrow \max(V_j,\, V^{\min}_j)$, so the floor acts on the wave's summed input and the result does not depend on the order the signals arrived in. Of the engines this requires one floor per touched neuron per wave, not one per arrival.
 *The floor is the container's of §4.10. Byron and Cedric, from the beginning, for the floor itself [RECORD §5.1]; that it applies once a wave, on the wave's summed input, is the record's wave of September 10, 2026 — Claude's reading of it, confirmed by Byron, September 17, 2026. [RECORD §4.4, §5.1]*
 
 **6.3 A neuron at the floor has nothing of any synapse left in its potential.** When the floor bites, every synapse's open arrivals on that neuron are closed with no credit — the debit they have accrued is settled and their traces cleared — so a neuron held down by inhibition accumulates nothing on its synapses (§8.11; under the leak the traces are zeroed instead). A forced spike (§6.10) and a discharge (§3.9) settle the same way.
@@ -853,14 +853,14 @@ than recomputing them.
 
 **6.4 The margin, and the width of the decision.** Neuron $j$ decides at time $t$ on its margin
 
-$$s = p_j(t) - \theta_j(t),$$
+$$s = V_j(t) - \theta_j(t),$$
 
 the potential after the wave's signals and after the floor, against the threshold it faces. The decision's width is
 
 $$\Delta_j = \Delta\,\theta_j^{\text{start}}, \qquad \Delta = \text{ESCAPE\_DELTA} = 0.455,$$
 
 quoted in units of the threshold the container gave the neuron, so §6.1's scaling applies to the width as to the rest of the axis, a neuron of any fan-in is as soft as any other, and the width stays put when homeostasis later moves $\theta_j$. A network's widths are set once the thresholds are what the container gave them — after fan-in scaling, before anything moves them.
-$\theta_j$ is constant through a run except as homeostasis and un-sticking move it between epochs (§9.9, §9.10, non-defaults); no rule of this specification lowers a threshold within a run. Under the leak $p_j(t)$ in the margin is the potential decayed to the decision's moment (§2.3). *Of the engines:* each neuron's width is stored in a checkpoint and restored, never recomputed from the threshold the run has since reached — unlike §6.6's count factor.
+$\theta_j$ is constant through a run except as homeostasis and un-sticking move it between epochs (§9.9, §9.10, non-defaults); no rule of this specification lowers a threshold within a run. Under the leak $V_j(t)$ in the margin is the potential decayed to the decision's moment (§2.3). *Of the engines:* each neuron's width is stored in a checkpoint and restored, never recomputed from the threshold the run has since reached — unlike §6.6's count factor.
 *Byron, September 15, 2026, choosing the stochastic decision: "Let's please go with (3). It is the most like what I want to do. Make the boredom stochastic and it is Williams's unit outright." The value 0.455 is Byron's word, September 15, 2026. [RECORD §5.2, §1.2]*
 
 **6.5 The hazard and the chance of a spike.** A neuron that is not refractory fires at a wave with probability
@@ -884,7 +884,7 @@ Of the engines: $m$ is capped at $10^3$ — beyond which $P$ is 1 to the last bi
 **6.8 Every neuron decides at every wave, touched or not.** A wave examines every neuron in the network: one decision each, whether or not a signal reached it that wave, so a neuron with enough potential waiting, or one whose margin has simply carried it, fires at the first wave after it is able to and not at the next signal to arrive. A forced neuron is the exception (§6.10), and a refractory neuron makes no decision at all (§6.12). This fixes the learning rule's clock as well as the firing rule's: every decision posts an entry under the single-spike rule (§8.4), and a neuron's expectation of itself moves per decision and not per epoch (§8.6).
 *Claude's reading, built September 12, 2026 under Byron's boredom decision, and carried into the hazard on September 15, 2026; confirmed by Byron, September 17, 2026. [RECORD §5.2, §5.4, §1.3]*
 
-**6.9 A neuron with no width takes the deterministic comparison.** Where the width $\Delta_j$ is not positive — ESCAPE_DELTA $=0$, or a starting threshold that is not positive, a collapsed axis carrying no width to quote — the neuron fires iff $p_j(t) \ge \theta_j(t)$ and it is not refractory. $\Delta = 0$ is the deterministic rule word for word. Of the engines: this case is taken by the comparison and not by dividing by a zero width.
+**6.9 A neuron with no width takes the deterministic comparison.** Where the width $\Delta_j$ is not positive — ESCAPE_DELTA $=0$, or a starting threshold that is not positive, a collapsed axis carrying no width to quote — the neuron fires iff $V_j(t) \ge \theta_j(t)$ and it is not refractory. $\Delta = 0$ is the deterministic rule word for word. Of the engines: this case is taken by the comparison and not by dividing by a zero width.
 *Byron, September 15, 2026, with §6.4 ("$\Delta = 0$ is the deterministic rule word for word"); the collapsed-axis case as resolved September 16, 2026, under which, given §6.1, it arises only for a threshold given as 0 outright. [RECORD §5.2]*
 
 **6.10 A forced neuron fires by its stimulus and decides nothing.** An input neuron driven at its stimulus's time fires regardless of its potential and its threshold, the refractory period permitting, and makes no firing decision that wave, so no credit is posted for that spike; the arrivals it closes settle their debit as at the floor (§6.3). Forced neurons fire before the wave's deciding neurons; a stimulus listed twice fires once, the first spike making the neuron refractory.
@@ -892,7 +892,7 @@ Of the engines: $m$ is capped at $10^3$ — beyond which $P$ is 1 to the last bi
 
 **6.11 The spike resets the neuron and is remembered.** A neuron that fires takes
 
-$$p \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t_{\text{fired}}, \qquad t_{\text{fired}} \leftarrow t,$$
+$$V \leftarrow 0, \qquad t_{\text{prev}} \leftarrow t_{\text{fired}}, \qquad t_{\text{fired}} \leftarrow t,$$
 
 so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps its last two spike times, its outgoing signals being scheduled one hop later (§3.5). $t_{\text{fired}}$ is what §2.5 reads the refractory period from and nothing else reads; the gap back to $t_{\text{prev}}$ is read by the quash alone (§10.1, a non-default). No rule in force reads the interval since a neuron's last spike at a decision (§7.4).
 *The record's firing rule, standing since the project began. [RECORD §5.2]*
@@ -1003,7 +1003,7 @@ there) — and in one thing the table does not show. The hazard's
 $(c_j - q_j)$ is exactly zero-mean at every decision, both branches having
 mean $m e^{-m}$, so nothing systematic is posted by a neuron whose behaviour
 carries no information. Hebb's is $y - \hat p_j$, whose mean is the lag of the
-neuron's own estimate, $p_j - \hat p_j$; it is zero only where that estimate
+neuron's own estimate, $V_j - \hat p_j$; it is zero only where that estimate
 has caught up, and DECISION_MEMORY sets how long that takes (§8.6). A run
 under hebb is therefore posting a systematic component wherever a neuron's
 rate is moving. A run may name one. Where it names none and the firing
@@ -1100,9 +1100,9 @@ without settling the question, *"Defaults to 1? 1 is the best number to
 default to. 0 is the second-best."*
 
 A full unit is also what keeps the rule as near zero-mean as hebb comes: with
-it $E[c_j] = p_j$ against $E[q_j] = \hat p_j$, so the only gap is the
-estimate's lag (§8.3), where any discount $d < 1$ gives $E[c_j] = d\,p_j$ and
-widens it, unless $d$ happened to equal $\hat p_j / p_j$.
+it $E[c_j] = V_j$ against $E[q_j] = \hat p_j$, so the only gap is the
+estimate's lag (§8.3), where any discount $d < 1$ gives $E[c_j] = d\,V_j$ and
+widens it, unless $d$ happened to equal $\hat p_j / V_j$.
 
 
 **8.10 Arrivals stay open across reads.** *(Byron, September 17, 2026: "Let
