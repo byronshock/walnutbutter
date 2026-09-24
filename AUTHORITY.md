@@ -112,7 +112,9 @@ Read a number from the record only with the configuration it was taken at.
 **0.10 Learning is paid by one global scalar.** One number scores what the network did, a baseline is subtracted from it, and every synapse's update is proportional to what is left. No rule in force hands a neuron an error of its own.
 *The frame is Byron and Cedric's, from the beginning [RECORD §0]. The word *reward* is kept in this file for a dopamine-mediated reward, which is the direction and not the mechanism; what a critic produces is the epoch's **reinforcement** (§8.1). **A direction:** that the scalar be produced locally at a spike and consumed globally — dopamine — leaves this file as a mechanism and stays as an intention, Cedric's to take up. Byron, September 17, 2026, 15:02 MDT: "(1) drop but keep the idea of dopamine reinforcement around. It's a very important direction for Cedric's work, but the implementation was mine and I lacked understanding." [RECORD §6.2–§6.6 is the attempt, and stays there.]*
 
-**0.11 The synapse is the learner — a direction.** Today the neuron is the learner: one firing decision per neuron per wave, and a synapse is credited by what it happened to have in the potential when its neuron took a chance the synapse did not take. Every synapse into one neuron shares that neuron's credit and expectation and is told apart only by its own trace (§8.4), so what per-synapse resolution the rule has is carried by the trace alone. Where the project is going is the other way round: the synapse explores, the synapse is credited for what it explored, and the neuron is the medium they speak through. Nothing in this file is written from it until Byron specifies it, and specifying it is a rethink of the system rather than a change to a clause. It stands in §0 rather than among the intended changes of §0.12 because it is where the work goes next — Byron, September 17, 2026: "This is the direction we are going with our next research spurt" — and it is issue [#15](https://github.com/byronshock/walnutbutter/issues/15).
+**0.11 The synapse is the learner — specified September 24, 2026, being built.** Specified from Byron's mechanism of September 23, 2026 and his decisions of the 24th: §6.13, §7.5–§7.9, §8.16–§8.17 and 5.4b are its clauses, and `docs/synapse-engine-plan-2026-09-23.md` is how the engines are brought to them; until they are, those clauses are specified and not built and §6.5 runs. What the mechanism bears out of this direction, and what it does not, is in those clauses: the synapse explores, one transmission at a time, on its source's potential; what its exploration credits is the synapses into its source, one hop upstream, and not itself, because $V_{\text{threshold}}$ is the neuron's (Byron, September 23, 2026); and the neuron keeps its threshold, its deterministic spike and its refractory period as properties of the channel. The sparse-matrix form stays a direction. What follows is the direction as it stood on September 17, kept as the record of where the clauses came from.
+
+Today the neuron is the learner: one firing decision per neuron per wave, and a synapse is credited by what it happened to have in the potential when its neuron took a chance the synapse did not take. Every synapse into one neuron shares that neuron's credit and expectation and is told apart only by its own trace (§8.4), so what per-synapse resolution the rule has is carried by the trace alone. Where the project is going is the other way round: the synapse explores, the synapse is credited for what it explored, and the neuron is the medium they speak through. Nothing in this file is written from it until Byron specifies it, and specifying it is a rethink of the system rather than a change to a clause. It stands in §0 rather than among the intended changes of §0.12 because it is where the work goes next — Byron, September 17, 2026: "This is the direction we are going with our next research spurt" — and it is issue [#15](https://github.com/byronshock/walnutbutter/issues/15).
 
 Named so that the scale of it is not lost: it would re-ask §0.10 (what one global scalar pays, when each synapse has a score of its own), the whole of §8, the learning rate (the injected noise gains a dimension per synapse rather than per neuron), and what a synapse holds, which is today four pieces and would then include its own draw and its own expectation of its own outcome. What it would *not* re-ask is what a neuron is: the threshold, the escape noise and the refractory period become properties of the channel rather than of the learner, which is what §0.4 already calls them.
 
@@ -120,7 +122,7 @@ The form it is meant to take is one sparse matrix of every synaptic connection, 
 *Byron, September 17, 2026, 06:05 MDT: "Computationally exploration noise can be generated at the synapses, and semantically this is clean: a SYNAPSE explores its own impulse response, rather than a NEURON exploring its impulse response!" And the same evening, stating it whole: "imagine, if you will, a whole bunch of synapses at work trying to figure out what their impulse response is through neural goo. The synapses are the learners, and the neurons are their communication system" — a future refactor, not for now, "because it will require a whole rethink of how the system works." Its computational form is his too: "Eventually we build a huge sparse matrix with all the synaptic connections and benefit from massively parallel computations." [RECORD §0.3, "Not specified or built yet"]. The record places this at the top at Byron's instruction and expressly not among §0's rules; it stands here as a direction and not as a rule — Claude's reading, and Byron's placing of it, September 17, 2026: it stays among the values rather than among §0.12's parked intentions because it is the one being taken up.*
 
 **0.12 The changes intended, and not made.** These are named here and nowhere else in this file; no clause is written from one, and when one is taken up it is specified whole, from §0 down.
-- Exploration generated at the synapse (§0.11), and with it the deprecation of θ and a hazard set by a neuron's fan-in. *Byron, September 17, 2026: "Theta should also be deprecated" — and, the same afternoon, 14:53 MDT, that the rewrite states the system as he has been running it, θ and its fan-in scaling included. [the quoted words are at `docs/rewrite-outline.md` §6.2, attributed to Byron there; RECORD §0.3 for "θ ignored"; `docs/rewrite-answers.md` §1 for the 14:53 counter]*
+- ~~Exploration generated at the synapse (§0.11)~~ — taken up September 24, 2026 (§7.5). What was named with it is not: θ stays, the neuron's spike being the comparison under the mechanism (§6.13), and a hazard set by the fan-out is a run option and not the rule (§7.7). *Byron, September 17, 2026: "Theta should also be deprecated" — and, the same afternoon, 14:53 MDT, that the rewrite states the system as he has been running it, θ and its fan-in scaling included. [the quoted words are at `docs/rewrite-outline.md` §6.2, attributed to Byron there; RECORD §0.3 for "θ ignored"; `docs/rewrite-answers.md` §1 for the 14:53 counter]*
 - A dopamine reward produced locally at a spike (§0.10).
 - A deterministic drive: one spike every REFRACTORY + LAG on each driven neuron in place of the Poisson rate drive. The interval was quoted in TARGET_ISI, which §7.4 took out with the shaping function, and is quoted in the hop since — Byron, September 18, 2026: "REFRACTORY+LAG". *Byron, September 17, 2026, 14:58 MDT: "Please include the Poisson drive as it ran." [`docs/rewrite-answers.md` §3]*
 - A signal's travel time drawn rather than fixed. §3.2 gives every connection the one hop $h = (\text{REFRACTORY} + \text{LAG})/2 = 2.55$ ms, and the arithmetic that keeps a two-hop return off a refractory boundary (§2.5, §6.12) is that one number's; a drawn hop makes each of those statements a probability, takes "spikes per hop" away from the hazard as its unit (§6.5, §7.2), and adds a consumer to the streams a seed fixes (§7.3, §12.6). Which stream it draws from, and whether a draw may fall below REFRACTORY and be dropped by §8.13, are open and Byron's. LAG stays at a very small value meanwhile. A signal still arrives whole and at an instant (§0.3): what a draw spreads is the population of signals, not the signal. *Byron, September 18, 2026, retiring TIME_CONSTANT_OF_TRANSMISSION as a name: "We keep the LAG at some very small value. Arrival times may eventually be stochastic."*
@@ -178,7 +180,7 @@ trace $x_{ij}$ (§1.6) and, under the leak, the moment that trace was last
 brought up to date; its stamp (§1.7); its note $B_{ij}$ (§1.8), which is the
 accumulator's bookkeeping and is written by nothing under the leak; and its
 score $e_{ij}$ (§1.9). Four pieces under the accumulator, five under the
-leak, and nothing else per synapse is a rule of this file. A checkpoint
+leak, and nothing else per synapse is a rule of this file. Exploration at the synapse (§7.5) adds nothing to the list: a synapse's decision is drawn on its source's state, and the ventured mark of §7.9 rides on the signal in flight and not on the synapse. A checkpoint
 carries all of it — the stamp, the trace with its moment, the note and the
 score — so a checkpoint may be written anywhere and still round-trip, and a
 run saved mid-epoch can be read afterwards for what its synapses had earned.
@@ -197,7 +199,7 @@ the target's potential with respect to this weight, exactly while the floor
 has not bitten: $V_j = \sum_i w_{ij} x_{ij}$, so $\partial V_j / \partial w_{ij} = x_{ij}$. It is cleared when the target spikes, when the floor
 bites, and when a run's epoch reset discharges the potential (§3.9) — the
 three events after which what the weights delivered is no longer the
-potential. Under the leak, which stays as a per-run option (TAU finite),
+potential. Under exploration at the synapse a run may instead have the trace count the ventured arrivals only, and it is then not the derivative (§8.17). Under the leak, which stays as a per-run option (TAU finite),
 the same quantity is the leaked sum $\sum_a e^{-(t - t_a)/\text{TAU}}$
 brought up to date lazily, which is why the synapse also keeps the moment
 its trace was last brought up to date.
@@ -210,7 +212,7 @@ carries" [RECORD §5.1, §6.7].*
 records the clock time of the last signal its target actually integrated
 along it, and nothing if it has carried none. A signal delivered while the
 target is refractory is integrated by nothing and does not move the stamp,
-though it is still recorded as delivered. It is what the quash reads (§10.1, a
+though it is still recorded as delivered. A ventured delivery (§7.9) moves the stamp as any signal does. It is what the quash reads (§10.1, a
 non-default) to find the synapses that carried a cycle.
 *Byron and Cedric, September 10, 2026 [RECORD §4.4, §6.4, §6.11].*
 
@@ -219,7 +221,7 @@ evidence accumulator an arrival stays open until its target spikes, so as
 each arrival is integrated the synapse adds $E_j$ to its note:
 $B_{ij} \mathrel{+}= E_j$. $E_j$ is not a count of expected spikes: it is
 the sum of the expectations posted at the target's decisions since its last
-spike. The
+spike. Under exploration at the synapse the sum the note takes is the target's gain $G_j$ of §8.16 in place of $E_j$, and the identity below is unchanged. The
 note is what lets the spike settle every open arrival in one operation,
 $e_{ij} \mathrel{+}= c_j x_{ij} - (x_{ij} E_j - B_{ij})$ (§8.11), and it
 is cleared with the trace at that spike. Under the leak there is no note:
@@ -269,7 +271,8 @@ written from it, and the synapse's learning stays what §8 says until it is.*
 - the time of its last spike $t^{\text{fired}}_j$ and of the spike before it; the number of spikes it has ever fired, and the number it had fired when the epoch began, whose difference is the count read (§5.10);
 - whether it has fired in the epoch so far, and whether the drive forced it in this epoch;
 - its rate memory $r_j$ (§2.6);
-- its per-decision expectation $\hat p_j$, the number of decisions it has made to date, $E_j$, and the credit its last decision left for the spike to settle (§8.6, §8.11).
+- its per-decision expectation $\hat p_j$, the number of decisions it has made to date, $E_j$, and the credit its last decision left for the spike to settle (§8.6, §8.11);
+- under exploration at the synapse (§7.5): its gain $G_j$ in place of $E_j$ and the credit (§8.16), and, if it is an output, its read synapse's ventured transmissions this epoch (§7.9).
 
 Its refractory state is not held: it is read from the time of its last spike (§2.5). *Engines:* every engine carries all of these per neuron, in the same neuron order. A checkpoint carries the state — the potential and its clock, the threshold and the floor as the run reached them, $\Delta_j$, the spike times and counts, $r_j$, $\hat p_j$, $n$ and $E_j$ — and recomputes what is a rule rather than a state, the hazard's scaling by the count (§12.10); the epoch-local flags are set by the epoch's reset (§3.9).
 *Claude's inventory of the state the clauses of this file require; the pieces are Byron's and Cedric's where the clauses that use them are [RECORD §0 notation, §5.1, §5.2, §6.7, §7].*
@@ -462,7 +465,7 @@ neuron, in neuron order, from the run's exploration stream (§7.3), after the
 floor has settled and before any neuron fires. Every neuron takes a draw
 whether it can use it or not, so the stream's position depends only on the
 count of neurons and the count of waves. Under the deterministic rule the
-width is not positive and nothing is drawn at any wave.
+width is not positive and nothing is drawn at any wave. Under exploration at the synapse (§7.5) the draws are one uniform per synapse, in edge order (§12.5), then one per output neuron for its read synapse (§7.9), in output order — at the same place in the wave, and whether or not each can be used, so the stream's position again depends only on counts.
 *Byron decided the escape noise, September 15, 2026, and its scaling by the
 count on September 16 [RECORD §5.2]. That the draw is one uniform per neuron
 per wave, in neuron order, is the record's statement of what the engines do
@@ -633,6 +636,9 @@ giving a neuron a role its zone does not (§0.1). PRESENTATION_TIME greater
 than INTERVAL is **refused** and not clipped (§0.5): a window past the horizon
 would schedule arrivals into an epoch that has already been read (§3.10).
 
+**5.4b The charged drive — a run option, specified September 24, 2026.** A run may name the drive **charged**. The arrivals are drawn as 5.4 draws them, from the network's stream and in the same order, at DRIVE_STEPS times the rate, and each delivers $\theta_i/\text{DRIVE\_STEPS}$ to the input neuron's potential, DRIVE_STEPS $= 3$, in place of forcing a spike: the input reaches its threshold about as often as it was fired before and spikes by the comparison (§6.13), its potential readable by its synapses between deliveries (§7.5). Nothing is driven at the epoch's moment (5.7), a delivery to a refractory neuron is dropped (§2.5), and the deliveries are external — they come along no synapse and count on no trace. A charged input carries the driven mark of 5.8 as a forced one does, so 8.1 skips its incoming synapses at the read. The Poisson forced drive of 5.4 stays the default.
+*The second toy's "potential" drive (`docs/synaptic-noise-toy2.py`; `docs/synaptic-escape-noise-2026-09-22.md` §7.11), under which an input's synapses whisper the pattern and a ventured trace has something to learn from, where a forced input sits at zero between its spikes and its synapses whisper as an off-input's do. Byron, September 24, 2026, carrying it as a run option and keeping the mark. §0.12's deterministic drive is a separate intention and stands. Specified September 24, 2026; the engines are brought to it under `docs/synapse-engine-plan-2026-09-23.md`, and until one carries it a run that asks for it is refused (§12.2).*
+
 *What the tail is, and what it is not.* After the window the input zone is
 undriven, which is not the same as silent: every neuron decides at every wave
 (§6.8) and an undriven neuron carries the hazard's rest rate (§7.2), so the
@@ -746,7 +752,7 @@ else. **It is the default read**, and the one every rule of this file is
 written on: where a clause says what is read, it means this. A rate follows
 from it and the epoch's length where a rule wants one,
 $1000\,n_j/\text{INTERVAL}$ in hertz, and what counts as a neuron being **on**
-belongs to the critic that asks (§9.5).
+belongs to the critic that asks (§9.5). Under exploration at the synapse the count is the output's spikes plus its read synapse's ventured transmissions this epoch (§7.9), and every clause that reads a count reads that sum.
 
 *The other reads are non-defaults, and a run asks for each by name* (§9.1's
 rule for a rule that does not run unless asked, applied to a read). They are
@@ -902,12 +908,15 @@ so the potential begins accumulating afresh (§2.2, §2.4) and the neuron keeps 
 A neuron may fire any number of times, the period permitting, and the hop is what permits it. Its own spike comes back to it only round a cycle, and §4.4 gives it none shorter than a reciprocal pair, so the earliest return is two hops — $2h = 10.2$ ms, a clear 5.2 ms past the wall (§3.2). Another neuron's spike, sent in the same wave, arrives LAG past the wall, which is the tightest arrival there is. Either may refire the neuron, and neither is the clock's accident: under this hop no arrival ever lands on a refractory boundary at all. Nothing scores a refire as such: since §7.4 no rule in force reads how long a neuron waited between its own spikes, and a refire is paid exactly as any other spike is, by what §8.4 posts at the decisions that led to it.
 *Byron and Cedric, from the beginning: this is a feedback control mechanism and a computational feature of the system. [RECORD §0, §5.3, §4.4]. The clause said, until September 18, 2026, that the two-hop return was "the return the shaping function pays most for"; with §7.4 out, no return is paid more than another.*
 
+**6.13 Under exploration at the synapse, the neuron's decision is the comparison.** When a run explores at the synapse (§7.5), every neuron fires iff $V_j(t) \ge \theta_j(t)$ and it is not refractory — §6.9, the deterministic rule word for word — at every wave as §6.8 says, and its own escape noise is off: every width $\Delta_j$ is 0 and ESCAPE_DELTA is not consulted. A run that asks for a neuron width and a synapse hazard together is **refused**, with this clause as the reason: the system explores by one thing (§7.1). The neuron keeps its threshold, its deterministic spike and reset (§6.11) and its refractory period (§2.5); what changes is who takes the chance. A forced neuron is §6.10's, unchanged, and a neuron with no width posts nothing at its decision — the decisions the rule scores are its synapses' (§8.16).
+*Byron, September 23, 2026, answering the fourth question of `docs/synaptic-escape-noise-2026-09-22.md` §7.9: "The neuron keeps its threshold and its deterministic spike." September 24, 2026, on both explorations together: refuse now, revisit if a measurement wants it. Specified September 24, 2026; the engines are brought to it under `docs/synapse-engine-plan-2026-09-23.md`, and until one carries it a run that asks for it is refused (§12.2).*
+
 ## 7. Exploration
 
-**7.1 The firing decision is the exploration.** The system explores by the neuron's own stochastic decision (§6.5) and by nothing else: nothing is added to any potential and no perturbation has to be recorded, because the decision that was taken is what the learning rule scores (§8). ESCAPE_DELTA sets how quiet silence can be: it is the one constant that says how much the system explores.
+**7.1 The firing decision is the exploration.** The system explores by the neuron's own stochastic decision (§6.5) — or, under exploration at the synapse, by its synapses' decisions (§7.5) — and by nothing else: nothing is added to any potential and no perturbation has to be recorded, because the decision that was taken is what the learning rule scores (§8). ESCAPE_DELTA sets how quiet silence can be: it is the one constant that says how much the system explores.
 *Byron, September 15, 2026: "Make the boredom stochastic and it is Williams's unit outright." What the decision is — Williams's Bernoulli semilinear unit with the noise in the threshold rather than on the potential, an escape-noise integrate-and-fire neuron — is Claude's reading of Williams §2, and is the record's [RECORD §5.2, §6.7].*
 
-**7.2 Boredom is a rate, not a deadline.** A neuron nobody talks to sits at rest, $s = -\theta_j$, and fires on its own at $e^{-1/\Delta}\sqrt{N_0/N}$ spikes per hop, from wherever its margin sits and without waiting on any clock. This is the whole of what turns silence into a spike in this specification, and it holds for a neuron with no incoming synapses as for any other (§6.1).
+**7.2 Boredom is a rate, not a deadline.** A neuron nobody talks to sits at rest, $s = -\theta_j$, and fires on its own at $e^{-1/\Delta}\sqrt{N_0/N}$ spikes per hop, from wherever its margin sits and without waiting on any clock. This is the whole of what turns silence into a spike in this specification, and it holds for a neuron with no incoming synapses as for any other (§6.1). Under exploration at the synapse a silent neuron does not fire on its own: its synapses whisper at $h_0\,\kappa_i$ spikes per hop (§7.6, §7.7), and a spontaneous spike arises only downstream, where whispers from many sources accumulate in a neuron with no leak until its threshold is crossed.
 *Byron, September 15, 2026, deciding that the hazard is the bored neuron and that nothing else is run on top of it: "The hazard is buying us what the bored clock was supposed to buy us, and much much more cleanly." [RECORD §5.2, §5.4]*
 
 **7.3 One stream, one order, in every engine.** The uniforms of §3.8 come from the run's exploration stream: one seeded stream of its own, which supplies the firing decisions and nothing else. A run has three, and no two share draws: this one; the network's own stream, which draws the wiring, the weights and the drive's arrival times (§4.8, §5.4); and the input stream, which draws the epoch's patterns (§5.9). A network whose width is positive must be run with one. Of the engines: each takes the same number of draws from that stream, in the same order, at the same point in the wave, and the Rust loop takes the Python stream's MT19937 state and hands it back, so a seed gives the same spikes whichever engine runs — the objects and Rust to the bit, the arrays exactly on the spikes and to a part in $10^9$ on continuous quantities (the platforms clause, §0).
@@ -960,7 +969,33 @@ constant of its own (§9.13). Neither clause is in force. [RECORD §0.2, §6.7]*
 
 ---
 
-*Two later changes, named here as intentions and not as clauses of this section. **Exploration at the synapse** — Byron, September 17, 2026, 06:05 MDT: "Computationally exploration noise can be generated at the synapses, and semantically this is clean: a SYNAPSE explores its own impulse response, rather than a NEURON exploring its impulse response!" — under which the exploring object and the credited object would be the same object, and the fan-in hazard would replace §6.5. Not specified and not built. And **deprecating $\theta$**, with the margin and the width then quoted from something other than the threshold. Until each is written as a clause, §6 and §7 as written are the rule in force.*
+**7.5 Exploration at the synapse — specified September 24, 2026, being built.** Below threshold, every synapse of a neuron takes its own chance. At every wave, after the floor has settled and after the wave's spikes are decided (§6.13), every synapse $i \to j$ whose source $i$ did not spike this wave decides — its source refractory or not (7.8). The spikes the synapse's hazard expects of it over the interval since $i$'s synapses last decided, or since $i$'s spike where that came later, are
+
+$$m_i(t) = \frac{\Delta t}{\text{hop}}\;\kappa_i\;h(u_i), \qquad u_i = \frac{\operatorname{clip}\big(V_i(t),\,0,\,\theta_i\big)}{\theta_i},$$
+
+the same $m$ for every synapse of $i$: $h$ is the hazard family of 7.6, $\kappa_i$ the scaling of 7.7, and $\Delta t$ never negative (§6.5). The synapse **escapes** iff its uniform (§3.8) is strictly below $P = 1 - e^{-m_i}$, computed as $-\operatorname{expm1}(-m_i)$ with $m_i$ capped at $10^3$, as §6.5 computes the neuron's. An escape delivers the synapse's weight to its target one hop later, as a spike's signal would (7.9), and leaves $V_i$ where it was. At threshold the source spikes and every synapse it has transmits (§6.13), so $u_i = 1$ never reaches a synapse decision. One exposure clock per source serves all its synapses, since they decide together on one $u_i$; it is the clock §2.1 already holds, whose neuron-side use §6.13 ends.
+*Byron, September 23, 2026, 03:31 MDT, stating the mechanism: "the synapse ESCAPES with probability density monotonically increasing as (min(max(V_pre,0),V_threshold)/V_threshold. At V_threshold and greater this is equal to 1, so the synapse 'fires' deterministically"; his answers of that morning, that $V_{\text{threshold}}$ is the neuron's and that an escape leaves $V_{\text{pre}}$ alone (`docs/synaptic-escape-noise-2026-09-22.md` §7.10); and September 24, 2026, choosing that a synapse decides at every wave, as neurons do today, over deciding only at the waves that reach its source. The continuous form — a rate on elapsed exposure rather than a toss per hop — is §6.5's carried over: the second toy decided once a hop, and Byron asked that time stay continuous. Specified September 24, 2026; the engines are brought to it under `docs/synapse-engine-plan-2026-09-23.md`, and until one carries it a run that asks for it is refused (§12.2).*
+
+**7.6 The hazard family and the rest hazard.** Two families, each $h_0$ at rest and one spike per hop at threshold, quoted per hop before the scaling of 7.7:
+
+- **loglinear**, $h(u) = h_0^{\,1-u}$ — the family today's neuron hazard belongs to, §6.5 being this with $h_0 = e^{-1/\Delta}$, clipped at zero potential and cut off at threshold;
+- **linear**, $h(u) = h_0 + (1 - h_0)\,u$ — Byron's statement read literally, rising in proportion to the potential.
+
+SYNAPSE_HAZARD_FAMILY names the family a run uses, loglinear unless the run says linear, and every engine carries both. SYNAPSE_HAZARD_REST $= h_0 = 0.01$ is the rest hazard: what a synapse of a source at zero potential speculates at, and so what a silent neuron's synapses whisper at (§7.2). With $h_0 = 0$ under the loglinear family no synapse speculates below threshold and the network is §6.9's deterministic one word for word. Once the engines carry this section it is the exploration in force by default, ESCAPE_DELTA's neuron width being 0 unless a run asks for the neuron rule of §6.5 instead (§6.13); until they do, §6.5 runs.
+*Byron, September 23, 2026, on the rest hazard: "To be determined through rigorous investigation." September 24, 2026, choosing both families as a run option with loglinear the default, and 0.01 — the one value inside every regime's plateau in the second toy's sweeps (`docs/synaptic-escape-noise-2026-09-22.md` §7.13; the four sweeps of September 23 tabled in `docs/synapse-engine-plan-2026-09-23.md` §6) — as its default, to be re-measured on mnist.*
+
+**7.7 The synapse hazard is scaled by the count, or by the fan-out.** Every hazard is scaled by $\kappa(N) = \sqrt{N_0/N}$ (§6.6), the synapse's included: $\kappa_i = \kappa(N)$ is the default. A run may instead scale by the source's fan-out, $\kappa_i = \kappa(N)/F_i$, $F_i$ the number of synapses $i$ has, so that a neuron's speculation per hop, summed over its synapses, does not grow with how many it has. SYNAPSE_HAZARD_SCALING names which, count unless the run says fan-out. The factor is a rule and not a state: recomputed at build and at resume, stored in no checkpoint (§12.10).
+*Byron, September 16, 2026, for the count (§6.6); September 24, 2026, choosing both as a run option with the count the default. The fan-out form is the record's $1/d$ per hop (RECORD §0.3), untested, and the two are one constant apart on any one goo.*
+
+**7.8 A refractory source's synapses whisper at rest.** A spike resets the source to zero and makes it refractory (§2.4, §2.5), and its synapses go on deciding at every wave of the period at $u_i = 0$, the rest hazard $h_0$: the synapse follows its source's potential and not its silence. The exposure a decision covers runs from the previous decision, or from the spike where that came later, and nothing suspends it. A spike is therefore followed by whispers at rest, not by quiet.
+*Byron, September 24, 2026, choosing this over the second toy's rule, under which a refractory source's synapses were suspended and resumed with the period's end (`docs/synaptic-escape-noise-2026-09-22.md` §7.11). The toy's numbers are therefore not this clause's, and the plan's §5 re-measures.*
+
+**7.9 A ventured signal, and the read synapse.** An escape schedules a signal one hop later (§3.5) carrying a **ventured** mark, and it is a signal in every other way: delivered whole at an instant (§0.3), dropped if its target is refractory (§8.13), floored with the wave's total (§6.2), integrated into the potential and the trace (§1.6, §8.17), and recorded on the stamp (§1.7). The mark rides on the signal in flight and on nothing else, and a checkpoint carries it with the signal (§12.9).
+
+Under exploration at the synapse every output neuron has one **read synapse**: an outgoing synapse to the read and to no neuron, which decides at every wave as any synapse does, on the output's own $u$, its draw taken after the network's synapses' (§3.8). Its ventured transmissions this epoch are added to the output's spikes in the count read (§5.10), so an output's speculation reaches the reward and the critic scores the sum. The read synapse delivers nothing, learns nothing and is credited nothing; it exists so that the output's incoming synapses can be — an output projects nowhere else on a goo with no hidden neurons, and §8.16 credits a synapse only through the decisions of its target's synapses.
+*The device is the second toy's (`docs/synaptic-escape-noise-2026-09-22.md` §7.11, "the read on transmissions"), without which the exact rule posts nothing to an output's fan-in. Byron, September 24, 2026, making it part of the mechanism rather than an option, and choosing that a ventured delivery moves the stamp as any signal does.*
+
+*Deprecating $\theta$, named here on September 17, 2026 as a later change, is not taken up: the neuron keeps its threshold (§6.13). The margin and the width of §6.4 stay quoted from it, and no clause is written from the deprecation.*
 
 ## 8. The learning rule
 
@@ -1019,7 +1054,7 @@ refuses a network without escape noise and says so rather than approximating:
 a decision that was not a draw has no probability to differentiate. Which
 eligibility runs is independent of what makes the firing decision — a run may
 name hebb on a network with escape noise, and then the decision is still a
-draw but is posted against the neuron's own expectation.
+draw but is posted against the neuron's own expectation. Under exploration at the synapse the decisions are the synapses', the eligibility is the hazard's and is posted as 8.16 says, and hebb, having no neuron decision to centre, is refused.
 *The hazard default is Claude's reading of the default Byron set September
 15, 2026, to be corrected in a word; the record's rule was "hazard under
 escape noise, else the ELIGIBILITY constant" [record §1.3, §6.7].*
@@ -1090,7 +1125,7 @@ I want to do" [record §6.7].)* $m = m_j(t')$ is the spikes the escape-noise
 hazard expects of $j$ over the interval this decision covers, exactly as the
 firing clause computes it [record §5.2]. The credits of the table are that
 interval's log-likelihood differentiated: $\partial m/\partial w_{ij} = (m/\Delta_j)\,x_{ij}$, and the $1/\Delta_j$ — the neuron's own width — is
-folded into LR, so one learning rate serves neurons of any width.
+folded into LR, so one learning rate serves neurons of any width. Under exploration at the synapse there is no width and nothing is folded: LR is quoted plain (8.16).
 
 **8.8 Hebb's credit at the spike — open, and a full unit until it is
 settled.** It is 1, where the hazard's credit discounts a spike that was
@@ -1149,7 +1184,7 @@ September 17, 2026 [record §6.7].*
 **8.14 What a checkpoint carries of this rule.** The round-trip itself is
 §12.9's. Of this rule: the weights; per neuron $\hat p_j$, the decisions to
 date and $E_j$; per synapse the trace and the time it was brought up to, and
-the note $B_{ij}$; the teacher's baseline $b$, LR, critic and eligibility;
+the note $B_{ij}$; the teacher's baseline $b$, LR, critic and eligibility; under exploration at the synapse, each neuron's gain $G_j$, each output's read count this epoch, the ventured mark on every signal in flight, and the settings of §7.6, §7.7 and 8.17;
 [record §6.7, §0.2]. The score since the last read is carried too
 (§1.5), so a checkpoint is not confined to a read. *Byron, September 17,
 2026: "a checkpoint should hold a synapse's score for analysis purposes."*
@@ -1165,6 +1200,18 @@ synapses and pays what the engine already accumulated. The object engine and
 the Rust loop agree to the bit; the array engine agrees within the tolerance
 the invariants clause names for it, summing a wave in matrix order. An
 engine that lacks the rule refuses the run and says so.
+
+**8.16 The single-spike rule at the synapses' decisions — specified September 24, 2026, being built.** Under exploration at the synapse (§7.5) the decisions are the synapses', and the rule of 8.4 is posted for them. At every wave, for every source $i$ whose $F_i$ synapses decided, $n_i$ of them escaping: each escape's credit is the hazard's, $c = m\,e^{-m}/(1 - e^{-m})$, each silent decision's expectation is $q = m$, with $m = m_i(t)$ of §7.5 — 8.4's hazard row, the decision being the synapse's rather than the neuron's and $F_i$ of them a wave instead of one — and the wave posts to every synapse $k \to i$ **into the source**
+
+$$e_{ki} \mathrel{+}= \big(n_i\,c - (F_i - n_i)\,m\big)\,x_{ki},$$
+
+$x_{ki}$ the trace of $k \to i$ (8.5, 8.17). The odds of an escape of $i \to j$ are set by $V_i$, which the synapses into $i$ built through their traces, so they are what its outcome credits; the escaping synapse's own weight $w_{ij}$ shapes no odds of its own and is credited, as today, through the decisions of $j$'s synapses and its trace $x_{ij}$. The entry's mean at every wave is zero, both branches having mean $m\,e^{-m}$ (8.3). The deterministic spike of §6.13 posts nothing: it is not a draw. There is no width, so nothing is folded into LR (8.7): the learning rate is quoted plain, and the mnist rate of 11.11 is to be re-found under this rule.
+
+The bookkeeping of 8.11 carries over with one substitution. Per neuron a running **gain** $G_j$ replaces $E_j$ and the credit: at each wave $G_j \mathrel{+}= n_j\,c - (F_j - n_j)\,m$; an arrival integrated on $k \to j$ notes $B_{kj} \mathrel{+}= G_j$; a settle — $j$'s spike, the floor, a forced spike, a discharge, and the read — posts $e_{kj} \mathrel{+}= x_{kj}\,G_j - B_{kj}$, clears $x$ and $B$, and restarts $G_j$ at 0, the read re-basing $B_{kj} \leftarrow x_{kj}\,G_j$ instead (§1.9). No loop over a fan-in runs at a decision (§1.8). Under the leak (8.12) the walk over the fan-in runs once a wave per source whose synapses decided. Nothing new is carried per synapse (§1.5).
+*Claude's derivation of September 23, 2026 (`docs/synaptic-escape-noise-2026-09-22.md` §7.9: Williams's rule credits whatever parameter shaped a draw's odds), settled by Byron's first answer of that morning — $V_{\text{threshold}}$ is the neuron's, so the local case does not arise — and the bookkeeping as proposed in `docs/synapse-engine-plan-2026-09-23.md` §1.8, taken up by Byron on September 24, 2026. The engines are held to each other on it (8.15). Specified September 24, 2026; the engines are brought to it under `docs/synapse-engine-plan-2026-09-23.md`, and until one carries it a run that asks for it is refused (§12.2).*
+
+**8.17 What the trace counts is a run option: every delivery, or the ventured ones.** TRACE $=$ all, the default: $x_{ij}$ counts every arrival $j$ integrated along $i \to j$, relayed with $i$'s spike or ventured by the synapse, and stays the derivative of the potential by the weight (§1.6, 8.5), so the rule is Williams's estimator. TRACE $=$ ventured: $x_{ij}$ counts the ventured arrivals only — a synapse that transmitted with its source's spike does not try to learn from it — while the potential takes every delivery. The trace is then not the derivative and the estimator is biased toward what was ventured; this clause says so, and a run that names it says so in its record. Nothing else of 8.4–8.16 changes.
+*Byron and Cedric's idea of September 23, 2026 (§1's closing note: "when the synapse fires deterministically, it does not try to learn at all"), measured that day in the second toy (`docs/synaptic-escape-noise-2026-09-22.md` §7.12) and in the four sweeps of September 23: under the file's forced drive it learns nothing, and under a charged input (5.4b) it costs about 0.03 and one weak seed in ten at its plateau. Byron, September 24, 2026, choosing every delivery as the default with ventured a named option.*
 
 ## 9. The teacher
 
@@ -1658,13 +1705,13 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 **12.6 One stream, one order.** Every draw a run makes comes from Python's MT19937 in one order. An engine outside Python takes that generator's state, draws the same uniforms in the same order at the same named point in the wave, and hands the state back, so Python's stream carries on from where the other engine left it. The draws are equal, not approximately equal.
 *Byron, September 14, 2026, refusing an engine that would have approximated them: "rules in authority.md must be implemented cross-platform." [record §6.15]*
 
-**12.7 A seed is the whole run.** One seed number fixes three streams, and there are no others: the network's own stream, which draws the wiring, the weights and the drive's Poisson arrival times; the exploration stream, seeded from the same number, which draws one uniform per neuron per wave and is the stream an engine outside Python takes over and hands back (12.6); and the input stream, separate, which draws the epoch's patterns (11.13) so that a seed shows the same patterns in the same order to any network however it was built.
+**12.7 A seed is the whole run.** One seed number fixes three streams, and there are no others: the network's own stream, which draws the wiring, the weights and the drive's Poisson arrival times; the exploration stream, seeded from the same number, which draws one uniform per neuron per wave — or, under exploration at the synapse, one per synapse and one per output (§3.8) — and is the stream an engine outside Python takes over and hands back (12.6); and the input stream, separate, which draws the epoch's patterns (11.13) so that a seed shows the same patterns in the same order to any network however it was built.
 *Byron and Cedric, standing; the input stream separated by Byron, September 14, 2026 [record §4.5, §7].*
 
 **12.8 Agreement is proven on the configuration, not carried over.** The engines are compared on the container, the wiring, the drive and the read a run will actually use, before that run is read as evidence about anything.
 *Claude's reading of two cases the record holds, confirmed by Byron, September 17, 2026 [record §5.2, §6.15, §7].*
 
-**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, and each synapse's open-arrival note. It also carries the state of all three of the run's streams and the reinforcement baseline, which is what §12.11's exactness rests on. It round-trips in every engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly. *Of the engines:* an engine outside Python takes the exploration stream's state and hands it back (§12.6), so the state a checkpoint stores is the one the next draw comes from whichever engine ran the epoch before it.
+**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, and each synapse's open-arrival note; under exploration at the synapse, each neuron's gain, each output's read count this epoch, the ventured marks on the signals in flight, and the settings of §7.6, §7.7 and §8.17 (§8.14). It also carries the state of all three of the run's streams and the reinforcement baseline, which is what §12.11's exactness rests on. It round-trips in every engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly. *Of the engines:* an engine outside Python takes the exploration stream's state and hands it back (§12.6), so the state a checkpoint stores is the one the next draw comes from whichever engine ran the epoch before it.
 *Byron and Cedric, standing; extended September 17, 2026 with the single-spike rule's state [record §7, §0.2].*
 
 **12.10 A rule is recomputed, a state is stored.** What a checkpoint can derive from the network's settings is derived — the escape scale is recomputed from the count, since it is a rule and not a state — and what the run moved is stored as the run left it, thresholds and floors included.
@@ -1718,7 +1765,7 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 
 | constant | value | what it fixes | owned by |
 |---|---|---|---|
-| INPUT_DRIVE | rate | how a bit becomes spikes: an independent Poisson process drives each input neuron across the presentation window | §5 [record §1.2, §4.3] |
+| INPUT_DRIVE | rate | how a bit becomes spikes: an independent Poisson process drives each input neuron across the presentation window; charged, a run option, delivers a third of the threshold per arrival instead (5.4b) | §5 [record §1.2, §4.3; 5.4b, Byron, September 24, 2026] |
 | PRESENTATION_TIME | INTERVAL | how far into the epoch the drive runs; the default is the whole of it, and more than INTERVAL is refused | §5.4a [Byron, September 18, 2026] |
 | INPUT_CV | 0.6 | how that drive is specified: the coefficient of variation of the train it produces, from which the rate follows | §5 [record §1.2, §4.3] |
 | INPUT_RATE, INPUT_RATE_OFF | 0.133, 0 /ms | the same drive in the other coordinate: the rates of a bit-1 and a bit-0 neuron's process | §5 [record §1.2] |
@@ -1765,6 +1812,15 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 **Constants no clause yet claims,** named here so they are decided rather than lost: PROBLEM (the default problem, still "reversal" in the code, a problem the specification does not carry — it becomes mnist or it goes); ACROSS (8 — the zone width a goo takes when no problem names one; mnist names its own); WEIGHT_EPSILON (0.001 — under `--positive-weights` the weight range becomes [ε, 1], a network with no inhibition); RULE (the record's four rules are one now that only the reinforce rule survives); TARGET (the record's default is the reversed pattern, whose problem is dropped; mnist's target is the label, 11.10); LATE (what a signal arriving after its target fired earns — it does not apply under either surviving eligibility).
 
 ---
+
+**Exploration at the synapse (§7.5–§7.9, §8.16–§8.17, 5.4b) — specified September 24, 2026, being built**
+| constant | value | what it fixes | owned by |
+|---|---|---|---|
+| SYNAPSE_HAZARD_REST | 0.01 | the rest hazard $h_0$, per hop before the scaling: what a synapse of a source at zero potential speculates at; 0 under the loglinear family is the deterministic network | §7.6 [Byron, September 24, 2026] |
+| SYNAPSE_HAZARD_FAMILY | loglinear | $h(u) = h_0^{1-u}$; a run may say linear, $h_0 + (1 - h_0)\,u$ | §7.6 [Byron, September 24, 2026] |
+| SYNAPSE_HAZARD_SCALING | count | $\kappa(N)$ on every synapse hazard; a run may say fan-out, $\kappa(N)/F_i$ | §7.7 [Byron, September 24, 2026] |
+| TRACE | all | what a trace counts: every delivery, or the ventured ones alone | §8.17 [Byron, September 24, 2026] |
+| DRIVE_STEPS | 3 | under the charged drive, the deliveries that take an input from rest to threshold, each θ/DRIVE_STEPS, at DRIVE_STEPS times the rate | 5.4b [Byron, September 24, 2026] |
 
 ## Appendix B — building the engine
 
