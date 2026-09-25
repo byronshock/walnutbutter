@@ -830,11 +830,15 @@ class Network:
         §8.16's entry for it: a c - (F - a) m, c = m e^-m / (1 - e^-m), times
         rho~ = (1 - h0) / h(u) under the linear family -- into the gain under
         the evidence accumulator, the arrivals settling it (x G - B), and under
-        the leak by one walk over the source's fan-in. Where rho~ overflows --
-        h0 = 0 and a potential leaked below the normal range, h underflowing
-        with it -- the entry in the engine note's form is not finite, and the
-        run is refused (§12.2). The escapes are returned in edge order for the
-        schedule to push one hop later, after the wave's spikes (§3.6).
+        the leak by one walk over the source's fan-in. Under the linear family
+        below m's cap the engine note writes it so that no silent decision
+        divides by h, a ((1 - h0) / h c) - (F - a) (dt / hop kappa (1 - h0)),
+        the escapes' part only where a > 0, dt the exposure m was taken over;
+        at the cap rho~ multiplies the finished entry. An entry still not
+        finite -- an escape where h has underflowed, h0 = 0 and a potential
+        leaked below the normal range, rho~ overflowing with it -- is refused
+        (§12.2). The escapes are returned in edge order for the schedule to
+        push one hop later, after the wave's spikes (§3.6).
         """
         draws, number, time = self._draws, wave.number, wave.time
         rest = self.synapse_hazard_rest
@@ -851,6 +855,7 @@ class Network:
             if not synapses:
                 neuron.exposed_since = time  # one clock per source, brought to now though nothing decides on it
                 continue
+            since = neuron.exposed_since  # dt's start, for the linear entry's silent part (§8.16)
             m, h = neuron.synapse_expected(time, rest, linear)
             chance = -math.expm1(-m)
             escapes = 0
@@ -864,14 +869,24 @@ class Network:
                 escapes += 1
             neuron.exposed_since = time
             if m > 0.0 and neuron.potential_at(time) > 0.0:  # §8.16: posted only while V_i > 0, and c only where m > 0
-                entry = escapes * (m * math.exp(-m) / -math.expm1(-m)) - (synapses - escapes) * m
-                if linear:
-                    entry = (1.0 - rest) / h * entry  # rho~, the log-derivative the linear family leaves unfolded
+                credit = m * math.exp(-m) / -math.expm1(-m)
+                if not linear:
+                    entry = escapes * credit - (synapses - escapes) * m
+                else:
+                    if m < 1e3:  # rho~ m is exactly dt / hop kappa (1 - h0): no silent decision divides by h
+                        elapsed = time - since
+                        if elapsed < 0.0:
+                            elapsed = 0.0  # dt as m took it, never negative (§6.5)
+                        silent = (synapses - escapes) * (elapsed / Neuron.hop * neuron.synapse_scale * (1.0 - rest))
+                        # the escapes' part only where a > 0, so an underflowed h never makes 0 * inf
+                        entry = escapes * ((1.0 - rest) / h * credit) - silent if escapes > 0 else -silent
+                    else:  # at the cap rho~, the log-derivative the linear family leaves unfolded, on the entry
+                        entry = (1.0 - rest) / h * (escapes * credit - (synapses - escapes) * m)
                     if not math.isfinite(entry):  # h > 0 wherever m > 0, so the division itself is always defined
-                        raise ValueError("under the linear family rho~ = (1 - h0) / h multiplies the entry, and where h "
-                                         "has underflowed -- h0 = 0, and a source's potential leaked below the normal "
-                                         "range -- it overflows and the entry is not finite: the run is refused rather "
-                                         "than post it (§8.16, §12.2)")
+                        raise ValueError("under the linear family an escape's credit is multiplied by rho~ = (1 - h0) "
+                                         "/ h, and where h has underflowed -- h0 = 0, and a source's potential leaked "
+                                         "below the normal range -- it overflows and the entry is not finite: the run "
+                                         "is refused rather than post it (§8.16, §12.2)")
                 if tau == math.inf:
                     neuron.gain += entry  # after this wave's arrivals have noted (§8.16)
                 else:

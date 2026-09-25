@@ -84,11 +84,18 @@ def goo(count: int = 24, seed: int = 3, **kw) -> Goo:
     return g
 
 
-def entry(m: float, escapes: int, synapses: int, h: float, family: str, rest: float = C.SYNAPSE_HAZARD_REST) -> float:
-    """§8.16's entry in its engine note's form: c only where m > 0, a c - (F - a) m, and rho~ on the finished entry."""
+def entry(m: float, escapes: int, synapses: int, h: float, family: str, dt: float, kappa: float,
+          rest: float = C.SYNAPSE_HAZARD_REST) -> float:
+    """§8.16's entry in its engine note's form: c only where m > 0, a c - (F - a) m; under the linear family, below m's
+    cap, a ((1 - h0) / h c) - (F - a) (dt / hop kappa (1 - h0)), the escapes' part only where a > 0 -- dt the exposure m
+    was taken over, kappa the source's kappa_i -- and at the cap rho~ = (1 - h0) / h on the finished entry."""
     credit = m * math.exp(-m) / -math.expm1(-m)
-    posted = escapes * credit - (synapses - escapes) * m
-    return (1.0 - rest) / h * posted if family == "linear" else posted
+    if family != "linear":
+        return escapes * credit - (synapses - escapes) * m
+    if m < 1e3:
+        silent = (synapses - escapes) * (dt / Neuron.hop * kappa * (1.0 - rest))
+        return escapes * ((1.0 - rest) / h * credit) - silent if escapes > 0 else -silent
+    return (1.0 - rest) / h * (escapes * credit - (synapses - escapes) * m)
 
 
 # --- the settings -------------------------------------------------------------------------------------------------
@@ -314,7 +321,8 @@ def test_a_hand_checked_chain(family):
     update_rates(net)
     assert c.rate < rate  # the rate memory reads the output's own spikes, and it has none (§2.6, §5.10)
     assert a.exposed_since == b.exposed_since == c.exposed_since == T0  # one clock a source; B's from its spike (§7.5)
-    assert a.gain == entry(m, 1, 1, h, family) != 0.0 and b.gain == c.gain == 0.0
+    assert a.gain == entry(m, 1, 1, h, family, T0 - (T0 - Neuron.hop), a.synapse_scale) != 0.0
+    assert b.gain == c.gain == 0.0
     assert ab.score == 0.0  # the escape of A -> B credits the synapses into A, not A -> B itself (§8.16)
     # one hop on: the relayed signal is summed first; B is refractory, so the ventured one is dropped, recorded as delivered
     (wave,) = step(net, now=T0 + Neuron.hop, until=T0 + 1.5 * Neuron.hop)
@@ -347,8 +355,13 @@ def test_an_output_posts_with_its_read_synapse_among_its_decisions(family):
         net.propagate(inputs={b: 0.0}, now=T0, until=T0 + 1.0)
         assert (c.read_count, c.spikes) == (1 if read == 0.0 else 0, 0)
         assert [ventured for _, _, ventured in net.schedule.pending(marks=True)] == ([True] if toward_a == 0.0 else [])
-        posted = entry(m, escapes, 2, h, family)
+        posted = entry(m, escapes, 2, h, family, T0 - (T0 - Neuron.hop), c.synapse_scale)
         assert c.gain == posted != 0.0 and a.gain == b.gain == 0.0  # A and B decided at V = 0 and post nothing
+        # the engine note's linear form is rho~ times a c - (F - a) m, rewritten: the same entry to rounding (§8.16)
+        credit = m * math.exp(-m) / -math.expm1(-m)
+        folded = escapes * credit - (2 - escapes) * m
+        assert posted == pytest.approx((1.0 - C.SYNAPSE_HAZARD_REST) / h * folded if family == "linear" else folded,
+                                       rel=1e-12)
         net.settle_scores()
         assert (bc.score, bc.noted, bc.trace, c.gain) == (posted, posted, 1.0, posted)
 
@@ -364,7 +377,7 @@ def test_a_whisper_s_credit_keeps_its_precision(family):
     net.explore_rng = Stream([1.0, 0.0, 1.0])
     net.propagate(inputs={c: 0.0}, now=T0, until=T0 + 1.0)
     assert [ventured for _, _, ventured in net.schedule.pending(marks=True)] == [True]
-    assert b.gain == entry(m, 1, 1, h, family) and a.gain == c.gain == 0.0
+    assert b.gain == entry(m, 1, 1, h, family, T0 - (T0 - Neuron.hop), b.synapse_scale) and a.gain == c.gain == 0.0
 
 
 def test_a_ventured_arrival_is_a_signal_in_every_other_way():
@@ -463,7 +476,8 @@ def test_under_the_leak_the_walk_posts_on_the_leaked_trace_and_the_decayed_poten
             net.explore_rng = Stream([1.0, draw, 1.0])
             net.propagate(inputs={c: 0.0}, now=T0, until=T0 + 1.0)
             assert [ventured for _, _, ventured in net.schedule.pending(marks=True)] == [True] * escapes
-            assert ab.score == entry(m, escapes, 1, h, family) * 1.0 * math.exp(-(T0 - (T0 - 2.0)) / 2.0) != 0.0
+            posted = entry(m, escapes, 1, h, family, T0 - (T0 - Neuron.hop), escape_scale(3))
+            assert ab.score == posted * 1.0 * math.exp(-(T0 - (T0 - 2.0)) / 2.0) != 0.0
             assert (ab.trace, ab.trace_at, b.gain) == (1.0, T0 - 2.0, 0.0)  # the walk moves no trace, and there is no gain
     finally:
         Neuron.tau = was

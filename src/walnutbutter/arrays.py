@@ -626,10 +626,12 @@ class ArrayNetwork(Network):
         wave's held in edge order (§3.6); an output's read synapse decides with them, its uniform after every edge's, and
         its escape counts toward the output's read at this wave. Where V > 0 and m > 0 the wave posts §8.16's entry,
         a c - (F - a) m with c = m e^-m / -expm1(-m) and F - a an integer, times (1 - h0) / h under the linear family:
-        into the gain under the evidence accumulator, and under the leak by one walk over the source's fan-in; an entry
-        that is not finite, rho~ overflowing where h has underflowed, is refused as the objects refuse it (§12.2). Every
-        other source's one exposure clock is brought to now, F_i = 0 included (§7.5): a spike's own was, at the spike
-        (§7.8)."""
+        into the gain under the evidence accumulator, and under the leak by one walk over the source's fan-in. Under the
+        linear family below m's cap it is the engine note's a ((1 - h0) / h c) - (F - a) (dt / hop kappa (1 - h0)), the
+        escapes' part only where a > 0, so no silent decision divides by h; at the cap (1 - h0) / h multiplies the
+        finished entry. An entry still not finite, an escape's rho~ overflowing where h has underflowed, is refused as
+        the objects refuse it (§12.2). Every other source's one exposure clock is brought to now, F_i = 0 included
+        (§7.5): a spike's own was, at the spike (§7.8)."""
         n, e = len(self.potential), len(self.source)
         deciding = ~fired
         standing = self.potential_at(time)
@@ -638,7 +640,8 @@ class ArrayNetwork(Network):
         linear = self.synapse_hazard_family == "linear"
         u = np.minimum(np.maximum(standing, 0.0), threshold) / threshold
         h = rest + (1.0 - rest) * u if linear else rest ** (1.0 - u)
-        m = np.minimum(np.maximum(time - self.exposed_since, 0.0) / Neuron.hop * self.synapse_scale_v * h, 1e3)
+        elapsed = np.maximum(time - self.exposed_since, 0.0)  # dt, never negative (§6.5); the linear entry reads it too
+        m = np.minimum(elapsed / Neuron.hop * self.synapse_scale_v * h, 1e3)
         chance = -np.expm1(-m)
         escaped = deciding[self.source] & (uniforms[self._edge_draw] < chance[self.source])
         readers = self._readers
@@ -649,15 +652,26 @@ class ArrayNetwork(Network):
         posting = deciding & (self._synapses > 0) & (m > 0.0) & (standing > 0.0)  # §8.16: only while V_i > 0, c where m > 0
         if posting.any():
             mp, a = m[posting], escapes[posting]
-            entry = a * (mp * np.exp(-mp) / -np.expm1(-mp)) - (self._synapses[posting] - a) * mp
-            if linear:
+            credit = mp * np.exp(-mp) / -np.expm1(-mp)
+            if not linear:
+                entry = a * credit - (self._synapses[posting] - a) * mp
+            else:
+                hp, quiet = h[posting], self._synapses[posting] - a
+                escaping, capped = a > 0, mp >= 1e3
                 with np.errstate(over="ignore", invalid="ignore"):  # refused below, as the objects refuse it
-                    entry = (1.0 - rest) / h[posting] * entry  # rho~, the log-derivative the linear family leaves unfolded
+                    # below the cap rho~ m is exactly dt / hop kappa (1 - h0): no silent decision divides by h
+                    silent = quiet * (elapsed[posting] / Neuron.hop * self.synapse_scale_v[posting] * (1.0 - rest))
+                    entry = -silent
+                    # the escapes' part only where a > 0, so an underflowed h never makes 0 * inf
+                    entry[escaping] = a[escaping] * ((1.0 - rest) / hp[escaping] * credit[escaping]) - silent[escaping]
+                    # at the cap rho~, the log-derivative the linear family leaves unfolded, on the finished entry
+                    folded = a[capped] * credit[capped] - quiet[capped] * mp[capped]
+                    entry[capped] = (1.0 - rest) / hp[capped] * folded
                 if not np.isfinite(entry).all():
-                    raise ValueError("under the linear family rho~ = (1 - h0) / h multiplies the entry, and where h has "
-                                     "underflowed -- h0 = 0, and a source's potential leaked below the normal range -- "
-                                     "it overflows and the entry is not finite: the run is refused rather than post it "
-                                     "(§8.16, §12.2)")
+                    raise ValueError("under the linear family an escape's credit is multiplied by rho~ = (1 - h0) / h, "
+                                     "and where h has underflowed -- h0 = 0, and a source's potential leaked below the "
+                                     "normal range -- it overflows and the entry is not finite: the run is refused "
+                                     "rather than post it (§8.16, §12.2)")
             if Neuron.tau == math.inf:
                 self.gain[posting] += entry  # after this wave's arrivals have noted (§8.16)
             else:  # the leak (§8.12): the walk, once a wave per posting source

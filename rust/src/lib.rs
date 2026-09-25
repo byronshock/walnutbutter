@@ -1352,9 +1352,12 @@ impl Engine {
     ///
     /// Where the source's potential is above zero and m > 0 the wave posts §8.16's entry for it, a c - (F - a) m with
     /// c = m e^-m / (1 - e^-m), times rho~ = (1 - h0) / h(u) under the linear family: into the gain under the
-    /// evidence accumulator, and under the leak by one walk over the source's fan-in (§8.12). Where rho~ overflows --
-    /// h0 = 0 and a potential leaked below the normal range, h underflowing with it -- the entry in the engine note's
-    /// form is not finite, and the run is refused (§12.2), as the object engine refuses it.
+    /// evidence accumulator, and under the leak by one walk over the source's fan-in (§8.12). Under the linear family
+    /// below m's cap the engine note writes it so that no silent decision divides by h, a ((1 - h0) / h c) - (F - a)
+    /// (dt / hop kappa (1 - h0)), the escapes' part only where a > 0, dt the exposure m was taken over; at the cap rho~
+    /// multiplies the finished entry. An entry still not finite -- an escape where h has underflowed, h0 = 0 and a
+    /// potential leaked below the normal range, rho~ overflowing with it -- is refused (§12.2), as the object engine
+    /// refuses it.
     #[inline(never)]
     fn decide_synapses(&mut self, now: f64) -> PyResult<()> {
         let wave = self.wave_no as i64;
@@ -1371,8 +1374,9 @@ impl Engine {
                 continue;
             }
             let potential = self.potential_at(i, now);
-            let (m, h) = synapse_expected(potential, self.threshold[i], now - self.exposed_since[i], hop,
-                                          self.synapse_scale[i], rest, rest_power, linear);
+            let elapsed = now - self.exposed_since[i]; // dt, clamped where m takes it; the linear entry reads it too
+            let (m, h) = synapse_expected(potential, self.threshold[i], elapsed, hop, self.synapse_scale[i], rest,
+                                          rest_power, linear);
             let chance = -(-m).exp_m1();
             let mut escapes: u64 = 0;
             for k in lo..hi {
@@ -1389,17 +1393,31 @@ impl Engine {
             self.exposed_since[i] = now;
             if m > 0.0 && potential > 0.0 {
                 // §8.16: posted only while V_i > 0, and c only where m > 0
-                let mut entry = escapes as f64 * (m * (-m).exp() / -(-m).exp_m1()) - (synapses - escapes) as f64 * m;
-                if linear {
-                    entry = (1.0 - rest) / h * entry; // rho~, the log-derivative the linear family leaves unfolded
+                let credit = m * (-m).exp() / -(-m).exp_m1();
+                let entry = if !linear {
+                    escapes as f64 * credit - (synapses - escapes) as f64 * m
+                } else {
+                    let entry = if m < 1e3 {
+                        // rho~ m is exactly dt / hop kappa (1 - h0): no silent decision divides by h
+                        let elapsed = if elapsed < 0.0 { 0.0 } else { elapsed }; // dt as m took it (§6.5)
+                        let exposure = elapsed / hop * self.synapse_scale[i] * (1.0 - rest);
+                        let silent = (synapses - escapes) as f64 * exposure;
+                        // the escapes' part only where a > 0, so an underflowed h never makes 0 * inf
+                        if escapes > 0 { escapes as f64 * ((1.0 - rest) / h * credit) - silent } else { -silent }
+                    } else {
+                        // at the cap rho~, the log-derivative the linear family leaves unfolded, on the finished entry
+                        (1.0 - rest) / h * (escapes as f64 * credit - (synapses - escapes) as f64 * m)
+                    };
                     if !entry.is_finite() {
                         return Err(PyValueError::new_err(
-                            "under the linear family rho~ = (1 - h0) / h multiplies the entry, and where h has \
-                             underflowed -- h0 = 0, and a source's potential leaked below the normal range -- it \
-                             overflows and the entry is not finite: the run is refused rather than post it (§8.16, §12.2)",
+                            "under the linear family an escape's credit is multiplied by rho~ = (1 - h0) / h, and \
+                             where h has underflowed -- h0 = 0, and a source's potential leaked below the normal range \
+                             -- it overflows and the entry is not finite: the run is refused rather than post it (§8.16, \
+                             §12.2)",
                         ));
                     }
-                }
+                    entry
+                };
                 if self.tau.is_infinite() {
                     self.gain[i] += entry; // after this wave's arrivals have noted (§8.16)
                 } else {

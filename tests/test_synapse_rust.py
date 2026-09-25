@@ -10,8 +10,8 @@ goo 455 on mnist's configuration (--hidden-neurons 0) over {rate, charged} x {al
 the fan-out scaling and a finite TAU among them, learning off and on, and the run options that move under the mode:
 thresholds moved by homeostasis and un-sticking, the quash, a rest hazard other than the default and DRIVE_STEPS other
 than 3. Waves built by hand hold what no drawn run is sure to: a charge and a signal in one wave, a threshold moved
-while a charge is in flight, an output zone out of index order with a neuron at two places. Skipped when the extension
-is not built, like every Rust test (CI does not build it).
+while a charge is in flight, an output zone out of index order with a neuron at two places, and the engine note's entry
+where a and F - a scale inexactly. Skipped when the extension is not built, like every Rust test (CI does not build it).
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import math
 import random
+import sys
 from pathlib import Path
 
 import pytest
@@ -378,10 +379,11 @@ def test_ventured_signals_in_flight_round_trip_through_the_queue():
 # the same way in both engines -- the same preset potentials, the same events queued, the same stream -- and run.
 
 
-def _queued(potentials, events, seed=2, weight=None, stream=5, **settings):
+def _queued(potentials, events, seed=2, weight=None, stream=5, adjust=None, **settings):
     """goo 60 under the charged drive twice, the objects' and a twin for the engine, each neuron at `potentials` (by
     engine index), and `events` -- (time, kind, payload), a signal's payload its edge and a charge's its neuron -- in
-    the objects' schedule and the engine's queue, both given the same stream; `settings` set_exploration's. Returns
+    the objects' schedule and the engine's queue, both given the same stream, a seed or a random.Random whose state
+    each takes; `adjust(mesh)`, if given, run on each before the engine is built; `settings` set_exploration's. Returns
     (g, engine, neurons, edges)."""
     g, twin = (goo(seed=seed, weight=weight, drive="charged", **settings) for _ in range(2))
     neurons, index = fast.flatten(g)[:2]
@@ -389,15 +391,37 @@ def _queued(potentials, events, seed=2, weight=None, stream=5, **settings):
     for mesh in (g, twin):
         for i, v in potentials.items():
             list(mesh.all_neurons())[i].potential = v
-    engine, _, _ = fast.build(twin, explore_rng=random.Random(stream),
-                              pending_events=[(t, k, p, False) for t, k, p in events])
+        if adjust is not None:
+            adjust(mesh)
+
+    def fresh():
+        rng = random.Random(stream if isinstance(stream, int) else None)
+        if not isinstance(stream, int):
+            rng.setstate(stream.getstate())
+        return rng
+
+    engine, _, _ = fast.build(twin, explore_rng=fresh(), pending_events=[(t, k, p, False) for t, k, p in events])
     for t, k, p in events:
         if k == EXTERNAL:
             g.schedule.charge(neurons[p], g._drive_steps(), t)
         else:
             g.schedule.signal(edges[p], t)
-    g.explore_rng = random.Random(stream)
+    g.explore_rng = fresh()
     return g, engine, neurons, edges
+
+
+def _zero_at(*places: int, seed: int = 5) -> random.Random:
+    """A stream whose uniform k is 0.0 exactly, for every k of `places`, each below 312: CPython's MT19937 hands out its
+    state words tempered, the tempering takes 0 to 0, and random() is two words, ((a >> 5) 2^26 + (b >> 6)) / 2^53 -- so
+    a state read from its first word on, with words 2k and 2k + 1 zero, gives 0 as its uniform k (§12.6), whose draw is
+    below any chance above 0 (§7.5). The objects and the engine load it as they load any stream."""
+    rng = random.Random(seed)
+    version, words, gauss = rng.getstate()
+    key = list(words[:-1])
+    for k in places:
+        key[2 * k] = key[2 * k + 1] = 0
+    rng.setstate((version, tuple(key) + (0,), gauss))
+    return rng
 
 
 def _run(g, engine, until, neurons):
@@ -492,6 +516,68 @@ def test_a_charge_takes_the_threshold_its_input_holds_when_it_lands():
     assert mine == theirs and objects == rust == list(other.potentials()) and rust[a] == moved[a] / g._drive_steps()
 
 
+def test_the_entry_is_the_engine_note_s_form_where_a_and_f_minus_a_scale_inexactly():
+    """§8.16's engine note, under the linear family below m's cap: c = m * exp(-m) / -expm1(-m) computed first, and the
+    entry a * ((1 - h0) / h * c) - (F - a) * (dt / hop * kappa * (1 - h0)), F - a an integer -- the objects' gain and the
+    engine's, to the bit, at a = 3 and an F - a that is no power of 2, where scaling by either is not exact: at a
+    moment and a potential where the note's form parts from the escapes' part taken left to right, a * (1 - h0) / h * c,
+    from the silent part taken left to right, (F - a) * dt / hop * kappa * (1 - h0), or through rho~,
+    (F - a) * ((1 - h0) / h * m), and from rho~ on the finished entry, (1 - h0) / h * (a * c - (F - a) * m). A hidden
+    source of goo 60 under the fan-out scaling holds its potential under the evidence accumulator, its clock at 0; a
+    charge lands on an input, and at its wave the source's first three synapses escape on a stream whose uniforms for
+    them are 0 (_zero_at), and the rest do not, their uniforms at or above the chance."""
+    Neuron.tau = math.inf
+    rest, escaping = 0.05, 3
+    probe = goo(seed=2, weight=0.02, drive="charged", h0=rest, family="linear", scaling="fan-out")
+    neurons, index = fast.flatten(probe)[:2]
+    edges = [c for n in neurons for c in n.outgoing]
+    inputs, outputs = {index[n] for n in probe.input_row()}, {index[n] for n in probe.output_row()}
+    assert all(n.exposed_since == 0.0 for n in neurons)  # every clock at 0, so a wave at t exposes each source for t
+    others = ("escapes left to right", "silent left to right", "silent through rho~", "folded")
+
+    def entry_of(i, v, dt, form="note"):
+        n = neurons[i]
+        quiet, kappa = len(n.outgoing) - escaping, n.synapse_scale
+        h = rest + (1.0 - rest) * (min(max(v, 0.0), n.threshold) / n.threshold)
+        m = min(dt / Neuron.hop * kappa * h, 1e3)
+        c = m * math.exp(-m) / -math.expm1(-m)
+        silent = quiet * (dt / Neuron.hop * kappa * (1.0 - rest))
+        return {"note": escaping * ((1.0 - rest) / h * c) - silent,
+                "escapes left to right": escaping * (1.0 - rest) / h * c - silent,
+                "silent left to right": escaping * ((1.0 - rest) / h * c) - quiet * dt / Neuron.hop * kappa * (1.0 - rest),
+                "silent through rho~": escaping * ((1.0 - rest) / h * c) - quiet * ((1.0 - rest) / h * m),
+                "folded": (1.0 - rest) / h * (escaping * c - quiet * m), "chance": -math.expm1(-m)}[form]
+
+    def stream_for(i):
+        """The stream whose uniforms for source i's first three synapses are 0, their places in edge order (§3.8)."""
+        first = edges.index(neurons[i].outgoing[0])
+        return _zero_at(first, first + 1, first + 2)
+
+    def fits(i, v, dt, drawn):
+        return (all(u >= entry_of(i, v, dt, "chance") for u in drawn[escaping:])
+                and all(entry_of(i, v, dt) != entry_of(i, v, dt, form) for form in others))
+
+    def candidates():
+        for i, n in enumerate(neurons):
+            if i in inputs or i in outputs or len(n.outgoing) - escaping < 3:
+                continue
+            stream, first = stream_for(i), edges.index(n.outgoing[0])
+            drawn = [stream.random() for _ in range(first + len(n.outgoing))][first:]
+            assert drawn[:escaping] == [0.0] * escaping  # the premise
+            yield from ((i, n.threshold * k / 100, 3.0 + j / 64) for j in range(64) for k in range(1, 100)
+                        if fits(i, n.threshold * k / 100, 3.0 + j / 64, drawn))
+
+    source, v, at = next(candidates())
+    g, engine, ns, es = _queued({source: v}, [(at, EXTERNAL, min(inputs))], weight=0.02, stream=stream_for(source),
+                                h0=rest, family="linear", scaling="fan-out")
+    mine, theirs, _, _ = _run(g, engine, at + 0.5, ns)
+    assert mine == theirs and len(mine) == 1  # the one wave, at the charge's moment
+    s = ns[source]
+    assert [c for _, c, ventured in g.schedule.pending(marks=True) if ventured and c.source is s] == s.outgoing[:3]
+    assert s.gain == engine.gains()[source] == entry_of(source, v, at)
+    assert list(engine.gains()) == [n.gain for n in ns] and list(engine.scores()) == [c.score for c in es]
+
+
 # --- what the engine refuses ------------------------------------------------------------------------------------------
 
 
@@ -528,24 +614,57 @@ def test_a_threshold_taken_to_zero_is_refused_at_the_move_that_takes_it(homeosta
 
 
 @pytest.mark.parametrize("tau", (math.inf, 2.0))
-def test_an_entry_that_overflows_is_refused_as_the_objects_refuse_it(tau):
-    """§8.16, §12.2: under the linear family at h0 = 0, h = u, and a source's potential below the normal range -- leaked
-    there, under the leak -- takes h below it too; rho~ = (1 - h0) / h then overflows and the entry in the engine note's
-    form is not finite. The engine refuses the wave the objects refuse, rather than post it into a gain or a score. A
-    charge lands on an input at 3 ms, a hidden neuron with synapses holding 1e-315 since the clock's start."""
+def test_a_silent_wave_at_an_underflowed_hazard_posts_and_an_escape_there_is_refused(tau):
+    """§8.16's engine note, §12.2: under the linear family at h0 = 0, h = u, and a potential below the normal range --
+    decayed there under the leak, from 1e-300 over 70 ms at TAU 2, or held there under the accumulator -- takes h below
+    it too, where rho~ = (1 - h0) / h overflows. A wave at which none of the source's F synapses escapes posts the
+    note's silent part, the finite -(F - a) (dt / hop kappa_i (1 - h0)) at a = 0, in the engine as in the objects, == to
+    that form; an escape there, forced by a stream whose uniform for it is 0 (_zero_at), is credited through rho~, and
+    the entry, not finite, is refused by both rather than posted into a gain or a score. A charge lands on an input at
+    3 ms; the source is a hidden neuron with synapses, and under the leak the entry is read on a synapse into it, its
+    trace 1 brought up to the wave."""
     Neuron.tau = tau
     probe = goo(seed=2, weight=0.02, drive="charged")
     neurons, index = fast.flatten(probe)[:2]
     inputs = {index[n] for n in probe.input_row()}
-    source = next(i for i, n in enumerate(neurons) if n.outgoing and i not in inputs)
-    a = next(iter(sorted(inputs)))
-    g, engine, _, _ = _queued({source: 1e-315}, [(3.0, EXTERNAL, a)], weight=0.02, h0=0.0, family="linear")
-    with pytest.raises(ValueError, match="§8.16"):
-        g.schedule.run(3.5, g.waves, g._on_wave, g._everyone(), explore=g.explorer(), synapses=g.decider())
-    with pytest.raises(ValueError, match="§8.16"):
-        engine.run(3.5)
+    source = next(i for i, n in enumerate(neurons) if n.outgoing and n.incoming and i not in inputs)
+    first = sum(len(n.outgoing) for n in neurons[:source])  # its first synapse's place in edge order (§3.8)
+    a = min(inputs)
+    zeroed = _zero_at(first)
+    drawn = [zeroed.random() for _ in range(first + 1)]
+    assert drawn[-1] == 0.0 and all(u > 0.0 for u in drawn[:-1])  # the premise
 
+    def hold(mesh):
+        n = list(mesh.all_neurons())[source]
+        n.potential = 1e-315 if tau == math.inf else 1e-300
+        if tau != math.inf:
+            n.last_update = 3.0 - 70.0  # e^-35 of it by 3 ms: 6.3e-316
+        n.incoming[0].trace, n.incoming[0].trace_at = 1.0, 3.0
 
+    for stream, refused in ((5, False), (_zero_at(first), True)):
+        g, engine, neurons, edges = _queued({}, [(3.0, EXTERNAL, a)], weight=0.02, h0=0.0, family="linear",
+                                            stream=stream, adjust=hold)
+        s = neurons[source]
+        standing = s.potential_at(3.0)
+        assert 0.0 < standing < sys.float_info.min and standing / s.threshold < 1.0 / sys.float_info.max  # subnormal,
+        # and h = u below where rho~ = 1 / h overflows
+        if refused:
+            with pytest.raises(ValueError, match="§8.16"):
+                g.schedule.run(3.5, g.waves, g._on_wave, g._everyone(), explore=g.explorer(), synapses=g.decider())
+            with pytest.raises(ValueError, match="§8.16"):
+                engine.run(3.5)
+            continue
+        dt = max(3.0 - s.exposed_since, 0.0)
+        synapses = len(s.outgoing) + (s in set(g.output_row()))
+        mine, theirs, _, _ = _run(g, engine, 3.5, neurons)
+        assert mine == theirs
+        want = -synapses * (dt / Neuron.hop * s.synapse_scale * 1.0)
+        if tau == math.inf:
+            assert s.gain == engine.gains()[source] == want < 0.0
+        else:
+            k = next(k for k, c in enumerate(edges) if c is s.incoming[0])
+            assert s.incoming[0].score == engine.scores()[k] == want < 0.0
+        assert list(engine.gains()) == [n.gain for n in neurons] and list(engine.scores()) == [c.score for c in edges]
 
 
 def test_the_engine_refuses_what_the_file_refuses():
