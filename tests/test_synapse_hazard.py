@@ -1113,15 +1113,22 @@ def test_the_array_engine_refuses_what_it_does_not_carry_yet():
         net.fire_input()
 
 
-def test_a_checkpoint_refuses_what_it_does_not_carry_yet(tmp_path):
-    """§12.9, §8.14: a checkpoint does not yet carry the gains, the read counts, the ventured marks or the settings of
-    §7.1, §7.6, §7.7, §8.17 and 5.4b, and refuses rather than write a file that would resume as another run (§12.2)."""
-    from walnutbutter.persistence import checkpoint
+def test_a_checkpoint_carries_what_it_refused_to_before_step_five(tmp_path):
+    """§12.9, §8.14: a checkpoint carries the gains, the read counts, the ventured marks and the settings of §7.1, §7.6,
+    §7.7, §8.17 and 5.4b, as format 3 (this was the refusal written to flip at step 5 of the build map, rewritten into
+    the positive test it anticipated; tests/test_synapse_checkpoints.py holds the rest). The charged drive under the
+    neuron rule, which no run may use (5.4b), is still refused rather than written as a run a reader would take."""
+    from walnutbutter.persistence import checkpoint, read_checkpoint, restore
     g = goo()
-    g.set_exploration("synapse")
-    with pytest.raises(ValueError, match="§12.9"):
-        checkpoint(g, tmp_path / "synapse.json")
+    g.set_exploration("synapse", h0=0.05, family="linear", scaling="fan-out", trace="ventured")
+    g.drive = "charged"
+    written = checkpoint(g, tmp_path / "synapse.json")
+    assert read_checkpoint(tmp_path / "synapse.json") == written and written["format"] == 3
+    back = restore(tmp_path / "synapse.json")[0]
+    assert (back.exploration, back.synapse_hazard_rest, back.synapse_hazard_family, back.synapse_hazard_scaling,
+            back.trace_mode, back.drive, back.drive_steps) == ("synapse", 0.05, "linear", "fan-out", "ventured", "charged",
+                                                               C.DRIVE_STEPS)
     h = goo()
     h.drive = "charged"
-    with pytest.raises(ValueError, match="§12.9"):
+    with pytest.raises(ValueError, match="5.4b"):
         checkpoint(h, tmp_path / "charged.json")

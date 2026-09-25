@@ -6,6 +6,15 @@ rule, threshold and seed. Loading rebuilds it from
 those settings
 and copies the weights back in, so a run that took hours can be continued or
 inspected later.
+
+Under exploration at the synapse (AUTHORITY.md §7.5) a checkpoint also
+carries each neuron's gain, each output's read count this epoch, the ventured
+mark on every signal in flight and the settings of §7.1, §7.6, §7.7, §8.17 and
+5.4b (§8.14, §12.9), and is written as format 3, which a reader that knows
+only format 2 refuses rather than resume as a run of the neuron rule. A
+neuron-rule checkpoint stays format 2, readable by that reader as before, and
+names its exploration too; one that names none -- every file written before
+September 25, 2026 -- was saved under the neuron rule (§8.14).
 """
 
 from __future__ import annotations
@@ -16,24 +25,38 @@ from pathlib import Path
 
 from .constants import GOO_SCALING_FACTOR
 from .goo import Goo, scaled_projection
-from .network import Network
+from .network import EXPLORATIONS, TRACE_VENTURED_BIAS, Network
 from .neuron import Neuron
 
 FORMAT = 2  # 1 held a permutation, an input coding, an error-correcting code and a flip; §5.2 dropped all four
+SYNAPSE_FORMAT = 3  # a checkpoint saved under exploration at the synapse: format 2 and what §8.14 adds for it. A reader
+# of format 2 alone refuses it, as it must: it would resume the run under the neuron rule (§12.9)
+FORMATS = (FORMAT, SYNAPSE_FORMAT)  # what read_checkpoint accepts, so every format-2 file on disk still loads
 
 
 def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
-    """Write the network's weights and settings to `path`. Returns what was written."""
-    if getattr(network, "exploration", "neuron") == "synapse" or getattr(network, "drive", None) == "charged":
-        raise ValueError("a checkpoint does not carry exploration at the synapse or the charged drive yet -- the gains, the "
-                         "read counts, the ventured marks and the settings of §7.1, §7.6, §7.7, §8.17 and 5.4b (§8.14, "
-                         "§12.9) -- and refuses rather than write one that would resume as another run (§12.2)")
+    """Write the network's weights and settings to `path`. Returns what was written.
+
+    Everything a resume needs to be the same run continued (§12.9, §12.11),
+    the signals in flight among it and, beside them, the stimuli and charges
+    still waiting in the queue -- an arrival drawn within the clock's slack of
+    the horizon waits for the next epoch (§3.4). Under exploration at the
+    synapse the file is format 3 and carries the gains, the read counts, the
+    ventured marks and the settings (§8.14); a network given the charged drive
+    under the neuron rule, which no run may use (5.4b), is refused rather than
+    written as one that a reader would run.
+    """
     engine = getattr(network, "engine", "objects")
     if engine == "arrays":
         network.sync_to_mesh()  # the checkpoint is written from the mesh, whichever engine ran it
         network = network.mesh
+    synaptic = getattr(network, "exploration", "neuron") == "synapse"
+    if getattr(network, "drive", None) == "charged" and not synaptic:
+        raise ValueError("the charged drive runs under exploration at the synapse only (5.4b): this network explores by "
+                         "the neuron rule, and a checkpoint of it would be a run the file refuses (§12.2)")
     data = {
-        "format": FORMAT,
+        "format": SYNAPSE_FORMAT if synaptic else FORMAT,
+        "exploration": "synapse" if synaptic else "neuron",  # §7.1, whichever it is (§8.14)
         "container": "goo",
         "across": network.across,
         "rows": network.rows,
@@ -95,9 +118,24 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "exposed_since": [n.exposed_since for n in network.all_neurons()],
         "traces": [[network.connections[i].trace, network.connections[i].trace_at] for i in range(1, len(network.connections) + 1)],
         "notes": [network.connections[i].noted for i in range(1, len(network.connections) + 1)],  # B_ij, each open arrival's note (§6.7)
-        "pending": [[time, connection.id] for time, connection in network.schedule.pending()],
+        # the signals in flight by connection id; under exploration at the synapse each with its ventured mark (§7.9)
+        "pending": ([[time, connection.id, ventured] for time, connection, ventured in network.schedule.pending(marks=True)]
+                    if synaptic else [[time, connection.id] for time, connection in network.schedule.pending()]),
+        "waiting": _waiting(network),  # the stimuli and charges the queue still holds, by neuron (§3.4, 5.4b)
         "rule": network.rule,  # which rule pays at the read: "reinforce", or "local" for none (§9.1)
     }
+    if synaptic:  # §8.14, §12.9: what exploration at the synapse adds; kappa_i is a rule and is recomputed (§7.7, §12.10)
+        data.update({
+            "synapse_hazard_rest": network.synapse_hazard_rest,  # h0 (§7.6)
+            "synapse_hazard_family": network.synapse_hazard_family,  # loglinear or linear (§7.6)
+            "synapse_hazard_scaling": network.synapse_hazard_scaling,  # count or fan-out (§7.7)
+            "trace_mode": network.trace_mode,  # all or ventured (§8.17)
+            "drive_steps": network.drive_steps,  # 5.4b's DRIVE_STEPS, a run option carried whatever the drive
+            "gains": [n.gain for n in network.all_neurons()],  # G_j, open across the reads (§8.16)
+            "read_counts": [n.read_count for n in network.all_neurons()],  # each output's read synapse this epoch (§7.9)
+        })
+        if network.trace_mode == "ventured":
+            data["estimator_bias"] = TRACE_VENTURED_BIAS  # the run says so in its record (§8.17)
     data["count"] = network.count  # goo's whole topology: no positions to record and nothing drawn to verify
     data["scale_with_fan_in"] = network.scale_with_fan_in_on  # whether §5.2's rescaling built those floors
     data["projection"] = network.projection  # the three earlier wirings' probability (§3.4)
@@ -125,6 +163,27 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
     tmp.write_text(json.dumps(data))
     tmp.replace(path)  # atomic: a crash mid-write never leaves a half checkpoint
     return data
+
+
+def _waiting(network) -> list[list]:
+    """Every event in the queue that is not a signal, in the order the queue would take it, by neuron index: a stimulus
+    as [time, "stimulus", i], a charge of theta / steps (5.4b) as [time, "charge", i, steps], an external input of a
+    given amount as [time, "external", i, amount]. The drive draws an epoch's arrivals up to the horizon and the
+    schedule runs what falls before it by more than the clock's slack (§3.4), so one drawn within that slack waits for
+    the next epoch, and a checkpoint that dropped it would resume as another run (§12.11)."""
+    from .propagation import SIGNAL, STIMULUS
+    index = {id(neuron): i for i, neuron in enumerate(network.all_neurons())}
+    waiting = []
+    for time, kind, _, payload in sorted(network.schedule._heap, key=lambda e: e[:3]):
+        if kind == SIGNAL:
+            continue
+        if kind == STIMULUS:
+            waiting.append([time, "stimulus", index[id(payload)]])
+        else:
+            neuron, amount, steps = payload
+            waiting.append([time, "charge", index[id(neuron)], steps] if amount is None
+                           else [time, "external", index[id(neuron)], amount])
+    return waiting
 
 
 def across_of(data: dict) -> int:
@@ -183,8 +242,9 @@ def hop_of(data: dict) -> float:
 
 
 def read_checkpoint(path: str | Path) -> dict:
+    """A checkpoint's contents: format 2, or format 3 under exploration at the synapse; anything else is refused."""
     data = json.loads(Path(path).read_text())
-    if data.get("format") != FORMAT:
+    if data.get("format") not in FORMATS:
         # a format-1 file may carry a non-identity permutation, and §5.2 has no permutation: a run scored against a
         # scrambled zone would resume against an unscrambled one with no error at all, so refuse it by name
         scrambled = data.get("permutation")
@@ -258,8 +318,39 @@ def path_of(data: dict) -> str:
     return data.get("path", "checkpoint")
 
 
+def exploration_of(data: dict) -> str:
+    """What a checkpoint was saved exploring by (§7.1): its setting, or the neuron rule where it carries none (§8.14).
+
+    Refused (§12.2): an exploration the file does not name, and one its
+    format contradicts -- format 3 is written under exploration at the
+    synapse and format 2 under the neuron rule, so a file that says otherwise
+    was written by no build of this code.
+    """
+    mode = data.get("exploration", "neuron")
+    if mode not in EXPLORATIONS:
+        raise ValueError(f"{path_of(data)}: unknown exploration {mode!r}; the file names {', '.join(EXPLORATIONS)} (§7.1)")
+    if (mode == "synapse") != (data.get("format") == SYNAPSE_FORMAT):
+        raise ValueError(f"{path_of(data)}: format {data.get('format')!r} with exploration {mode!r}: format "
+                         f"{SYNAPSE_FORMAT} is written under exploration at the synapse and format {FORMAT} under the neuron "
+                         "rule (§8.14), so this file is not one a checkpoint wrote")
+    return mode
+
+
 def load_weights(network: Goo, data: dict) -> None:
-    """Copy a checkpoint's weights into `network`, which must have the same wiring."""
+    """Copy a checkpoint's weights into `network`, which must have the same wiring.
+
+    The network resumes under the exploration the checkpoint was saved under
+    (§12.9): a fresh network takes it, with its settings, and a network
+    already exploring at the synapse given a checkpoint of the neuron rule --
+    or one that has run under the neuron rule given a checkpoint of the
+    synapse's -- is refused, nothing mapping the one's bookkeeping onto the
+    other's (Q17).
+    """
+    mode = exploration_of(data)
+    if network.exploration == "synapse" and mode == "neuron":
+        raise ValueError("this network explores at the synapse and the checkpoint was saved under the neuron rule: a run "
+                         "is not resumed under the other exploration, nothing mapping E_j and the credit onto the gain "
+                         "(§12.9)")
     wanted = {"across": across_of(data), "rows": data["rows"], "seed": data["seed"]}
     for key, value in wanted.items():
         if getattr(network, key) != value:
@@ -288,9 +379,21 @@ def load_weights(network: Goo, data: dict) -> None:
 
 
 def resume_teacher(teacher, data: dict) -> None:
-    """Continue a Teacher's running statistics from a checkpoint's learning record, if any."""
+    """Continue a Teacher from a checkpoint: its running statistics from the learning record, and its stream.
+
+    The Teacher's stream is the exploration stream the decisions draw from
+    (§7.3), so it goes on from the state the checkpoint carries rather than
+    from the seed it was built with (§12.11). The reinforcement baseline is the
+    learning record's, or where there is none -- a checkpoint the sweep driver
+    wrote (docs/rust-sweep.py) -- the one it keeps beside its own fields (§9.3).
+    Until September 25, 2026 the command line's resume reseeded the stream and
+    dropped the driver's baseline, and was a new run rather than the same one.
+    """
+    resume_stream(teacher.rng, data)
     record = data.get("learning")
     if not record:
+        if data.get("baseline") is not None:
+            teacher.baseline = data["baseline"]
         return
     teacher.epochs = record["epochs"]
     teacher.total_reward = record["total_reward"]
@@ -299,9 +402,38 @@ def resume_teacher(teacher, data: dict) -> None:
     teacher.history = list(record.get("history", []))
 
 
+def resume_stream(rng, data: dict) -> None:
+    """Put an exploration stream -- a Teacher's, or an untrained run's -- where the checkpoint left it (§7.3, §12.11). A
+    file written before the state was carried has none, and the stream stays as it was seeded."""
+    _restore_stream(rng, data.get("explore_state"))
+
+
+CLOCK = ("tau", "refractory", "hop", "bored_after", "rate_tau")  # the clock every neuron runs on, the Neuron class's
+# attributes of those names; a checkpoint records each (§12.9), and a run resumed from it runs on them unless it names others
+
+
+def clock_of(data: dict) -> dict:
+    """The clock a checkpoint was saved running on (§12.9): TAU, the refractory period, the hop, bored-after and the rate
+    read's window, by the names of CLOCK, each where the file records it. A file written before a field was carried has
+    none of it, and a run resumed from it keeps its own; the hop of a file from before HOP is converted (hop_of)."""
+    clock = {name: data[name] for name in ("tau", "refractory", "bored_after") if data.get(name) is not None}
+    if data.get("hop") is not None or data.get("refractory_hops"):
+        clock["hop"] = hop_of(data)
+    if data.get("rate"):
+        clock["rate_tau"] = data["rate"][1]
+    return clock
+
+
 
 def _restore_clock(network, data: dict) -> None:
     """Continue the clock: time, horizon, each neuron's potential and spikes, the synapse stamps, the signals in flight."""
+    if exploration_of(data) == "synapse":
+        # §12.9: the network resumes under the settings it was saved under, and kappa_i is recomputed from them, a rule
+        # and not a state (§7.7, §12.10). Set before the state is loaded: set_exploration refuses a network that has
+        # already run under the neuron rule (§12.9), and the state below is exploration at the synapse's own
+        network.set_exploration("synapse", h0=data["synapse_hazard_rest"], family=data["synapse_hazard_family"],
+                                scaling=data["synapse_hazard_scaling"], trace=data["trace_mode"])
+        network.drive_steps = data["drive_steps"]  # 5.4b's DRIVE_STEPS, a run option (§12.9)
     # §12.11: the streams first, so the next draw is the one the uninterrupted run would have taken. A file written
     # before the states were carried has none, and a run resumed from it is a new run rather than the same one.
     _restore_stream(getattr(network, "_rng", None), data.get("network_state"))
@@ -329,7 +461,8 @@ def _restore_clock(network, data: dict) -> None:
     network.escape_delta = data.get("escape_delta", 0.0)  # escape noise (§5.2); older checkpoints ran the threshold
     for neuron, delta in zip(neurons, data.get("deltas", [])):
         neuron.delta = delta
-        neuron.traced = delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
+        # the trace of §6.7 is kept under escape noise, the centred rule, or exploration at the synapse (§8.16)
+        neuron.traced = delta > 0.0 or neuron.centred or neuron.synaptic
     from .network import escape_scale
     network.escape_scale = escape_scale(len(neurons))  # §5.2: the count's scaling of every hazard is a rule, recomputed not stored
     for neuron in neurons:
@@ -346,9 +479,24 @@ def _restore_clock(network, data: dict) -> None:
         neuron.decisions = decisions
     for neuron, expected in zip(neurons, data.get("expected_since_spike", [])):
         neuron.expected = expected
+    for neuron, gain in zip(neurons, data.get("gains", [])):
+        neuron.gain = gain  # G_j (§8.16), under exploration at the synapse
+    for neuron, count in zip(neurons, data.get("read_counts", [])):
+        neuron.read_count = count  # this epoch's read-synapse escapes (§7.9), zeroed by the next epoch's reset
     network.schedule.clear()
-    for time, connection_id in data.get("pending", []):
-        network.schedule.signal(network.connections[connection_id], time)
+    for entry in data.get("pending", []):  # (time, id), or (time, id, ventured) under exploration at the synapse (§7.9)
+        network.schedule.signal(network.connections[entry[1]], entry[0], ventured=len(entry) > 2 and bool(entry[2]))
+    for entry in data.get("waiting", []):  # the stimuli and charges still in the queue, in its order (§3.4)
+        time, kind, i = entry[0], entry[1], entry[2]
+        if kind == "stimulus":
+            network.schedule.stimulus(neurons[i], time)
+        elif kind == "charge":
+            network.schedule.charge(neurons[i], entry[3], time)
+        elif kind == "external":
+            network.schedule.external(neurons[i], entry[3], time)
+        else:
+            raise ValueError(f"{path_of(data)}: unknown waiting event {kind!r}; a checkpoint writes stimulus, charge and "
+                             "external")
     network.rule = data.get("rule", "local")  # a file written under a rule the specification dropped reads as local (§9.1)
     network.population = data.get("population", network.population)
     network.temperature = data.get("temperature", network.temperature)

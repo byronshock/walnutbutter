@@ -29,6 +29,32 @@ TRACES = ("all", "ventured")  # what a trace counts under exploration at the syn
 DRIVES = ("rate", "forced", "charged")  # how a bit becomes spikes: the Poisson forced drive of §5.4 (the code's "rate"),
 # one spike at the epoch's moment (the code's "forced", which §5.7 does not carry and the plumbing tests pin), and the
 # charged drive of 5.4b; any other name is refused rather than taken for the second (§5.7)
+TRACE_VENTURED_BIAS = ("TRACE ventured: each trace counts the ventured arrivals alone, so it is not the potential's "
+                       "derivative by the weight and the estimator is biased toward what was ventured (§8.17)")
+# what a run under TRACE ventured says in its record -- its banner, its checkpoints, a sweep arm's json -- as §8.17 asks
+
+
+def refuse_width(delta) -> None:
+    """A decision width that is negative or not a number, refused under either exploration (§12.2): it is neither the
+    comparison of §6.9 nor a draw, and would silence every neuron. Checked where the width is set (set_delta) and where
+    a run names it on the command line, where under exploration at the synapse it would otherwise be settled to 0."""
+    if not delta >= 0.0:  # nan fails this as a negative width does
+        raise ValueError(f"ESCAPE_DELTA must not be negative, and must be a number, got {delta}")
+
+
+def refuse_synapse_settings(h0, family, scaling, trace) -> None:
+    """The settings of §7.6, §7.7 and §8.17, refused (§12.2) where they are not the file's: checked where they are set,
+    where a run names them on the command line, and again where the network runs, since they stay writable attributes
+    and h0 and the family are read at every wave -- an unknown family would otherwise run as the loglinear."""
+    if isinstance(h0, bool) or not isinstance(h0, (int, float)) or not 0.0 <= h0 < 1.0:
+        raise ValueError(f"the rest hazard h0 must lie in [0, 1), got {h0!r}: at 1 the hazard is flat and scores "
+                         "nothing, above 1 the family turns over, below 0 it is undefined (§7.6)")
+    if family not in SYNAPSE_HAZARD_FAMILIES:
+        raise ValueError(f"unknown synapse hazard family {family!r}; choose from {', '.join(SYNAPSE_HAZARD_FAMILIES)} (§7.6)")
+    if scaling not in SYNAPSE_HAZARD_SCALINGS:
+        raise ValueError(f"unknown synapse hazard scaling {scaling!r}; choose from {', '.join(SYNAPSE_HAZARD_SCALINGS)} (§7.7)")
+    if trace not in TRACES:
+        raise ValueError(f"unknown trace {trace!r}; choose from {', '.join(TRACES)} (§8.17)")
 
 
 def escape_scale(count: int) -> float:
@@ -213,8 +239,7 @@ class Network:
         width that is not a number is refused under either rule: it is neither
         the comparison of §6.9 nor a draw, and would silence every neuron.
         """
-        if not delta >= 0.0:  # nan fails this as a negative width does
-            raise ValueError(f"ESCAPE_DELTA must not be negative, and must be a number, got {delta}")
+        refuse_width(delta)
         if delta != 0.0 and self._exploration == "synapse":
             raise ValueError(f"a neuron width ({delta:g}) and exploration at the synapse together are refused: the system "
                              "explores by one thing, and under exploration at the synapse every width is 0 (§6.13, §7.1)")
@@ -301,18 +326,8 @@ class Network:
             neuron.trace_ventured = trace == "ventured"
 
     def _refuse_settings(self, h0, family, scaling, trace) -> None:
-        """The settings of §7.6, §7.7 and §8.17, refused (§12.2) where they are not the file's: checked where they are set
-        and again where the network runs, since they stay writable attributes and h0 and the family are read at every
-        wave -- an unknown family would otherwise run as the loglinear."""
-        if isinstance(h0, bool) or not isinstance(h0, (int, float)) or not 0.0 <= h0 < 1.0:
-            raise ValueError(f"the rest hazard h0 must lie in [0, 1), got {h0!r}: at 1 the hazard is flat and scores "
-                             "nothing, above 1 the family turns over, below 0 it is undefined (§7.6)")
-        if family not in SYNAPSE_HAZARD_FAMILIES:
-            raise ValueError(f"unknown synapse hazard family {family!r}; choose from {', '.join(SYNAPSE_HAZARD_FAMILIES)} (§7.6)")
-        if scaling not in SYNAPSE_HAZARD_SCALINGS:
-            raise ValueError(f"unknown synapse hazard scaling {scaling!r}; choose from {', '.join(SYNAPSE_HAZARD_SCALINGS)} (§7.7)")
-        if trace not in TRACES:
-            raise ValueError(f"unknown trace {trace!r}; choose from {', '.join(TRACES)} (§8.17)")
+        """The settings of §7.6, §7.7 and §8.17, refused where they are not the file's (refuse_synapse_settings)."""
+        refuse_synapse_settings(h0, family, scaling, trace)
 
     def _refuse_unsupported(self, everyone: list[Neuron]) -> None:
         """What exploration at the synapse has no rule for, refused where it is set and again where it runs (§12.2)."""

@@ -516,7 +516,11 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     `epoch_offset` and a `report` of what §12.9 says a checkpoint holds and the
     engine alone knows: the thresholds and rate memories the run has reached,
     the §6.7 expectations and decision counts, the §9.3 baseline, and the trace,
-    the fraction right and the estimator so far. It is for a driver to write the
+    the fraction right and the estimator so far; the exploration and the queue
+    in flight (`pending`, as `pending_events` gives it); and under exploration
+    at the synapse each neuron's gain, each output's read count this epoch, the
+    ventured mark on every signal in that queue and the settings of §7.6, §7.7,
+    §8.17 and 5.4b (`_mode_state`). It is for a driver to write the
     run's state to disk as it goes, so that a run cut short costs at most
     `checkpoint_every` epochs; like `probe` it must not change anything. The
     epoch the run ends at is left out, since the caller holds the whole report
@@ -542,7 +546,8 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     Returns (mean score, trace, engine, report): the trace is every
     `trace_every` epochs' score, or empty when that is 0, and the report holds
     the mean over the last tenth of the run, the final firing-rate memories and
-    thresholds, and how many neurons ended stuck on and off.
+    thresholds, how many neurons ended stuck on and off, and the state of the
+    exploration as the checkpoint callback's report holds it.
     """
     import random
 
@@ -660,6 +665,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
                 "baseline": baseline,  # §9.3: b as it stands, so a resumed run is paid against it
                 "trace": list(trace), "right": list(right),
                 "estimator": None if estimator is None else list(estimator),
+                **_mode_state(engine, network, synaptic),  # §8.14: the gains, read counts, marks and settings
             })
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
@@ -669,5 +675,24 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
               "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
               "right": right,  # the fraction right at every trace_every, beside `trace`'s score
               "baseline": baseline,  # §9.3: what b had reached, so a resume is paid against it and not a fresh one
-              "estimator": estimator}  # the estimator's correlation over time (§8), when a direction was given
+              "estimator": estimator,  # the estimator's correlation over time (§8), when a direction was given
+              **_mode_state(engine, network, synaptic)}  # §8.14, as the checkpoint callback's report holds it
     return total / epochs, trace, engine, report
+
+
+def _mode_state(engine, network, synaptic: bool) -> dict:
+    """What a checkpoint holds of the exploration that the engine alone knows (§8.14, §12.9): the exploration, and the
+    queue in flight in delivery order -- (time, kind, payload), or under exploration at the synapse (time, kind,
+    payload, ventured), the mark riding on each signal (§7.9) -- and under exploration at the synapse each neuron's gain
+    G_j (§8.16), each output's read count this epoch (§7.9) and the settings of §7.6, §7.7, §8.17 and 5.4b as the
+    network holds them, under the keys a checkpoint writes them with. Read, never touched."""
+    state = {"exploration": network.exploration, "pending": list(engine.pending_events(synaptic))}
+    if synaptic:
+        state.update({
+            "gains": list(engine.gains()), "read_counts": list(engine.read_counts()),
+            "settings": {"synapse_hazard_rest": network.synapse_hazard_rest,
+                         "synapse_hazard_family": network.synapse_hazard_family,
+                         "synapse_hazard_scaling": network.synapse_hazard_scaling, "trace_mode": network.trace_mode,
+                         "drive": network.drive, "drive_steps": network.drive_steps},
+        })
+    return state
