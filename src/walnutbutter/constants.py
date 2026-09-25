@@ -98,12 +98,40 @@ ESCAPE_DELTA = 0.455  # the firing decision is a draw (AUTHORITY.md §5.2, escap
 # plateau that runs 0.25 to 0.7, where every seed learns at LR 0.02 and up. Applied by the command line and the sweep
 # driver (--delta); a network built in the library is deterministic until Network.set_delta, as it has no noise until a
 # Teacher gives it sigma. The hazard eligibility (§6.7) needs it.
+EXPLORATION = "neuron"  # what explores (AUTHORITY.md §7.1; Byron, September 25, 2026): "neuron", the neuron's own escape
+# noise of §6.5 at ESCAPE_DELTA, or "synapse", its synapses' (§7.5), under which every neuron takes the comparison of
+# §6.13 and ESCAPE_DELTA is not consulted. Synapse becomes the default only once all three engines carry it, agree on
+# mnist's configuration and mnist's rate has been re-found (§7.6); until then a run asks for it. Like ESCAPE_DELTA it is
+# a run's setting: a network built in the library runs the neuron rule until Network.set_exploration, as it is
+# deterministic until Network.set_delta
+SYNAPSE_HAZARD_REST = 0.01  # h0, per hop before the scaling (AUTHORITY.md §7.6; Byron, September 24, 2026): what a
+# synapse of a source at zero potential speculates at, and so what a silent neuron's synapses whisper at (§7.2). In
+# [0, 1): at 1 the hazard is flat and scores nothing, above 1 the family turns over, below 0 it is undefined. 0 under
+# the loglinear family spikes as the deterministic network does, its synapses still taking their draws (§3.8) -- a rest
+# hazard of 0 does not switch the exploration off (§7.1). The one value inside every regime's plateau in the second
+# toy's sweeps, to be re-measured on mnist
+SYNAPSE_HAZARD_FAMILY = "loglinear"  # the synapse hazard's family (§7.6): "loglinear", h(u) = h0 ** (1 - u), the family
+# §6.5's neuron hazard belongs to; or "linear", h0 + (1 - h0) u, Byron's statement read literally. u is the source's
+# potential clipped to [0, theta] over theta; both are h0 at rest and one spike per hop at threshold
+SYNAPSE_HAZARD_SCALING = "count"  # the synapse hazard's scaling (§7.7): "count", kappa(N) = sqrt(N0 / N) on every
+# synapse as on every hazard (§6.6); or "fan-out", kappa(N) / F_i, so a source's speculation per hop summed over its F_i
+# synapses -- an output's read synapse among them (§7.9) -- does not grow with how many it has
+TRACE = "all"  # what a synapse's trace counts under exploration at the synapse (§8.17; Byron, September 24, 2026): "all",
+# every arrival its target integrated, relayed or ventured, so the trace stays the potential's derivative by the weight
+# and the rule is Williams's estimator; or "ventured", the ventured arrivals alone, biased toward what was ventured
 
 # --- how a bit becomes spikes (AUTHORITY.md §4.3) ---------------------------------
 INPUT_DRIVE = "rate"  # "rate": a Poisson process DRIVES each input neuron across the epoch, each arrival at its own
 # continuous time. "forced": every bit-1 neuron is made to spike at once at the epoch's moment, which locks every
 # spike in the network onto a hop grid anchored there -- a unified wave front at time zero, which Byron ruled out on
-# September 14, 2026: "I don't want any such thing."
+# September 14, 2026: "I don't want any such thing." "charged" (5.4b, a run option under exploration at the synapse only):
+# the rate drive's arrivals at DRIVE_STEPS times the rate, each delivering theta / DRIVE_STEPS to the input's potential in
+# place of forcing a spike, so the input spikes by the comparison of §6.13 and its synapses read its potential between
+# deliveries (§7.5). Nothing is driven at the epoch's moment (§5.7), and "rate" stays the default
+DRIVE_STEPS = 3  # under the charged drive (5.4b; Byron, September 24, 2026, a run option on the 25th): the deliveries that
+# take an input from rest to its threshold -- or one more where their sum falls a rounding short of it, accepted as it
+# falls -- each theta / DRIVE_STEPS on the threshold the input holds when the delivery lands, at DRIVE_STEPS times the
+# rate. A count, so a whole number of at least 1
 INPUT_CV = 0.6  # the drive is specified by the coefficient of variation of the spike train it produces, not by its
 # own rate (Byron, September 14, 2026). Arrivals inside the refractory period are dropped, so the neuron fires at the
 # first arrival after it ends and its spike train is a renewal process with DEAD TIME, not a Poisson one: mean ISI =

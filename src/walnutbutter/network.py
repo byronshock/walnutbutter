@@ -11,15 +11,24 @@ the only container (§4.1) and builds on this.
 from __future__ import annotations
 
 import math
+import numbers
 
 import random
 from typing import Iterable
 
 from .constants import (
-    ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, PRESENTATION_TIME,
-    TEMPERATURE,
+    DRIVE_STEPS, ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, PRESENTATION_TIME,
+    SYNAPSE_HAZARD_FAMILY, SYNAPSE_HAZARD_REST, SYNAPSE_HAZARD_SCALING, TEMPERATURE, TRACE,
     QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, THRESHOLD_FAN_IN,
 )
+
+EXPLORATIONS = ("neuron", "synapse")  # what explores (AUTHORITY.md §7.1): the neuron's escape noise, or its synapses'
+SYNAPSE_HAZARD_FAMILIES = ("loglinear", "linear")  # the synapse hazard's two families (§7.6), both carried
+SYNAPSE_HAZARD_SCALINGS = ("count", "fan-out")  # kappa(N) on every synapse, or that over the source's fan-out (§7.7)
+TRACES = ("all", "ventured")  # what a trace counts under exploration at the synapse (§8.17)
+DRIVES = ("rate", "forced", "charged")  # how a bit becomes spikes: the Poisson forced drive of §5.4 (the code's "rate"),
+# one spike at the epoch's moment (the code's "forced", which §5.7 does not carry and the plumbing tests pin), and the
+# charged drive of 5.4b; any other name is refused rather than taken for the second (§5.7)
 
 
 def escape_scale(count: int) -> float:
@@ -90,6 +99,17 @@ class Network:
         self.explore_rng = None  # the exploration stream the firing decisions draw from (§7.3)
         self.escape_delta = 0.0  # ESCAPE_DELTA as set on this network (§5.2): 0 keeps the deterministic threshold
         self.escape_scale = 1.0  # sqrt(ESCAPE_REFERENCE_COUNT / N), the count's scaling of every hazard (§5.2), once set_delta ran
+        self._exploration = "neuron"  # what explores (§7.1): a network is built under the neuron rule, deterministic
+        # until set_delta gives it a width, and explores at the synapse once set_exploration asks (see `exploration`)
+        self.synapse_hazard_rest = SYNAPSE_HAZARD_REST  # h0 (§7.6), under exploration at the synapse
+        self.synapse_hazard_family = SYNAPSE_HAZARD_FAMILY  # loglinear or linear (§7.6)
+        self.synapse_hazard_scaling = SYNAPSE_HAZARD_SCALING  # count or fan-out (§7.7)
+        self.trace_mode = TRACE  # what a trace counts (§8.17): all, or ventured
+        self._computed_from = (SYNAPSE_HAZARD_SCALING, TRACE)  # the scaling and the trace set_exploration last computed
+        # kappa_i and every neuron's trace_ventured from: a run refuses the attributes where they no longer agree
+        self._draws: list[float] = []  # this wave's uniforms for the synapses' decisions, E then O (§3.8)
+        self._layout: list[tuple[Neuron, int]] = []  # each neuron, in index order, with its read synapse's draw or -1
+        self._draw_count = 0  # E + O: every synapse, then every output's read synapse (§3.8, §7.9)
         self.rule = "local"  # which rule pays at the read: "reinforce", or "local" for none, in which case the local
         # rules of §10 are the whole of the learning (§9.1: "a run may have none")
         self.centred = False  # the hebb eligibility charges every neuron's decisions against its own expectation (§6.7,
@@ -103,6 +123,8 @@ class Network:
         self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
         # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"
+        # -- or "charged" (5.4b), theta / drive_steps a delivery, under exploration at the synapse only (DRIVES)
+        self.drive_steps = DRIVE_STEPS  # under the charged drive, the deliveries from rest to threshold (5.4b)
         self.input_rate = INPUT_RATE  # per ms: what a bit-1 neuron fires at under rate drive
         self.input_rate_off = INPUT_RATE_OFF  # per ms: what a bit-0 neuron fires at
         self.input_events: list[tuple[int, float]] | None = None  # the (place, time) stimuli this epoch actually used;
@@ -126,16 +148,32 @@ class Network:
         return self.escape_delta > 0.0
 
     @property
+    def exploration(self) -> str:
+        """What explores (AUTHORITY.md §7.1): "neuron", the neuron's own escape noise of §6.5 -- deterministic where no
+        width was given -- or "synapse", its synapses' (§7.5). Set by set_exploration."""
+        return self._exploration
+
+    @property
+    def explores(self) -> bool:
+        """True when something draws: a positive width (§6.5), or exploration at the synapse whatever its rest hazard,
+        h0 = 0 included (§7.1, §7.6). What the reinforce rule needs to have something to estimate from (§8.3)."""
+        return self.hazard or self._exploration == "synapse"
+
+    @property
     def traced(self) -> bool:
-        """Whether each synapse keeps its trace of what it has in its target's potential (§6.7): escape noise, or the centred rule."""
-        return self.hazard or self.centred
+        """Whether each synapse keeps its trace of what it has in its target's potential (§6.7): escape noise, the centred
+        rule, or exploration at the synapse."""
+        return self.hazard or self.centred or self._exploration == "synapse"
 
     def centre(self, on: bool) -> None:
         """The hebb eligibility (§6.7, the single-spike rule): every neuron charges its decisions against its own expectation."""
+        if on and self._exploration == "synapse":
+            raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and it has "
+                             "no neuron decision to centre (§8.3)")
         self.centred = bool(on)
         for neuron in self._everyone():
             neuron.centred = self.centred
-            neuron.traced = self.centred or neuron.delta > 0.0
+            neuron.traced = self.centred or neuron.delta > 0.0 or neuron.synaptic
 
     def settle_scores(self) -> None:
         """Under the evidence accumulator (§5.1), bring every open arrival's debit into its synapse's score (§6.7).
@@ -143,9 +181,18 @@ class Network:
         The pay at the read calls it first, so the score holds what the epoch's
         decisions charged; the arrivals stay open, their debit counting from
         now. Under the leak the scores are charged per decision and there is
-        nothing to settle.
+        nothing to settle. Under exploration at the synapse the read posts
+        x G - B, the net credit, and re-bases B = x G, leaving x and G as they
+        are (§8.16, §1.9).
         """
         if Neuron.tau != math.inf or not self.traced:
+            return
+        if self._exploration == "synapse":
+            for connection in self.connections.values():
+                if connection.trace != 0.0:
+                    owed = connection.trace * connection.target.gain
+                    connection.score += owed - connection.noted
+                    connection.noted = owed
             return
         for connection in self.connections.values():
             if connection.trace != 0.0:
@@ -160,10 +207,17 @@ class Network:
         fan-in scaling -- and before anything moves them: a neuron's width is
         set from the threshold it starts at and stays put when homeostasis
         later moves the threshold. The draws come from the exploration stream
-        (§6.1), so a run with a positive width needs one.
+        (§6.1), so a run with a positive width needs one. A positive width is
+        refused while the network explores at the synapse (§6.13); a width of
+        0 is the one §6.13 gives every neuron there, and asks for nothing. A
+        width that is not a number is refused under either rule: it is neither
+        the comparison of §6.9 nor a draw, and would silence every neuron.
         """
-        if delta < 0.0:
-            raise ValueError(f"ESCAPE_DELTA must not be negative, got {delta}")
+        if not delta >= 0.0:  # nan fails this as a negative width does
+            raise ValueError(f"ESCAPE_DELTA must not be negative, and must be a number, got {delta}")
+        if delta != 0.0 and self._exploration == "synapse":
+            raise ValueError(f"a neuron width ({delta:g}) and exploration at the synapse together are refused: the system "
+                             "explores by one thing, and under exploration at the synapse every width is 0 (§6.13, §7.1)")
         self.escape_delta = float(delta)
         everyone = self._everyone()
         self.escape_scale = escape_scale(len(everyone))  # the count's scaling of every hazard (§5.2, September 16, 2026)
@@ -172,7 +226,108 @@ class Network:
             # has a collapsed axis with no width to quote on it, and keeps the deterministic rule
             neuron.delta = delta * neuron.threshold if neuron.threshold > 0.0 else 0.0
             neuron.escape_scale = self.escape_scale
-            neuron.traced = neuron.delta > 0.0 or neuron.centred  # the trace of §6.7 is kept under escape noise
+            neuron.traced = neuron.delta > 0.0 or neuron.centred or neuron.synaptic  # the trace of §6.7 is kept under escape noise
+
+    def set_exploration(self, mode: str, *, h0: float = SYNAPSE_HAZARD_REST, family: str = SYNAPSE_HAZARD_FAMILY,
+                        scaling: str = SYNAPSE_HAZARD_SCALING, trace: str = TRACE) -> None:
+        """What explores (AUTHORITY.md §7.1): "neuron", the neuron's own escape noise (§6.5), or "synapse", its synapses'.
+
+        Under "synapse" every neuron takes the comparison of §6.13 -- every
+        width 0, ESCAPE_DELTA not consulted -- and every synapse decides at
+        every wave on its source's potential (§7.5), at the rest hazard `h0`
+        in [0, 1) and in the `family` of §7.6, scaled by the `scaling` of §7.7:
+        kappa_i is kappa(N) under "count" and kappa(N) / F_i under "fan-out",
+        F_i counting an output's read synapse (§7.9) -- a rule and not a state,
+        computed here, once, as §7.5's engine note says. `trace` is §8.17's.
+        Every neuron keeps its trace, and the reinforce rule is posted at the
+        synapses' decisions (§8.16).
+
+        Refused (§12.2), and the network left as it was: a setting that is not
+        the file's (§7.6, §7.7, §8.17), a positive width already set (§6.13),
+        hebb (§8.3), a threshold at or below zero, where u is undefined (§7.5),
+        an inactive connection, whose draw has no rule (§3.8), the inputs read
+        as the outputs, which have no read synapse (§7.9), and a network
+        carrying the other exploration's bookkeeping, which nothing maps across
+        (§12.9) -- a neuron's exposure clock among it, once the neuron has
+        spiked. Call it once the thresholds are what the container gave them,
+        as set_delta is called.
+        """
+        if mode not in EXPLORATIONS:
+            raise ValueError(f"unknown exploration {mode!r}; choose from {', '.join(EXPLORATIONS)} (§7.1)")
+        self._refuse_settings(h0, family, scaling, trace)
+        everyone = self._everyone()
+        if mode != self._exploration:  # E_j and the credit, or the gain, and the notes taken on them (§12.9)
+            if self._exploration == "neuron":
+                carried = any(n.expected or n.credit for n in everyone)
+            else:
+                carried = any(n.gain for n in everyone)
+            if carried or any(c.noted for c in self.connections.values()):
+                raise ValueError(f"this network carries the {self._exploration} rule's open bookkeeping, and nothing maps "
+                                 f"it onto the {mode} rule's: a run is not switched between the two explorations (§12.9)")
+            if any(n.fired_at is not None for n in everyone):  # the one clock a neuron holds (§2.1) reads its spike two ways
+                now = "the neuron rule" if self._exploration == "neuron" else "exploration at the synapse"
+                raise ValueError(f"a neuron of this network has spiked, and the exposure clock it holds runs as {now} runs "
+                                 "it -- from the refractory period's end under the neuron rule (§6.12), from the spike "
+                                 "itself under exploration at the synapse (§7.8) -- and nothing maps one onto the other: a "
+                                 "run is not switched between the two explorations (§12.9)")
+        if mode == "synapse":
+            if self.escape_delta > 0.0 or any(n.delta > 0.0 for n in everyone):
+                raise ValueError("a neuron width and exploration at the synapse together are refused: the system explores "
+                                 "by one thing, and under exploration at the synapse every width is 0 (§6.13, §7.1)")
+            if self.centred:
+                raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and "
+                                 "it has no neuron decision to centre (§8.3)")
+            self._refuse_unsupported(everyone)
+        self.synapse_hazard_rest, self.synapse_hazard_family = float(h0), family
+        self.synapse_hazard_scaling, self.trace_mode = scaling, trace
+        self._computed_from = (scaling, trace)
+        self._exploration = mode
+        if mode == "neuron":
+            for neuron in everyone:
+                neuron.synaptic = neuron.trace_ventured = False
+                neuron.synapse_scale = 1.0
+                neuron.traced = neuron.delta > 0.0 or neuron.centred
+            return
+        self.escape_delta = 0.0
+        self.escape_scale = escape_scale(len(everyone))  # kappa(N): every hazard is scaled by the count (§6.6, §7.7)
+        readers = {id(neuron) for neuron in self.output_row()}
+        for neuron in everyone:
+            neuron.delta = 0.0  # §6.13: the neuron's decision is the comparison
+            neuron.escape_scale = self.escape_scale
+            synapses = len(neuron.outgoing) + (id(neuron) in readers)  # F_i, the read synapse among them (§7.9)
+            # a source with no synapse makes no decision; it keeps kappa(N), there being nothing to divide by (cf. §4.11)
+            neuron.synapse_scale = self.escape_scale / synapses if scaling == "fan-out" and synapses else self.escape_scale
+            neuron.synaptic = neuron.traced = True
+            neuron.trace_ventured = trace == "ventured"
+
+    def _refuse_settings(self, h0, family, scaling, trace) -> None:
+        """The settings of §7.6, §7.7 and §8.17, refused (§12.2) where they are not the file's: checked where they are set
+        and again where the network runs, since they stay writable attributes and h0 and the family are read at every
+        wave -- an unknown family would otherwise run as the loglinear."""
+        if isinstance(h0, bool) or not isinstance(h0, (int, float)) or not 0.0 <= h0 < 1.0:
+            raise ValueError(f"the rest hazard h0 must lie in [0, 1), got {h0!r}: at 1 the hazard is flat and scores "
+                             "nothing, above 1 the family turns over, below 0 it is undefined (§7.6)")
+        if family not in SYNAPSE_HAZARD_FAMILIES:
+            raise ValueError(f"unknown synapse hazard family {family!r}; choose from {', '.join(SYNAPSE_HAZARD_FAMILIES)} (§7.6)")
+        if scaling not in SYNAPSE_HAZARD_SCALINGS:
+            raise ValueError(f"unknown synapse hazard scaling {scaling!r}; choose from {', '.join(SYNAPSE_HAZARD_SCALINGS)} (§7.7)")
+        if trace not in TRACES:
+            raise ValueError(f"unknown trace {trace!r}; choose from {', '.join(TRACES)} (§8.17)")
+
+    def _refuse_unsupported(self, everyone: list[Neuron]) -> None:
+        """What exploration at the synapse has no rule for, refused where it is set and again where it runs (§12.2)."""
+        if any(n.threshold <= 0.0 for n in everyone):
+            raise ValueError("a threshold at or below zero leaves u = clip(V, 0, theta) / theta undefined, and under "
+                             "exploration at the synapse a network holding one is refused (§7.5)")
+        if any(not c.is_active for c in self.connections.values()):
+            raise ValueError("an inactive connection keeps its draw under exploration at the synapse, and what it does with "
+                             "it is not specified: a network holding one is refused (§3.8)")
+        if self.readout != "top":
+            raise ValueError(f"the {self.readout!r} readout has no read synapse: under exploration at the synapse every "
+                             "output neuron has one and the output zone is what is read (§7.9, §5.1)")
+        if Neuron.bored_after > 0.0:
+            raise ValueError("a bored threshold moves the theta the synapses' u is read on, and no clause gives it a place "
+                             "under exploration at the synapse: refused (§7.5)")
 
     def scale_with_fan_in(
         self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN
@@ -226,11 +381,20 @@ class Network:
         return [self.get_neuron_at(place, 0) for place in range(self.output_width())]
 
     def output_counts(self) -> list[int]:
-        """Each output neuron's spikes this epoch: what the count read (§4.3) and the class critic (§8) work from."""
-        return [neuron.epoch_spikes for neuron in self.output_row()]
+        """Each output neuron's spikes this epoch: what the count read (§4.3) and the class critic (§8) work from --
+        plus, under exploration at the synapse, its read synapse's escapes this epoch, the one place they are summed in
+        (§5.10, §7.9)."""
+        return [neuron.epoch_spikes + neuron.read_count for neuron in self.output_row()]
+
+    def _refuse_read(self) -> None:
+        """§5.10: under exploration at the synapse only the count is read, until a clause says what the others read."""
+        if self.read != "count" and self._exploration == "synapse":
+            raise ValueError(f"the {self.read!r} read is refused under exploration at the synapse until a clause says what "
+                             "it reads there; the count read is the output's spikes plus its read synapse's escapes (§5.10)")
 
     def output_fired(self) -> list[bool]:
         """Whether each output neuron is on at the read: see `read`."""
+        self._refuse_read()
         if self.read == "again":
             after = self.time + slack(self.time)  # strictly after the input's moment: a forced neuron must have spiked again
             return [neuron.fired_at is not None and neuron.fired_at > after for neuron in self.output_row()]
@@ -246,7 +410,7 @@ class Network:
     def output_counts_hz(self) -> list[float]:
         """Each output neuron's firing rate estimated from its count this epoch, in Hz: count over the epoch's length (§4.3)."""
         per_ms = 1000.0 / self.interval
-        return [neuron.epoch_spikes * per_ms for neuron in self.output_row()]
+        return [(neuron.epoch_spikes + neuron.read_count) * per_ms for neuron in self.output_row()]  # the count's (§5.10)
 
     def output_rates(self) -> list[float]:
         """Each output neuron's firing rate at the read, in Hz (AUTHORITY.md §4.3): the exponential window of Neuron.firing_rate."""
@@ -260,6 +424,7 @@ class Network:
         boolean of `output_fired` as 0.0 or 1.0, so a rule scored this way is
         scored exactly as it was before the rate read existed.
         """
+        self._refuse_read()
         if self.read == "rate":
             return [min(1.0, max(0.0, rate / self.rate_on)) for rate in self.output_rates()]
         return [1.0 if fired else 0.0 for fired in self.output_fired()]
@@ -418,16 +583,24 @@ class Network:
 
         The draws come from the network's own seeded stream, in place order,
         so a seed reproduces them and both engines draw the same train.
+
+        Under `drive = "charged"` (5.4b) the arrivals are drawn the same way at
+        `drive_steps` times the rate, each a delivery of theta / drive_steps
+        rather than a forced spike; it runs under exploration at the synapse
+        only, and `drive_steps` is a whole number of at least 1.
         """
         pattern = self.input_pattern
         if pattern is None:
             raise ValueError("no input pattern set; call set_input() first")
-        if self.drive != "rate":
+        steps = self._drive_steps()
+        if self.drive == "forced":
             return [(place, self.time) for place, bit in enumerate(pattern) if bit]
         end = self.time + self.presentation_time
         events: list[tuple[int, float]] = []
         for place, bit in enumerate(pattern):
             rate = self.input_rate if bit else self.input_rate_off
+            if steps != 1:
+                rate = rate * steps  # 5.4b: at DRIVE_STEPS times the rate
             if rate <= 0.0:
                 continue
             when = self.time
@@ -439,6 +612,37 @@ class Network:
         events.sort(key=lambda event: event[1])
         return events
 
+    def _drive_steps(self) -> int:
+        """The drive checked where the epoch's arrivals are drawn and again before an epoch moves anything (§12.2), and
+        the deliveries each arrival stands for: 1 under the rate and forced drives, DRIVE_STEPS under the charged (5.4b).
+
+        Refused: a drive the code does not know, which used to be taken for
+        one spike at the epoch's moment (§5.7); the code's forced drive, which
+        is that spike, under exploration at the synapse -- kept for the neuron
+        rule's plumbing tests, and not carried into a mechanism §5.7 already
+        governs; the charged drive under the neuron rule (5.4b); and a
+        DRIVE_STEPS that is not a whole number of at least 1 (5.4b). Any
+        integral type is a whole number, a numpy integer among them, and is
+        handed on as an int; a float is not, whatever its value.
+        """
+        if self.drive not in DRIVES:
+            raise ValueError(f"unknown drive {self.drive!r}; choose from {', '.join(DRIVES)}. A drive the code does not know "
+                             "is refused rather than taken for one spike at the epoch's moment (§5.7)")
+        if self.drive == "forced" and self._exploration == "synapse":
+            raise ValueError("the code's forced drive makes every bit-1 input spike at the epoch's moment, which §5.7 rules "
+                             "out; it is kept for the neuron rule's plumbing tests and refused under exploration at the "
+                             "synapse (§5.7, §12.2): drive it by the rate or the charged drive")
+        if self.drive != "charged":
+            return 1  # the rate drive's arrivals are the rate's own
+        if self._exploration != "synapse":
+            raise ValueError("the charged drive runs under exploration at the synapse only: under the neuron rule a "
+                             "charged input would fire by its own hazard, not by the comparison its arithmetic is "
+                             "written on (5.4b)")
+        steps = self.drive_steps
+        if isinstance(steps, bool) or not isinstance(steps, numbers.Integral) or steps < 1:
+            raise ValueError(f"DRIVE_STEPS is a count of deliveries, a whole number of at least 1; got {steps!r} (5.4b)")
+        return int(steps)
+
     def fire_input(self, until: float | None = None) -> list[Wave]:
         """Present the input: schedule the stimulus at its time and run the schedule to the horizon.
 
@@ -448,15 +652,20 @@ class Network:
         """
         if self.input_pattern is None:
             raise ValueError("no input pattern set; call set_input() first")
+        explore = self.explorer()  # before anything is drawn or scheduled: a run it refuses leaves the network as it was
+        steps = self._drive_steps()  # and so is a drive it refuses
         self.time = self.input_time if self.input_time is not None else self.next_time()
         self.epoch += 1
         row = self.input_row()
         self.input_events = self.input_schedule()
         for place, when in self.input_events:
-            self.schedule.stimulus(row[place], when)
+            if self.drive == "charged":
+                self.schedule.charge(row[place], steps, when)  # a delivery, not a forced spike (5.4b)
+            else:
+                self.schedule.stimulus(row[place], when)
         self.horizon = self.time + self.interval if until is None else float(until)
         waves = self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                  explore=self.explorer())
+                                  explore=explore, synapses=self.decider())
         return waves
 
     def _everyone(self) -> list[Neuron]:
@@ -490,13 +699,14 @@ class Network:
         needed). The waves are appended to this epoch's and returned.
         """
         now = self.time if now is None else now
+        explore = self.explorer()
         for neuron in fire:
             self.schedule.stimulus(neuron, now)
         for neuron, amount in (inputs or {}).items():
             self.schedule.external(neuron, amount, now)
         self.horizon = now + self.interval if until is None else float(until)
         return self.schedule.run(self.horizon, self.waves, self._on_wave, self._everyone(),
-                                 explore=self.explorer())
+                                 explore=explore, synapses=self.decider())
 
     def reset(self, discharge: bool = False) -> None:
         """Start a new epoch: clear every neuron's fired-this-epoch state and this epoch's waves.
@@ -508,10 +718,12 @@ class Network:
             neuron.reset(discharge)
         if self.traced:
             accumulating = Neuron.tau == math.inf
+            synaptic = self._exploration == "synapse"
             for connection in self.connections.values():
                 connection.score = 0.0  # the score is the epoch's (§6.7); the trace is the potential's and stays
-                if accumulating:
-                    connection.noted = connection.trace * connection.target.expected  # an open arrival's debit counts from here
+                if accumulating:  # an open arrival's debit counts from here: B = x E, or x G at the synapses (§8.16)
+                    target = connection.target
+                    connection.noted = connection.trace * (target.gain if synaptic else target.expected)
         self.waves = []
 
     def _explore(self, time: float) -> None:
@@ -520,11 +732,111 @@ class Network:
         for neuron, draw in zip(neurons, hazard_draws(self.explore_rng, len(neurons))):
             neuron.draw = draw
 
+    def _explore_synapses(self, time: float) -> None:
+        """Before each wave's fire phase under exploration at the synapse: one uniform per synapse in edge order, then one
+        per output neuron for its read synapse, in output order -- all of them, whatever fires (AUTHORITY.md §3.8)."""
+        self._draws = hazard_draws(self.explore_rng, self._draw_count)
+
     def explorer(self):
-        """The hook Schedule.run calls before each wave fires, or None where the threshold decides."""
+        """The hook Schedule.run calls before each wave fires, or None where the threshold decides.
+
+        Under exploration at the synapse it is the synapses' draws, and this is
+        where a run is checked for what that exploration refuses (§12.2) and
+        its draws are laid out: E in edge order -- sources in index order, each
+        source's synapses in the order the topology was built (§12.5) -- then O
+        in output order (§3.8).
+        """
+        if self._exploration == "synapse":
+            if self.explore_rng is None:
+                raise ValueError("exploration at the synapse draws for every synapse at every wave, whatever its rest "
+                                 "hazard, and needs a stream of its own (§7.3): run the epoch with an rng")
+            everyone = self._everyone()
+            scaling, trace = self.synapse_hazard_scaling, self.trace_mode
+            self._refuse_settings(self.synapse_hazard_rest, self.synapse_hazard_family, scaling, trace)
+            if (scaling, trace) != self._computed_from:
+                raise ValueError(f"the scaling {scaling!r} and the trace {trace!r} are not the ones set_exploration computed "
+                                 f"kappa_i and every trace from, {self._computed_from}: kappa_i is computed once, where the "
+                                 "network is built or resumed (§7.5, §7.7), and TRACE sets what each trace counts (§8.17); "
+                                 "name them to set_exploration")
+            self._refuse_unsupported(everyone)
+            self._refuse_read()
+            if any(n.delta != 0.0 for n in everyone):  # a width that is not a number included
+                raise ValueError("a neuron width and exploration at the synapse together are refused: under exploration "
+                                 "at the synapse every width is 0 (§6.13)")
+            edges = sum(len(neuron.outgoing) for neuron in everyone)
+            slot = {}  # one read synapse per output neuron, in output order: a neuron at two places has one (§7.9)
+            for neuron in self.output_row():
+                slot.setdefault(id(neuron), edges + len(slot))
+            self._layout = [(neuron, slot.get(id(neuron), -1)) for neuron in everyone]
+            self._draw_count = edges + len(slot)
+            return self._explore_synapses
         if self.hazard and self.explore_rng is None:
             raise ValueError("escape noise needs a stream for its draws (§7.3): run the epoch with an rng, as run_epoch does")
         return self._explore if self.hazard else None
+
+    def decider(self):
+        """The hook Schedule.run calls after each wave has fired: the synapses' decisions (§7.5), or None under the
+        neuron rule. Call explorer() first, which lays the draws out."""
+        return self._decide_synapses if self._exploration == "synapse" else None
+
+    def _decide_synapses(self, wave: Wave) -> list:
+        """After the fire phase: every synapse of every source that did not spike this wave decides (AUTHORITY.md §7.5).
+
+        A source that spiked transmitted on every synapse with its spike, and
+        its draws go unused (§3.8). Every other source -- refractory or not
+        (§7.8), touched or not -- has its synapses decide together on one m and
+        one P = -expm1(-m) (Neuron.synapse_expected), each escaping iff its
+        uniform is strictly below P; an output's read synapse decides with them,
+        and its escape counts toward the output's read at this wave (§7.9). An
+        escape leaves the source's potential where it was. The source's one
+        exposure clock is brought to now, F_i = 0 included.
+
+        Where the source's potential is above zero and m > 0, the wave posts
+        §8.16's entry for it: a c - (F - a) m, c = m e^-m / (1 - e^-m), times
+        rho~ = (1 - h0) / h(u) under the linear family -- into the gain under
+        the evidence accumulator, the arrivals settling it (x G - B), and under
+        the leak by one walk over the source's fan-in. The escapes are
+        returned in edge order for the schedule to push one hop later, after
+        the wave's spikes (§3.6).
+        """
+        draws, number, time = self._draws, wave.number, wave.time
+        rest = self.synapse_hazard_rest
+        linear = self.synapse_hazard_family == "linear"
+        tau = Neuron.tau
+        escaped = []
+        k = 0  # the next synapse's draw, in edge order
+        for neuron, slot in self._layout:
+            outgoing = neuron.outgoing
+            if neuron.fired_in_wave == number:  # it spiked: its synapses transmitted, and decide nothing (§6.13)
+                k += len(outgoing)
+                continue
+            synapses = len(outgoing) + (slot >= 0)  # F_i, the read synapse among them
+            if not synapses:
+                neuron.exposed_since = time  # one clock per source, brought to now though nothing decides on it
+                continue
+            m, h = neuron.synapse_expected(time, rest, linear)
+            chance = -math.expm1(-m)
+            escapes = 0
+            for connection in outgoing:
+                if draws[k] < chance:
+                    escaped.append(connection)
+                    escapes += 1
+                k += 1
+            if slot >= 0 and draws[slot] < chance:
+                neuron.read_count += 1  # it delivers nothing, so nothing of it is in flight (§7.9)
+                escapes += 1
+            neuron.exposed_since = time
+            if m > 0.0 and neuron.potential_at(time) > 0.0:  # §8.16: posted only while V_i > 0, and c only where m > 0
+                entry = escapes * (m * math.exp(-m) / -math.expm1(-m)) - (synapses - escapes) * m
+                if linear:
+                    entry = (1.0 - rest) / h * entry  # rho~, the log-derivative the linear family leaves unfolded
+                if tau == math.inf:
+                    neuron.gain += entry  # after this wave's arrivals have noted (§8.16)
+                else:
+                    for connection in neuron.incoming:  # the leak (§8.12): the walk, once a wave per posting source
+                        if connection.trace != 0.0:
+                            connection.score += entry * connection.trace * math.exp(-(time - connection.trace_at) / tau)
+        return escaped
 
     def fired_neurons(self) -> list[Neuron]:
         """Return the neurons that have fired since the last reset."""

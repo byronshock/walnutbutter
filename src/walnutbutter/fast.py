@@ -62,6 +62,17 @@ def flatten(network):
     return neurons, index, source, target, weight, active
 
 
+def _refuse(network) -> None:
+    """What the Rust loop does not carry yet, refused by build, train and compare alike (AUTHORITY.md §12.2) -- before the
+    extension is looked for, so the refusal is the same whether or not it is built."""
+    if getattr(network, "exploration", "neuron") == "synapse":
+        raise ValueError("the Rust loop does not carry exploration at the synapse yet (§7.5-§7.9, §8.16): it refuses the "
+                         "run rather than approximate it (§12.2); run it on the object engine")
+    if getattr(network, "drive", None) == "charged":
+        raise ValueError("the Rust loop does not carry the charged drive yet (5.4b): it refuses the run rather than "
+                         "approximate it (§12.2); run it on the object engine")
+
+
 def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE, explore_rng=None, pending_events=None):
     """An Engine carrying this network's topology and state, ready to run epochs.
 
@@ -70,6 +81,7 @@ def build(network, *, quash_rate=0.0, quash_k=QUASH_K, weight_range=WEIGHT_RANGE
     hands it back, so the other two engines given the same stream take the same
     draws in the same order.
     """
+    _refuse(network)
     rust = _require()
     neurons, index, source, target, weight, active = flatten(network)
     engine = rust.Engine(
@@ -209,6 +221,7 @@ def compare(network, epochs=20, bits=None, *, teacher=None):
     from .learning import TARGETS
     from .monitor import run_epoch
 
+    _refuse(network)
     if teacher is not None:
         if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence"):
             raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic only")
@@ -378,6 +391,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
 
     from .learning import TARGETS
 
+    _refuse(network)
     if eligibility not in ("hazard", "hebb"):
         raise ValueError(f"§8.3 keeps two eligibilities, hazard and hebb; got {eligibility!r}")
     if not network.hazard:  # §8.3: no eligibility runs where the threshold decides

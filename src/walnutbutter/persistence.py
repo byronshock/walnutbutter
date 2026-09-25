@@ -24,6 +24,10 @@ FORMAT = 2  # 1 held a permutation, an input coding, an error-correcting code an
 
 def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
     """Write the network's weights and settings to `path`. Returns what was written."""
+    if getattr(network, "exploration", "neuron") == "synapse" or getattr(network, "drive", None) == "charged":
+        raise ValueError("a checkpoint does not carry exploration at the synapse or the charged drive yet -- the gains, the "
+                         "read counts, the ventured marks and the settings of §7.1, §7.6, §7.7, §8.17 and 5.4b (§8.14, "
+                         "§12.9) -- and refuses rather than write one that would resume as another run (§12.2)")
     engine = getattr(network, "engine", "objects")
     if engine == "arrays":
         network.sync_to_mesh()  # the checkpoint is written from the mesh, whichever engine ran it

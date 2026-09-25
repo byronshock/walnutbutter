@@ -111,6 +111,18 @@ def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
     assert build_parser().parse_args(["--no-scale-with-fan-in"]).scale_with_fan_in is False
 
 
+def test_exploration_at_the_synapse_reads_the_constants():
+    """Appendix A's synapse rows (§7.1, §7.6, §7.7, §8.17, 5.4b): the register's values, and the setter's and the network's
+    defaults are those constants. EXPLORATION stays neuron until §7.6's conditions are met."""
+    assert (C.EXPLORATION, C.SYNAPSE_HAZARD_REST, C.SYNAPSE_HAZARD_FAMILY, C.SYNAPSE_HAZARD_SCALING, C.TRACE,
+            C.DRIVE_STEPS) == ("neuron", 0.01, "loglinear", "count", "all", 3)
+    d = defaults_of(Network.set_exploration)
+    assert (d["h0"], d["family"], d["scaling"], d["trace"]) == (
+        C.SYNAPSE_HAZARD_REST, C.SYNAPSE_HAZARD_FAMILY, C.SYNAPSE_HAZARD_SCALING, C.TRACE)
+    g = Goo(count=4, across=2)  # built under the neuron rule, as it is built deterministic until set_delta
+    assert (g.exploration, g.drive_steps) == ("neuron", C.DRIVE_STEPS)
+
+
 def test_the_teacher_and_the_rule_read_the_constants():
     d = defaults_of(Teacher)
     assert (d["target"], d["critic"]) == (C.TARGET, C.CRITIC)

@@ -69,7 +69,20 @@ class ArrayNetwork(Network):
 
     engine = "arrays"
 
+    def _refuse(self, network=None) -> None:
+        """What the array engine does not carry yet, refused where it wraps and again where it runs (AUTHORITY.md §12.2):
+        its settings stay writable after the wrap, and so do the wrapped mesh's, whose neurons it runs and which
+        sync_to_mesh writes back into, so a check at the wrap alone, or of the wrapper alone, would let one through."""
+        for net in ((self, self.mesh) if network is None else (network,)):
+            if getattr(net, "exploration", "neuron") == "synapse":
+                raise ValueError("the array engine does not carry exploration at the synapse yet (§7.5-§7.9, §8.16): it "
+                                 "refuses the run rather than approximate it (§12.2); run it on the object engine")
+            if net.drive == "charged":
+                raise ValueError("the array engine does not carry the charged drive yet (5.4b): it refuses the run rather "
+                                 "than approximate it (§12.2); run it on the object engine")
+
     def __init__(self, mesh):
+        self._refuse(mesh)
         self.mesh = mesh
         self.across, self.rows = mesh.across, mesh.rows
         self._init_network(mesh.across, mesh.weight_range)
@@ -81,6 +94,7 @@ class ArrayNetwork(Network):
         self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
         self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
+        self.drive_steps = mesh.drive_steps  # 5.4b's, carried though the charged drive is refused here
         self.explore_rng = mesh.explore_rng
         self.rate_on = mesh.rate_on
         self.pickiness = mesh.pickiness  # spikes: the count read's line (§5.10, §9.5)
@@ -224,6 +238,7 @@ class ArrayNetwork(Network):
 
     def _run(self, until: float = math.inf) -> list[ArrayWave]:
         """Process every wave due before `until` (see propagation.Schedule.run), appending to this epoch's waves."""
+        self._refuse()
         potential, threshold, floor, fired_wave = self.potential, self.threshold_v, self.floor, self.fired_wave
         n = len(potential)
         hop = Neuron.hop
@@ -451,6 +466,7 @@ class ArrayNetwork(Network):
         super().set_input(pattern, time)
 
     def fire_input(self, until: float | None = None) -> list[ArrayWave]:
+        self._refuse()
         if self.input_pattern is None:
             raise ValueError("no input pattern set; call set_input() first")
         self.time = self.input_time if self.input_time is not None else self.next_time()
@@ -463,6 +479,7 @@ class ArrayNetwork(Network):
 
     def propagate(self, fire=(), inputs=None, now: float | None = None, until: float | None = None) -> list[ArrayWave]:
         """Run a cascade from the mesh neurons `fire`, forced at `now` (default: the clock), up to `until` (default: one interval)."""
+        self._refuse()
         if inputs:
             raise NotImplementedError("external input amounts are not vectorised; use the object engine")
         now = self.time if now is None else now

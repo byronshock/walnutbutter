@@ -53,6 +53,15 @@ class Neuron:
         self.expected = 0.0  # E_j: the spikes expected of this neuron over its decisions since its last spike -- the
         # hazard's m or the centred rule's p_hat, summed -- so the accumulator's debit settles per arrival (§6.7)
         self.credit = 0.0  # what the decision that fired credits each open arrival with, for fire() to settle (§6.7)
+        self.synaptic = False  # exploration at the synapse (AUTHORITY.md §7.5): its synapses take the chance and it takes
+        # the comparison (§6.13); Network.set_exploration sets it
+        self.trace_ventured = False  # TRACE ventured (§8.17): its synapses' traces count the ventured arrivals alone
+        self.synapse_scale = 1.0  # kappa_i (§7.7): the count's scaling of its synapses' hazard, or that over its fan-out,
+        # F_i; Network.set_exploration sets it, and like escape_scale it is a rule, recomputed rather than stored
+        self.gain = 0.0  # G_j (§8.16): under exploration at the synapse, the running net credit its synapses' decisions
+        # have posted since its last settle, in place of `expected` and `credit`, so each open arrival settles x G - B
+        self.read_count = 0  # an output's read synapse's escapes this epoch (§7.9), added to its spikes in the count
+        # read (§5.10) and nowhere else; zeroed at the epoch's reset
         self.touched_stamp = 0  # last wave (a global stamp) in which a signal reached this neuron
         self.rate = 0.5  # running estimate of how often this neuron fires per epoch (the reinforce rule)
         self.has_fired = False  # fired in the current epoch
@@ -168,6 +177,15 @@ class Neuron:
         settles with its decision's credit; the floor, a forced spike and a
         discharge with none.
         """
+        if self.synaptic:  # §8.16: the credit is inside the gain, a net credit where E_j is a debit, so x G - B
+            gain = self.gain
+            for connection in self.incoming:
+                if connection.trace != 0.0:
+                    connection.score += connection.trace * gain - connection.noted
+                    connection.trace = 0.0
+                    connection.noted = 0.0
+            self.gain = 0.0  # and G restarts, whether or not an arrival was open
+            return
         expected = self.expected
         for connection in self.incoming:
             if connection.trace != 0.0:
@@ -180,12 +198,14 @@ class Neuron:
 
         Under the evidence accumulator the open arrivals are closed without
         credit, their debit so far settled; under the leak the traces are zeroed.
+        Under exploration at the synapse the gain restarts either way (§8.16).
         """
         if Neuron.tau == math.inf:
             self.settle_arrivals(0.0)
         else:
             for connection in self.incoming:
                 connection.trace = 0.0
+            self.gain = 0.0
 
     @property
     def ready(self) -> bool:
@@ -228,6 +248,26 @@ class Neuron:
         if elapsed < 0.0:
             elapsed = 0.0
         return min(elapsed / Neuron.hop * self.escape_scale * math.exp(s / self.delta), 1e3)
+
+    def synapse_expected(self, now: float, rest: float, linear: bool = False) -> tuple[float, float]:
+        """m_i(now) and h(u_i): the spikes the hazard expects of each of this neuron's synapses since they last decided,
+        and the hazard family's value at its potential (AUTHORITY.md §7.5, §7.6).
+
+        u = min(max(V, 0), theta) / theta, on the potential as it stands at
+        `now` and the neuron's own threshold; h = h0 ** (1 - u) under the
+        loglinear family, h0 + (1 - h0) * u under the linear; m = dt / hop,
+        times kappa_i, times h, left to right as §6.5's is, then capped at 1e3,
+        with dt the exposure since the synapses last decided or the spike
+        (§7.8), never negative. The forms are the engine note's: the object
+        engine and the Rust loop agree on them bit for bit.
+        """
+        threshold = self.threshold
+        u = min(max(self.potential_at(now), 0.0), threshold) / threshold
+        h = rest + (1.0 - rest) * u if linear else rest ** (1.0 - u)
+        elapsed = now - self.exposed_since
+        if elapsed < 0.0:
+            elapsed = 0.0
+        return min(elapsed / Neuron.hop * self.synapse_scale * h, 1e3), h
 
     def decide(self, now: float) -> bool:
         """The firing decision at `now`: can_fire when delta is 0, else the escape-noise draw (AUTHORITY.md §5.2).
@@ -298,7 +338,10 @@ class Neuron:
             self.last_update = now
             self.rate_level = self.firing_rate(now) + 1000.0 / Neuron.rate_tau  # Hz: one spike's worth (§4.3)
             self.rate_at = now
-            self.exposed_since = now + Neuron.refractory  # the hazard resumes when the refractory period ends (§5.2)
+            if self.synaptic:
+                self.exposed_since = now  # the synapses' exposure runs from the spike, and nothing suspends it (§7.5, §7.8)
+            else:
+                self.exposed_since = now + Neuron.refractory  # the hazard resumes when the refractory period ends (§5.2)
         if self.traced:
             if Neuron.tau == math.inf:
                 self.settle_arrivals(self.credit)  # the evidence accumulator: the spike credits and closes every open arrival (§6.7)
@@ -307,6 +350,7 @@ class Neuron:
                     connection.trace = 0.0  # the spike reset the potential: nothing any synapse delivered is still in it (§6.7)
             self.expected = 0.0
             self.credit = 0.0
+            self.gain = 0.0  # G restarts at the spike (§8.16)
         if Neuron.verbose:
             print(f"{self.name} fired in wave {wave}.")
         return [connection for connection in self.outgoing if connection.is_active]
@@ -328,6 +372,7 @@ class Neuron:
         self.fired_in_wave = None
         self.forced = False
         self.spikes_at_reset = self.spikes
+        self.read_count = 0  # the read synapse's escapes are the epoch's (§7.9)
 
     @property
     def epoch_spikes(self) -> int:

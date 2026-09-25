@@ -34,8 +34,14 @@ def run_epoch(
     defaults to the network's interval after the last input. With `noise` > 0
     a Gaussian draw of that standard deviation (the exploration) is added to
     every neuron's potential; each neuron remembers it as `noise`. Prints the
-    input unless `verbose` is False. Returns the epoch's waves.
+    input unless `verbose` is False. Returns the epoch's waves. Under
+    exploration at the synapse `rng` is required: the synapses draw at every
+    wave whatever their rest hazard, and the module's stream is no run's own
+    (§7.3); the fallback stays for the neuron rule as it always ran.
     """
+    if rng is None and getattr(network, "exploration", "neuron") == "synapse":
+        raise ValueError("exploration at the synapse draws for every synapse at every wave, whatever its rest hazard, and "
+                         "needs a stream of its own (§7.3, §12.7): pass rng, as the Teacher does")
     network.reset(discharge)
     if bits is None:
         network.new_random_input(time)
