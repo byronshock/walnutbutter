@@ -735,6 +735,26 @@ def apply_problem(args: argparse.Namespace) -> None:
         args.goo = problem.goo if problem.goo is not None else GOO_COUNT  # goo is the only container (§4.1)
 
 
+def refuse_goo_size(args: argparse.Namespace) -> None:
+    """Refuse a goo that is not its input zone, its hidden neurons and its output zone together (AUTHORITY.md §11.7).
+
+    Only a run with a hidden count -- its own --hidden-neurons or the
+    problem's, which apply_problem fills in -- has a size to be held to, and
+    only a fresh network: a checkpoint loaded is the size it was saved at.
+    Every way of building one asks here -- a run, --seeds and the sweep
+    driver's grid_of -- so that a --goo naming a stale size is refused rather
+    than built at the size it named.
+    """
+    hidden, outputs = args.hidden_neurons, args.outputs or args.across
+    if hidden is None:
+        return
+    if hidden < 0:
+        raise ValueError(f"--hidden-neurons must be at least 0, got {hidden}")
+    if args.goo != args.across + hidden + outputs:
+        raise ValueError(f"--hidden-neurons {hidden} with {args.across} in and {outputs} out is a goo of "
+                         f"{args.across + hidden + outputs}, not --goo {args.goo}")
+
+
 def apply_container(args: argparse.Namespace) -> None:
     """Goo's own threshold and floor (AUTHORITY.md §1.2) unless --threshold or --minimum-potential was given.
 
@@ -944,10 +964,10 @@ def _run(args: argparse.Namespace) -> int:
             if loaded:
                 grid, data = loaded
             else:
-                if args.hidden_neurons is not None and (args.hidden_neurons < 0 or args.goo != args.across + args.hidden_neurons + (args.outputs or args.across)):
-                    print(f"error: --hidden-neurons {args.hidden_neurons} with {args.across} in and {args.outputs or args.across} "
-                          f"out is a goo of {args.across + args.hidden_neurons + (args.outputs or args.across)}, not --goo {args.goo}",
-                          file=sys.stderr)
+                try:
+                    refuse_goo_size(args)
+                except ValueError as exc:
+                    print(f"error: {exc}", file=sys.stderr)
                     return 2
                 if args.wiring in ZONE_WIRINGS and args.goo <= args.across + (args.outputs or args.across):
                     print(
@@ -1245,6 +1265,11 @@ def _run_seeds(args: argparse.Namespace) -> int:
         return 2
     if args.epochs < 2:
         print("error: --seeds needs --epochs of at least 2", file=sys.stderr)
+        return 2
+    try:
+        refuse_goo_size(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
     base = args.seed if args.seed is not None else random.randrange(2**31 - args.seeds)
     seeds = list(range(base, base + args.seeds))
