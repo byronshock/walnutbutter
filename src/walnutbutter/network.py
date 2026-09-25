@@ -314,12 +314,18 @@ class Network:
         if trace not in TRACES:
             raise ValueError(f"unknown trace {trace!r}; choose from {', '.join(TRACES)} (§8.17)")
 
-    def _refuse_unsupported(self, everyone: list[Neuron]) -> None:
-        """What exploration at the synapse has no rule for, refused where it is set and again where it runs (§12.2)."""
-        if any(n.threshold <= 0.0 for n in everyone):
+    def _refuse_unsupported(self, everyone: list[Neuron], thresholds=None, actives=None) -> None:
+        """What exploration at the synapse has no rule for, refused where it is set and again where it runs (§12.2).
+        `thresholds` and `actives` are what the network runs on where that is not its neurons' and connections' own:
+        the array engine's vectors."""
+        if thresholds is None:
+            thresholds = [n.threshold for n in everyone]
+        if actives is None:
+            actives = [c.is_active for c in self.connections.values()]
+        if any(threshold <= 0.0 for threshold in thresholds):
             raise ValueError("a threshold at or below zero leaves u = clip(V, 0, theta) / theta undefined, and under "
                              "exploration at the synapse a network holding one is refused (§7.5)")
-        if any(not c.is_active for c in self.connections.values()):
+        if not all(actives):
             raise ValueError("an inactive connection keeps its draw under exploration at the synapse, and what it does with "
                              "it is not specified: a network holding one is refused (§3.8)")
         if self.readout != "top":
@@ -763,11 +769,13 @@ class Network:
             raise ValueError("escape noise needs a stream for its draws (§7.3): run the epoch with an rng, as run_epoch does")
         return self._explore if self.hazard else None
 
-    def _refuse_synapse_run(self, everyone: list[Neuron]) -> None:
+    def _refuse_synapse_run(self, everyone: list[Neuron], thresholds=None, actives=None, deltas=None) -> None:
         """What a run under exploration at the synapse refuses where it runs (§12.2), its stream aside: the settings as
         they stand, since they stay writable attributes, against the ones set_exploration computed from; what the
-        mechanism has no rule for; a read other than the count; and any neuron width. The object engine checks it at
-        every fire_input and propagate, and the Rust loop's driver (fast.py) where it builds, trains and compares."""
+        mechanism has no rule for; a read other than the count; any neuron width; and hebb (§8.3), the network's or a
+        neuron's. The object engine checks it at every fire_input and propagate, the Rust loop's driver (fast.py) where
+        it builds, trains and compares, and the array engine where it runs, on its own thresholds, active flags, widths
+        and hebb."""
         scaling, trace = self.synapse_hazard_scaling, self.trace_mode
         self._refuse_settings(self.synapse_hazard_rest, self.synapse_hazard_family, scaling, trace)
         if (scaling, trace) != self._computed_from:
@@ -775,11 +783,16 @@ class Network:
                              f"kappa_i and every trace from, {self._computed_from}: kappa_i is computed once, where the "
                              "network is built or resumed (§7.5, §7.7), and TRACE sets what each trace counts (§8.17); "
                              "name them to set_exploration")
-        self._refuse_unsupported(everyone)
+        self._refuse_unsupported(everyone, thresholds, actives)
         self._refuse_read()
-        if any(n.delta != 0.0 for n in everyone):  # a width that is not a number included
+        if deltas is None:
+            deltas = [n.delta for n in everyone]
+        if any(delta != 0.0 for delta in deltas):  # a width that is not a number included
             raise ValueError("a neuron width and exploration at the synapse together are refused: under exploration "
                              "at the synapse every width is 0 (§6.13)")
+        if self.centred or any(n.centred for n in everyone):  # writable too, the network's and each neuron's
+            raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and it has "
+                             "no neuron decision to centre (§8.3)")
 
     def decider(self):
         """The hook Schedule.run calls after each wave has fired: the synapses' decisions (§7.5), or None under the
@@ -802,9 +815,11 @@ class Network:
         §8.16's entry for it: a c - (F - a) m, c = m e^-m / (1 - e^-m), times
         rho~ = (1 - h0) / h(u) under the linear family -- into the gain under
         the evidence accumulator, the arrivals settling it (x G - B), and under
-        the leak by one walk over the source's fan-in. The escapes are
-        returned in edge order for the schedule to push one hop later, after
-        the wave's spikes (§3.6).
+        the leak by one walk over the source's fan-in. Where rho~ overflows --
+        h0 = 0 and a potential leaked below the normal range, h underflowing
+        with it -- the entry in the engine note's form is not finite, and the
+        run is refused (§12.2). The escapes are returned in edge order for the
+        schedule to push one hop later, after the wave's spikes (§3.6).
         """
         draws, number, time = self._draws, wave.number, wave.time
         rest = self.synapse_hazard_rest
@@ -837,6 +852,11 @@ class Network:
                 entry = escapes * (m * math.exp(-m) / -math.expm1(-m)) - (synapses - escapes) * m
                 if linear:
                     entry = (1.0 - rest) / h * entry  # rho~, the log-derivative the linear family leaves unfolded
+                    if not math.isfinite(entry):  # h > 0 wherever m > 0, so the division itself is always defined
+                        raise ValueError("under the linear family rho~ = (1 - h0) / h multiplies the entry, and where h "
+                                         "has underflowed -- h0 = 0, and a source's potential leaked below the normal "
+                                         "range -- it overflows and the entry is not finite: the run is refused rather "
+                                         "than post it (§8.16, §12.2)")
                 if tau == math.inf:
                     neuron.gain += entry  # after this wave's arrivals have noted (§8.16)
                 else:

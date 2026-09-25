@@ -862,8 +862,9 @@ impl Engine {
         ))
     }
 
-    /// Process every wave due before `until`. Returns (time, fired neuron indices) per wave.
-    fn run(&mut self, until: f64) -> Vec<(f64, Vec<u32>)> {
+    /// Process every wave due before `until`. Returns (time, fired neuron indices) per wave, or the refusal a wave's
+    /// synapses met (decide_synapses).
+    fn run(&mut self, until: f64) -> PyResult<Vec<(f64, Vec<u32>)>> {
         let mut waves: Vec<(f64, Vec<u32>)> = Vec::new();
         let mut batch: Vec<Event> = Vec::new();
         let mut touched: Vec<u32> = Vec::new();
@@ -1000,7 +1001,7 @@ impl Engine {
                 }
             }
             if synaptic {
-                self.decide_synapses(time); // §7.5: after the spikes, and its escapes pushed after theirs (§3.6)
+                self.decide_synapses(time)?; // §7.5: after the spikes, and its escapes pushed after theirs (§3.6)
             }
 
             if self.quash_rate != 0.0 {
@@ -1008,7 +1009,7 @@ impl Engine {
             }
             waves.push((time, fired));
         }
-        waves
+        Ok(waves)
     }
 
     /// How many events are still in flight (they outlive the epoch).
@@ -1351,9 +1352,11 @@ impl Engine {
     ///
     /// Where the source's potential is above zero and m > 0 the wave posts §8.16's entry for it, a c - (F - a) m with
     /// c = m e^-m / (1 - e^-m), times rho~ = (1 - h0) / h(u) under the linear family: into the gain under the
-    /// evidence accumulator, and under the leak by one walk over the source's fan-in (§8.12).
+    /// evidence accumulator, and under the leak by one walk over the source's fan-in (§8.12). Where rho~ overflows --
+    /// h0 = 0 and a potential leaked below the normal range, h underflowing with it -- the entry in the engine note's
+    /// form is not finite, and the run is refused (§12.2), as the object engine refuses it.
     #[inline(never)]
-    fn decide_synapses(&mut self, now: f64) {
+    fn decide_synapses(&mut self, now: f64) -> PyResult<()> {
         let wave = self.wave_no as i64;
         let (rest, rest_power, linear, hop) = (self.rest, self.rest_power, self.linear, self.hop);
         for i in 0..self.neurons {
@@ -1389,6 +1392,13 @@ impl Engine {
                 let mut entry = escapes as f64 * (m * (-m).exp() / -(-m).exp_m1()) - (synapses - escapes) as f64 * m;
                 if linear {
                     entry = (1.0 - rest) / h * entry; // rho~, the log-derivative the linear family leaves unfolded
+                    if !entry.is_finite() {
+                        return Err(PyValueError::new_err(
+                            "under the linear family rho~ = (1 - h0) / h multiplies the entry, and where h has \
+                             underflowed -- h0 = 0, and a source's potential leaked below the normal range -- it \
+                             overflows and the entry is not finite: the run is refused rather than post it (§8.16, §12.2)",
+                        ));
+                    }
                 }
                 if self.tau.is_infinite() {
                     self.gain[i] += entry; // after this wave's arrivals have noted (§8.16)
@@ -1404,6 +1414,7 @@ impl Engine {
                 }
             }
         }
+        Ok(())
     }
 
     /// neuron.py's decide: the threshold when the width is 0, else the escape-noise draw (§5.2). The decision charges

@@ -378,11 +378,12 @@ def test_ventured_signals_in_flight_round_trip_through_the_queue():
 # the same way in both engines -- the same preset potentials, the same events queued, the same stream -- and run.
 
 
-def _queued(potentials, events, seed=2, weight=None, stream=5):
+def _queued(potentials, events, seed=2, weight=None, stream=5, **settings):
     """goo 60 under the charged drive twice, the objects' and a twin for the engine, each neuron at `potentials` (by
     engine index), and `events` -- (time, kind, payload), a signal's payload its edge and a charge's its neuron -- in
-    the objects' schedule and the engine's queue, both given the same stream. Returns (g, engine, neurons, edges)."""
-    g, twin = goo(seed=seed, weight=weight, drive="charged"), goo(seed=seed, weight=weight, drive="charged")
+    the objects' schedule and the engine's queue, both given the same stream; `settings` set_exploration's. Returns
+    (g, engine, neurons, edges)."""
+    g, twin = (goo(seed=seed, weight=weight, drive="charged", **settings) for _ in range(2))
     neurons, index = fast.flatten(g)[:2]
     edges = [c for n in neurons for c in n.outgoing]
     for mesh in (g, twin):
@@ -524,6 +525,25 @@ def test_a_threshold_taken_to_zero_is_refused_at_the_move_that_takes_it(homeosta
     with pytest.raises(ValueError, match="§7.5"):
         fast.train(twin, 3, lr=0.5, target="copy", patterns=patterns, seed=5, **kw)
     assert twin.epoch == 1
+
+
+@pytest.mark.parametrize("tau", (math.inf, 2.0))
+def test_an_entry_that_overflows_is_refused_as_the_objects_refuse_it(tau):
+    """§8.16, §12.2: under the linear family at h0 = 0, h = u, and a source's potential below the normal range -- leaked
+    there, under the leak -- takes h below it too; rho~ = (1 - h0) / h then overflows and the entry in the engine note's
+    form is not finite. The engine refuses the wave the objects refuse, rather than post it into a gain or a score. A
+    charge lands on an input at 3 ms, a hidden neuron with synapses holding 1e-315 since the clock's start."""
+    Neuron.tau = tau
+    probe = goo(seed=2, weight=0.02, drive="charged")
+    neurons, index = fast.flatten(probe)[:2]
+    inputs = {index[n] for n in probe.input_row()}
+    source = next(i for i, n in enumerate(neurons) if n.outgoing and i not in inputs)
+    a = next(iter(sorted(inputs)))
+    g, engine, _, _ = _queued({source: 1e-315}, [(3.0, EXTERNAL, a)], weight=0.02, h0=0.0, family="linear")
+    with pytest.raises(ValueError, match="§8.16"):
+        g.schedule.run(3.5, g.waves, g._on_wave, g._everyone(), explore=g.explorer(), synapses=g.decider())
+    with pytest.raises(ValueError, match="§8.16"):
+        engine.run(3.5)
 
 
 

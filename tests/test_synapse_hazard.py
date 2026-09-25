@@ -1,5 +1,6 @@
-"""Exploration at the synapse (AUTHORITY.md §6.13, §7.1, §7.5-§7.9, §8.16-§8.17, 5.4b): the object engine, and every
-engine's refusal of what it does not carry yet (§12.2).
+"""Exploration at the synapse (AUTHORITY.md §6.13, §7.1, §7.5-§7.9, §8.16-§8.17, 5.4b): the object engine, and what every
+engine refuses (§12.2) -- the Rust loop's agreement is tests/test_synapse_rust.py's, the array engine's
+tests/test_synapse_arrays.py's.
 
 The hand-checked cases run on `Tiny`, a network wired edge by edge, with `Stream`, an exploration stream of chosen
 uniforms, standing in for the run's stream (§7.3); the rest run on goo of 24 or 60 and a few epochs.
@@ -950,6 +951,18 @@ def test_hebb_is_refused():
     h.centre(True)
     with pytest.raises(ValueError, match="§8.3"):
         h.set_exploration("synapse")
+    # and where it runs, set as the attribute it stays after set_exploration: the network's, or a neuron's, whose
+    # decisions would charge hebb's entries into the scores (§12.2)
+    for centred in (lambda g: setattr(g, "centred", True), lambda g: setattr(g.all_neurons()[5], "centred", True)):
+        g = goo()
+        g.set_exploration("synapse")
+        g.explore_rng = random.Random(1)
+        centred(g)
+        for run in (lambda: run_epoch(g, verbose=False, rng=random.Random(1)),
+                    lambda: g.propagate(fire=[g.all_neurons()[0]])):
+            with pytest.raises(ValueError, match="§8.3"):
+                run()
+        assert g.epoch == 0 and not g.waves
 
 
 def test_the_drive_is_refused_where_the_file_does_not_name_it():
@@ -1064,6 +1077,10 @@ def test_the_rust_loop_refuses_what_the_file_refuses():
     g.all_neurons()[5].delta = 0.1
     with pytest.raises(ValueError, match="§6.13"):
         fast.build(g, explore_rng=random.Random(1))
+    g.all_neurons()[5].delta = 0.0
+    g.centred = True  # hebb set as the attribute it stays after set_exploration, which the driver hands the engine
+    with pytest.raises(ValueError, match="§8.3"):
+        fast.build(g, explore_rng=random.Random(1))
     h = goo()
     h.drive = "charged"
     for run in (lambda: fast.build(h), lambda: fast.train(h, 1, eligibility="hazard", seed=1),
@@ -1072,45 +1089,131 @@ def test_the_rust_loop_refuses_what_the_file_refuses():
             run()
 
 
-def test_the_array_engine_refuses_what_it_does_not_carry_yet():
-    """§12.2: at the wrap, and again where it runs, since its settings stay writable after it."""
-    pytest.importorskip("numpy")
+def test_the_array_engine_refuses_what_the_file_refuses():
+    """§12.2: the array engine carries exploration at the synapse and the charged drive (tests/test_synapse_arrays.py),
+    and refuses where it runs what the object engine refuses there -- at every fire_input, propagate and run, since its
+    settings stay writable after the wrap: no stream (§7.3), a setting the network was not set up under (§8.17), a
+    width (§6.13), a threshold at or below zero (§7.5), an inactive connection (§3.8), a read other than the count
+    (§5.10), hebb (§8.3), the forced drive under the synapse (§5.7) and the charged drive under the neuron rule (5.4b);
+    and a wrapped mesh whose exploration was set apart from it (§7.1). Written at step 2 as the refusal of a mechanism
+    the arrays did not carry yet, and rewritten at step 4, when they came to carry it, into this."""
+    np = pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
     g = goo()
     g.set_exploration("synapse")
-    with pytest.raises(ValueError, match="§7.5"):
-        ArrayNetwork(g)
-    h = goo()
-    h.drive = "charged"
-    with pytest.raises(ValueError, match="5.4b"):
-        ArrayNetwork(h)
-    net = ArrayNetwork(goo())
-    net.set_exploration("synapse")
+    net = ArrayNetwork(g)  # the wrap takes a network exploring at the synapse
+    assert net.exploration == "synapse" and net.traced and net.explores and not net.delta_v.any()
+
+    def epoch(net):
+        return lambda: run_epoch(net, verbose=False, rng=random.Random(1))
+
+    def refused(make, clause, *runs):
+        net = make()
+        for run in runs or (epoch(net),):
+            with pytest.raises(ValueError, match=clause):
+                run(net) if runs else run()
+        assert net.epoch == 0 and not net.waves  # refused before anything moved
+
+    def wrapped(**settings):
+        def make():
+            net = ArrayNetwork(goo())
+            net.set_exploration("synapse", **settings)  # through the wrapper, which sets the mesh with it
+            return net
+        return make
+
+    net = wrapped()()
     net.set_input_bits([True, False])
+    for run in (net.fire_input, lambda: net.propagate(fire=[net.neurons[0]]), lambda: net._run(10.0)):
+        with pytest.raises(ValueError, match="§7.3"):
+            run()
+    with pytest.raises(ValueError, match="§7.3"):
+        run_epoch(net, verbose=False)
+    for name, value, clause in (("trace_mode", "ventured", "§8.17"), ("synapse_hazard_scaling", "fan-out", "§7.7"),
+                                ("synapse_hazard_rest", 1.5, "§7.6"), ("synapse_hazard_family", "cubic", "§7.6"),
+                                ("read", "fired", "§5.10"), ("readout", "input", "§7.9"), ("drive", "forced", "§5.7"),
+                                ("centred", True, "§8.3")):  # hebb set on the arrays, which read it at every wave
+        def make(name=name, value=value):
+            net = wrapped()()
+            setattr(net, name, value)
+            return net
+        refused(make, clause)
+    for vector, value, clause in (("delta_v", 0.1, "§6.13"), ("delta_v", math.nan, "§6.13"), ("threshold_v", 0.0, "§7.5"),
+                                  ("active", False, "§3.8")):
+        def make(vector=vector, value=value):
+            net = wrapped()()
+            getattr(net, vector)[5] = value
+            return net
+        refused(make, clause)
+    net = wrapped()()
+    with pytest.raises(ValueError, match="§8.3"):
+        Teacher(net, rule="reinforce", eligibility="hebb")
+    with pytest.raises(ValueError, match="§8.3"):
+        net.centre(True)
+    net = ArrayNetwork(goo())
+    net.centre(True)
+    with pytest.raises(ValueError, match="§8.3"):
+        net.set_exploration("synapse")
+    assert net.exploration == "neuron"
+    # a width given on the wrapper is the arrays' as well as the mesh's, refused with the synapse and taken back to 0
+    net = ArrayNetwork(goo())
+    net.set_delta(C.ESCAPE_DELTA)
+    assert net.delta_v.all() and net.hazard
+    with pytest.raises(ValueError, match="§6.13"):
+        net.set_exploration("synapse")
+    net.set_delta(0.0)
+    net.set_exploration("synapse")
+    assert not net.delta_v.any() and net.exploration == "synapse"
+    assert run_epoch(net, verbose=False, rng=random.Random(1))
+    # the reads that are not the count, refused where they are read as where the network runs (§5.10)
+    for read in ("fired", "again", "window", "rate"):
+        net.read = read
+        for reader in (net.output_fired, net.output_levels):
+            with pytest.raises(ValueError, match="§5.10"):
+                reader()
+    # a threshold taken to zero by homeostasis or un-sticking, at the move (§7.5)
+    net = wrapped()()
     with pytest.raises(ValueError, match="§7.5"):
-        net.fire_input()
+        homeostasis(net, 10.0, 0.9)
+    net = wrapped()()
+    net.rate[:] = 0.0
     with pytest.raises(ValueError, match="§7.5"):
-        net.propagate(fire=[net.neurons[0]])
+        unstick(net, 10.0, 0.9)
+    # the charged drive under the neuron rule, on the wrapper (5.4b)
     net = ArrayNetwork(goo())
     net.drive = "charged"
     net.set_input_bits([True, False])
     with pytest.raises(ValueError, match="5.4b"):
         net.fire_input()
-    # the wrapped mesh set after the wrap: its neurons are the ones the array engine runs, and sync_to_mesh writes back
+    assert net.epoch == 0
+    # the wrapped mesh set apart after the wrap: its neurons are the ones the arrays run, and sync_to_mesh writes back
     mesh = goo()
     net = ArrayNetwork(mesh)
     mesh.set_exploration("synapse")
     net.explore_rng = random.Random(1)
     net.set_input_bits([True, False])
     for run in (net.fire_input, lambda: net.propagate(fire=[net.neurons[0]]), lambda: net._run(10.0)):
-        with pytest.raises(ValueError, match="§7.5"):
+        with pytest.raises(ValueError, match="§7.1"):
             run()
     mesh = goo()
+    mesh.set_exploration("synapse")
     net = ArrayNetwork(mesh)
-    mesh.drive = "charged"
-    net.set_input_bits([True, False])
-    with pytest.raises(ValueError, match="5.4b"):
-        net.fire_input()
+    mesh.set_exploration("synapse", scaling="fan-out")  # kappa_i and every trace computed on the mesh alone
+    with pytest.raises(ValueError, match="§7.1"):
+        run_epoch(net, verbose=False, rng=random.Random(1))
+    for settings in ({"h0": 0.2}, {"family": "linear"}):  # the rest hazard and the family, which the arrays read at every
+        # wave and sync_to_mesh does not write back: the mesh would claim for the run what the arrays did not run
+        mesh = goo()
+        mesh.set_exploration("synapse")
+        net = ArrayNetwork(mesh)
+        mesh.set_exploration("synapse", **settings)
+        with pytest.raises(ValueError, match="§7.1"):
+            run_epoch(net, verbose=False, rng=random.Random(1))
+        assert net.epoch == 0 and not net.waves
+    # and what it has always refused: an external input of a given amount is not vectorised
+    net = wrapped()()
+    net.explore_rng = random.Random(1)
+    with pytest.raises(NotImplementedError):
+        net.propagate(inputs={net.neurons[0]: 0.1})
 
 
 def test_a_checkpoint_refuses_what_it_does_not_carry_yet(tmp_path):

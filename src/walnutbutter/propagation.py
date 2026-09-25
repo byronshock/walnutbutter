@@ -152,6 +152,12 @@ class Schedule:
             return [(time, connection, ventured) for time, (connection, ventured) in signals]
         return [(time, connection) for time, (connection, _) in signals]
 
+    def charges(self) -> list[tuple[float, Neuron, int]]:
+        """The charged drive's deliveries still to come (5.4b), by time then order, as (time, neuron, steps): what the
+        array engine takes over from a mesh it wraps."""
+        return [(time, payload[0], payload[2]) for time, kind, _, payload in sorted(self._heap, key=lambda e: e[:3])
+                if kind == EXTERNAL and payload[1] is None]
+
     def clear(self) -> None:
         self._heap.clear()
 
