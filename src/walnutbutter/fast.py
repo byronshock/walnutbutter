@@ -472,6 +472,7 @@ def benchmark(network, epochs=200, bits=None):
 def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_every=0, patterns=None,
           eligibility=None, seed=None, explore_state=None, pending_events=None, homeostasis=0.0, target_rate=TARGET_RATE,
           unstick=0.0, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
+          checkpoint=None, checkpoint_every=0,
           direction=None, reference_weights=None, epoch_offset=0, baseline=None):
     """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
 
@@ -509,6 +510,17 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     `probe(epoch, engine, network, out, book)` is called after every `probe_every`-th
     epoch's update, for a diagnostic to read the engine's counts and the rate
     memories as the run goes; it must not change anything.
+
+    `checkpoint(epoch, engine, network, report)` is called after every
+    `checkpoint_every`-th epoch's update, with the epochs run counted from
+    `epoch_offset` and a `report` of what §12.9 says a checkpoint holds and the
+    engine alone knows: the thresholds and rate memories the run has reached,
+    the §6.7 expectations and decision counts, the §9.3 baseline, and the trace,
+    the fraction right and the estimator so far. It is for a driver to write the
+    run's state to disk as it goes, so that a run cut short costs at most
+    `checkpoint_every` epochs; like `probe` it must not change anything. The
+    epoch the run ends at is left out, since the caller holds the whole report
+    there and saves it itself.
 
     `direction(edges)`, given the engine's edges in order, returns a per-edge
     supervised direction `d` and a mask of the edges it is defined on (§8: for
@@ -638,6 +650,17 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
                 w_prev = w
         if probe is not None and probe_every and (epoch + 1) % probe_every == 0:
             probe(epoch + 1, engine, network, out, book)
+        # §12.9, §12.11: the run as it stands, for the caller to write where a crash cannot cost more than
+        # `checkpoint_every` epochs. The state is read, never touched: a checkpointed run is the same run.
+        if checkpoint is not None and checkpoint_every and (epoch + 1) % checkpoint_every == 0 and epoch + 1 < epochs:
+            checkpoint(epoch_offset + epoch + 1, engine, network, {
+                "thresholds": book.thresholds, "rates": book.rates,
+                "expectations": [None if e != e else e for e in engine.expectations()],
+                "decisions": list(engine.decision_counts()),
+                "baseline": baseline,  # §9.3: b as it stands, so a resumed run is paid against it
+                "trace": list(trace), "right": list(right),
+                "estimator": None if estimator is None else list(estimator),
+            })
     on, off = book.stuck()
     report = {"last_tenth": tail / tenth, "rates": book.rates, "thresholds": book.thresholds,
               # the single-spike rule's expectations and decisions to date (§6.7), so a continuation charges from where it was

@@ -146,6 +146,130 @@ AUTHORITY.md.
     neuron's reader. Added at Byron's request.
     In `references/`: `BialekZee90.pdf`, the first author's copy (a scan).
 
+16. Gerstner, W., & Kistler, W. M. (2002). *Spiking neuron models: Single
+    neurons, populations, plasticity*. Cambridge University Press.
+    https://doi.org/10.1017/CBO9780511815706
+    The textbook statement of escape noise. Chapter 5 gives the firing
+    hazard as a function of the distance to threshold, the exponential form
+    among its choices (eq. 5.45), the chance of a spike in a step as one
+    minus the exponential of the summed hazard (eq. 5.52), and in §5.7 the
+    mapping from diffusive input noise to an escape rate; §5.3 states the
+    rule for the integrate-and-fire neuron as well as the book's spike
+    response model, so what AUTHORITY.md §6.5 takes is the rule and not the
+    neuron. Its successor, *Neuronal Dynamics* (2014), chapter 9, is where
+    Byron read it. Added at Byron's request.
+    In `references/`: `GerstnerKistler02-extracts.pdf`, the author's own
+    200-page extract (chapters 1, 4 and 10-12 whole; §5.3 is not in it). The
+    whole book is free as HTML from the authors,
+    https://lcnwww.epfl.ch/gerstner/SPNM/SPNM.html, §5.3 at node35.html.
+
+17. Gerstner, W., Kistler, W. M., Naud, R., & Paninski, L. (2014). *Neuronal
+    dynamics: From single neurons to networks and models of cognition*.
+    Cambridge University Press. https://doi.org/10.1017/CBO9781107447615
+    The successor of entry 16, and the book Byron read escape noise from on
+    September 17, 2026: chapter 9, "Noisy output: escape rate and soft
+    threshold", where the choice of escape function is called arbitrary and
+    the exponential form of §9.1 is the one AUTHORITY.md §6.5 takes,
+    discretised as one minus the exponential of the summed hazard.
+    Not in `references/`: in copyright, and Cambridge sells the PDF; the
+    authors serve the whole text free at
+    https://neuronaldynamics.epfl.ch/online/ (§9.1 at `Ch9.S1.html`), and
+    chapter 1 alone as a PDF on edX.
+
+18. del Castillo, J., & Katz, B. (1954). Quantal components of the end-plate
+    potential. *The Journal of Physiology*, 124(3), 560-573.
+    https://doi.org/10.1113/jphysiol.1954.sp005129
+    At the frog neuromuscular junction, with release made scarce by low
+    calcium and high magnesium, the response to a nerve impulse comes in
+    steps, whole multiples of the spontaneous miniature potential, with
+    outright failures; the count of steps per impulse follows the Poisson
+    law, the small-probability limit of the paper's own model of n release
+    units each answering with probability p, binomial in general. The
+    origin of the finding that a synapse is a genuine noise source:
+    transmission is a random count, not a fixed weight. Nothing in
+    AUTHORITY.md is written from it, since §6.5 places the noise at the
+    neuron's firing decision; it is the measured ground under §0.11, a
+    synapse exploring its own impulse response.
+    In `references/`: `DelCastilloKatz54.pdf`, PubMed Central's scan of the
+    version of record, as the Internet Archive captured it.
+
+19. Fatt, P., & Katz, B. (1952). Spontaneous subthreshold activity at motor
+    nerve endings. *The Journal of Physiology*, 117(1), 109-128.
+    https://doi.org/10.1113/jphysiol.1952.sp004735
+    The discovery of miniature end-plate potentials: a resting frog
+    end-plate fires small spontaneous depolarisations, a hundredth of the
+    evoked response, at exponentially distributed intervals with no memory
+    of the last, and in low calcium the evoked response breaks into steps
+    of that same unit. The synapse is a noise source on its own, with no
+    input at all. The authors' guess at the cause, thermal noise on the
+    terminal's potential crossing a fixed threshold, left undecided, is the
+    diffusive picture that entry 16 (§5.7) maps to an escape rate. Bears on
+    Byron's question of September 17 and on the §0.11 intention that a
+    synapse explore its own impulse response; the spec as it stands has no
+    synaptic noise (§7.1).
+    In `references/`: `FattKatz52.pdf`, PubMed Central's scan, via an
+    Internet Archive capture.
+
+20. Destexhe, A., Rudolph, M., & Paré, D. (2003). The high-conductance state
+    of neocortical neurons in vivo. *Nature Reviews Neuroscience*, 4(9),
+    739-751. https://doi.org/10.1038/nrn1198
+    In the intact cortex the discharge of thousands of presynaptic neurons
+    keeps a cell depolarised, leaky and fluctuating; models and dynamic-clamp
+    experiments show the consequence, a slice neuron's all-or-none threshold
+    turned into a smooth probabilistic response, its slope set by the
+    fluctuations and its position by the mean conductance. The biophysics
+    behind the soft threshold AUTHORITY.md §6.5 models; the noise here is
+    the network's input as a whole, not any one synapse's release.
+    In `references/`: `DestexheRudolphPare03.pdf`, the HAL deposit
+    (hal-00299172, CC BY-NC), Nature's typesetting, saved from the Internet
+    Archive's capture.
+
+21. Dobrunz, L. E., & Stevens, C. F. (1997). Heterogeneity of release
+    probability, facilitation, and depletion at central synapses. *Neuron*,
+    18(6), 995-1008. https://doi.org/10.1016/S0896-6273(00)80338-4
+    Single release sites in hippocampal slices: release probability runs
+    from 0.05 to 0.86 across synapses (mean 0.35), the low ones facilitate
+    most, and a synapse's probability tracks a pool of about five vesicles
+    that a 10 Hz train drains and three seconds refill. Each synapse its
+    own coin with its own bias, and the bias moves with use: the measured
+    counterpart of §0.11's synapse exploring its own impulse response. The
+    spec as it stands keeps the coin at the soma (§6.5).
+    In `references/`: `DobrunzStevens97.pdf`, the publisher's free Open
+    Archive PDF via an Internet Archive capture (cell.com refuses scripts).
+
+22. Schneidman, E., Freedman, B., & Segev, I. (1998). Ion channel
+    stochasticity may be critical in determining the reliability and
+    precision of spike timing. *Neural Computation*, 10(7), 1679-1703.
+    https://doi.org/10.1162/089976698300017089
+    A Hodgkin-Huxley patch with a realistic number of channels, each opening
+    and closing at random, reproduces Mainen & Sejnowski (1995): spike times
+    unreliable for steady input, precise for fluctuating input. The few
+    channels open near threshold set the moment of firing, giving spikes
+    below threshold and missed spikes above it: a soft threshold from the
+    membrane alone, the alternative origin for the escape noise of
+    AUTHORITY.md §6.5, which names none. A simulation of sufficiency, not a
+    measurement; the paper itself says large enough input fluctuations
+    largely override the channel noise.
+    In `references/`: `SchneidmanFreedmanSegev98.pdf`, the publisher's
+    typesetting from the first author's lab page at Weizmann, with MIT
+    Press's cited-by list appended (37 pages).
+
+23. Malinow, R., & Malenka, R. C. (2002). AMPA receptor trafficking and
+    synaptic plasticity. *Annual Review of Neuroscience*, 25(1), 103-126.
+    https://doi.org/10.1146/annurev.neuro.25.112701.142758
+    The case that long-term potentiation and depression are written on the
+    receiving side of the synapse: AMPA receptors carried into it and pulled
+    out again, with silent synapses that hold none until potentiation wakes
+    them. The strength a learning rule changes is a receptor count, not the
+    chance of a vesicle. Bears on the direction of AUTHORITY.md §0.11, the
+    synapse as the learner: what a synapse learns and what it explores need
+    not sit on the same side of the cleft.
+    Included at Byron's word, September 23, 2026: it may be wrong or may be
+    right.
+    Not in `references/`: paywalled at Annual Reviews, not in PubMed
+    Central, and the Cold Spring Harbor repository record holds no file; a
+    library request.
+
 ## The values
 
 - Asimov, I. (1985). *Robots and Empire*. Doubleday. The novel in which the
