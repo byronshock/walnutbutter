@@ -751,18 +751,7 @@ class Network:
                 raise ValueError("exploration at the synapse draws for every synapse at every wave, whatever its rest "
                                  "hazard, and needs a stream of its own (§7.3): run the epoch with an rng")
             everyone = self._everyone()
-            scaling, trace = self.synapse_hazard_scaling, self.trace_mode
-            self._refuse_settings(self.synapse_hazard_rest, self.synapse_hazard_family, scaling, trace)
-            if (scaling, trace) != self._computed_from:
-                raise ValueError(f"the scaling {scaling!r} and the trace {trace!r} are not the ones set_exploration computed "
-                                 f"kappa_i and every trace from, {self._computed_from}: kappa_i is computed once, where the "
-                                 "network is built or resumed (§7.5, §7.7), and TRACE sets what each trace counts (§8.17); "
-                                 "name them to set_exploration")
-            self._refuse_unsupported(everyone)
-            self._refuse_read()
-            if any(n.delta != 0.0 for n in everyone):  # a width that is not a number included
-                raise ValueError("a neuron width and exploration at the synapse together are refused: under exploration "
-                                 "at the synapse every width is 0 (§6.13)")
+            self._refuse_synapse_run(everyone)
             edges = sum(len(neuron.outgoing) for neuron in everyone)
             slot = {}  # one read synapse per output neuron, in output order: a neuron at two places has one (§7.9)
             for neuron in self.output_row():
@@ -773,6 +762,24 @@ class Network:
         if self.hazard and self.explore_rng is None:
             raise ValueError("escape noise needs a stream for its draws (§7.3): run the epoch with an rng, as run_epoch does")
         return self._explore if self.hazard else None
+
+    def _refuse_synapse_run(self, everyone: list[Neuron]) -> None:
+        """What a run under exploration at the synapse refuses where it runs (§12.2), its stream aside: the settings as
+        they stand, since they stay writable attributes, against the ones set_exploration computed from; what the
+        mechanism has no rule for; a read other than the count; and any neuron width. The object engine checks it at
+        every fire_input and propagate, and the Rust loop's driver (fast.py) where it builds, trains and compares."""
+        scaling, trace = self.synapse_hazard_scaling, self.trace_mode
+        self._refuse_settings(self.synapse_hazard_rest, self.synapse_hazard_family, scaling, trace)
+        if (scaling, trace) != self._computed_from:
+            raise ValueError(f"the scaling {scaling!r} and the trace {trace!r} are not the ones set_exploration computed "
+                             f"kappa_i and every trace from, {self._computed_from}: kappa_i is computed once, where the "
+                             "network is built or resumed (§7.5, §7.7), and TRACE sets what each trace counts (§8.17); "
+                             "name them to set_exploration")
+        self._refuse_unsupported(everyone)
+        self._refuse_read()
+        if any(n.delta != 0.0 for n in everyone):  # a width that is not a number included
+            raise ValueError("a neuron width and exploration at the synapse together are refused: under exploration "
+                             "at the synapse every width is 0 (§6.13)")
 
     def decider(self):
         """The hook Schedule.run calls after each wave has fired: the synapses' decisions (§7.5), or None under the

@@ -1042,15 +1042,28 @@ def test_what_has_no_clause_under_the_mechanism_is_refused(monkeypatch):
         propagate(fire=[h.neurons[0]])
 
 
-def test_the_rust_loop_refuses_what_it_does_not_carry_yet():
-    """§12.2: fast.build, train and compare refuse exploration at the synapse and the charged drive, each where it runs,
-    whether or not the extension is built."""
+def test_the_rust_loop_refuses_what_the_file_refuses():
+    """§12.2: the Rust loop carries exploration at the synapse and the charged drive (tests/test_synapse_rust.py), and its
+    driver refuses there what the object engine refuses where a network runs -- whether or not the extension is built:
+    no stream (§7.3), hebb (§8.3), a setting the network was not set up under (§8.17), a width (§6.13); and the charged
+    drive under the neuron rule (5.4b)."""
     g = goo()
     g.set_exploration("synapse")
+    with pytest.raises(ValueError, match="§7.3"):
+        fast.build(g)
+    with pytest.raises(ValueError, match="§7.3"):
+        fast.compare(g, epochs=1)
+    with pytest.raises(ValueError, match="§8.3"):
+        fast.train(g, 1, eligibility="hebb", seed=1)
+    g.trace_mode = "ventured"  # set after set_exploration computed every trace from "all"
     for run in (lambda: fast.build(g, explore_rng=random.Random(1)), lambda: fast.train(g, 1, eligibility="hazard", seed=1),
-                lambda: fast.compare(g, epochs=1)):
-        with pytest.raises(ValueError, match="§7.5"):
+                lambda: fast.compare(g, epochs=1, rng=random.Random(1))):
+        with pytest.raises(ValueError, match="§8.17"):
             run()
+    g.trace_mode = "all"
+    g.all_neurons()[5].delta = 0.1
+    with pytest.raises(ValueError, match="§6.13"):
+        fast.build(g, explore_rng=random.Random(1))
     h = goo()
     h.drive = "charged"
     for run in (lambda: fast.build(h), lambda: fast.train(h, 1, eligibility="hazard", seed=1),
