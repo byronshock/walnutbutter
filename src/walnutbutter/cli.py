@@ -156,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
         f"hear, stopped at 1: the hidden neurons for an input, the inputs and hidden neurons for an output, everyone else "
         f"for a hidden neuron. No neuron projects onto itself, no input onto another input, and no output onto any zone "
         f"(the outputs apart, Byron, September 16, 2026): an output hears the inputs directly and projects onto the hidden "
-        f"alone (default: {GOO_SCALING_FACTOR:g}: 32.2 synapses on the mnist goo of 644, 3 on goo 60)",
+        f"alone (default: {GOO_SCALING_FACTOR:g}: 32.7 synapses on the mnist goo of 654, 3 on goo 60)",
     )
     parser.add_argument(
         "--wiring",

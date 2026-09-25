@@ -215,7 +215,7 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
     problem = PROBLEMS["mnist"]
     assert (problem.across, problem.outputs, problem.hidden_neurons, problem.population, problem.clock) == (395, 60, 199, 3, 3)
-    assert problem.goo is None  # the goo is inputs + hidden + outputs, 644, sized by the hidden count since September 16, 2026
+    assert problem.goo is None  # the goo is inputs + hidden + outputs, 654, sized by the hidden count since September 16, 2026
     assert (problem.homeostasis, problem.unstick) == (0.0, 0.0)  # the hazard keeps nothing stuck; the un-sticking overshot
     from walnutbutter.cli import apply_problem, build_parser
     args = build_parser().parse_args(["--problem", "mnist"]); apply_problem(args)

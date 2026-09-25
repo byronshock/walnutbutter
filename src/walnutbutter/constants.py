@@ -39,8 +39,8 @@ GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the flo
 # every goo sweep ran it (§5.2, one axis, two points)
 GOO_SCALING_FACTOR = 0.05  # goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026: "P(i projects
 # onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij necessary to give j an average of N * scaling_factor
-# inputs. Please default scaling_factor to 0.05"). Every neuron hears N times this many synapses in expectation -- 32.2 on
-# the mnist goo of 644, 3 on goo 60 -- at the probability that fan-in makes over the sources it may hear, stopped at 1: the
+# inputs. Please default scaling_factor to 0.05"). Every neuron hears N times this many synapses in expectation -- 32.7 on
+# the mnist goo of 654, 3 on goo 60 -- at the probability that fan-in makes over the sources it may hear, stopped at 1: the
 # hidden neurons for an input, the inputs and hidden neurons for an output, everyone else for a hidden neuron, since the
 # outputs were kept apart the same night ("With hidden=0 we have no cycles ... a two-layer feedforward network"). "I
 # realize this does not give like-for-like comparisons, but that's OK because we aren't going to be comparing to an
