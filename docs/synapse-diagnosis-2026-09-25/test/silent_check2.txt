@@ -1,0 +1,8 @@
+floor-1.2-lr0.01-s1-e5000: unmoved 503/5530; of the unmoved, target had no own spike in the window 467; moved with a spikeless target 929
+   outputs with no own spike in the last window 37, their read escapes/epoch there 5.40; outputs spikeless in >= half the windows 28
+floor-1.2-lr0.01-s2-e5000: unmoved 102/6131; of the unmoved, target had no own spike in the window 93; moved with a spikeless target 1002
+   outputs with no own spike in the last window 21, their read escapes/epoch there 3.08; outputs spikeless in >= half the windows 15
+floor-0.6-lr0.01-s1-e5000: unmoved 90/5830; of the unmoved, target had no own spike in the window 82; moved with a spikeless target 612
+   outputs with no own spike in the last window 22, their read escapes/epoch there 3.15; outputs spikeless in >= half the windows 12
+floor-0.6-lr0.01-s2-e5000: unmoved 5/5428; of the unmoved, target had no own spike in the window 0; moved with a spikeless target 433
+   outputs with no own spike in the last window 17, their read escapes/epoch there 2.55; outputs spikeless in >= half the windows 7

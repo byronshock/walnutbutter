@@ -1,0 +1,8 @@
+synapse s1 first 100: holders 24: busy uncapped 23 capped 13, spikes/epoch/output 11.84 ->  6.79 | non-holders 36: busy  6 ->  5, spikes  1.85 ->  1.81
+synapse s1 last 500 : holders 24: busy uncapped 21 capped 16, spikes/epoch/output 11.79 ->  8.99 | non-holders 36: busy  4 ->  7, spikes  1.63 ->  2.24
+synapse s2 first 100: holders 26: busy uncapped 24 capped 11, spikes/epoch/output 11.90 ->  6.28 | non-holders 34: busy  1 ->  1, spikes  0.47 ->  0.48
+synapse s2 last 500 : holders 26: busy uncapped 25 capped 17, spikes/epoch/output 12.01 ->  9.67 | non-holders 34: busy  1 ->  2, spikes  0.54 ->  0.66
+neuron s1 first 100: holders 24: busy uncapped 20 capped 14, spikes/epoch/output  8.24 ->  5.49 | non-holders 36: busy  4 ->  4, spikes  1.65 ->  1.62
+neuron s1 last 500 : holders 24: busy uncapped 15 capped  6, spikes/epoch/output  6.31 ->  3.60 | non-holders 36: busy  5 ->  1, spikes  1.56 ->  1.06
+neuron s2 first 100: holders 26: busy uncapped 18 capped 10, spikes/epoch/output  7.63 ->  4.46 | non-holders 34: busy  1 ->  1, spikes  0.65 ->  0.65
+neuron s2 last 500 : holders 26: busy uncapped  8 capped  8, spikes/epoch/output  4.19 ->  3.74 | non-holders 34: busy  1 ->  0, spikes  0.55 ->  0.34

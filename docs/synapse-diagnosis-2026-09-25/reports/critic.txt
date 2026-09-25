@@ -1,0 +1,70 @@
+**Answer.** The critic does not reward activity; it slightly penalizes it. The synapse rule's update has no upward sign bias. In every run the weights into the outputs fall under both rules, and they fall 5 to 20 times more slowly under the synapse rule. Under the synapse rule the outputs do not become active: they start at about 510–550 counts an epoch and stay there, while the neuron rule brings its outputs down from about 400. The 42 stuck-on outputs at 25k are mostly the starting state kept.
+
+## What I ran
+All runs are lr 0.002, rate drive, at the pinned point. They were built with `docs/rust-sweep.py`'s own functions and run by `fast.train`, with a probe every epoch.
+- **Checks that these are the sweep's runs:** at every 1000th epoch my reward equals the run's trace (synapse seed 1, epoch 1000: −11.8004, as in `runs/smoke-synapse-3k`). My tracked baseline equals the final baseline `fast.train` reports, to 1e-12. Over a 40-epoch check the applied weight change was exactly the clipped LR*A*e on every synapse.
+- **Fresh runs**, 4000 epochs, both rules, seeds 1 and 2.
+- **Continued runs**, 3000 epochs each, from the 25k checkpoints in `runs/synapse-lr-25k` and `runs/neuron-lr-25k` (read only).
+- **Per-synapse runs**, 2000 epochs fresh, both rules, seeds 1 and 2: where the clip to the weight range [−1, 1] removes update.
+- **A table from disk** of the final weights of every lr 0.002-and-other 25k arm.
+
+## Does the critic reward activity? No
+Measured in all 8 probe runs:
+- **corr(A, total output count)** stays within ±0.065:
+  - synapse rule: −0.022, −0.026 fresh; +0.020, −0.064 continued
+  - neuron rule: −0.014, +0.030 fresh; −0.058, −0.041 continued
+- **The critic tracks the label, not activity:** corr(A, label's evidence) is +0.85 to +0.92. corr(A, label's fire-if-one count) is +0.06 to +0.72, and corr(A, label's fire-if-zero count) is −0.43 to −0.75.
+- **What one more count would pay**, computed exactly each epoch as R(counts + 1 at output j) − R(counts), is negative in every run:
+  - averaged over all 60 outputs: −0.005 to −0.009
+  - weighted by where the read escapes fell: −0.015 to −0.021
+  - weighted by where the spikes fell: −0.012 to −0.024
+  - one more count on every output at once: −0.30 to −0.56
+- **Mean reward is below the silent line of −2.30 in every run:** −4.1 to −6.5 under the synapse rule, −2.9 to −5.8 under the neuron rule. This activity scores worse than silence.
+
+## Is there a sign bias in the synapse rule's update? No
+This is exact from §8.16. It is the same logic as §8.4.
+- An output here has only its read synapse: I measured no synapses leaving the outputs.
+- At a wave with 0 < V < theta, an escape posts credit c (about 1 − m/2) with probability 1 − e^−m, and staying silent posts −m. The expected entry is m e^−m − m e^−m = 0, whatever V is.
+- The gate (V > 0) and the trace x (at least 0) are both fixed before the draw. The gate chooses which waves count; it cannot create a sign.
+- Weighted by the advantage, the expected entry is m e^−m times (average A after an escape − average A after silence) times x. An escape changes only the output's count: it leaves V alone and delivers nothing. So that bracket is the critic's marginal for one more count at that output.
+- So the expected update on every synapse into an output has the sign of that marginal, which is negative here. The neuron rule is the same, with the spike (including its reset) in place of the escape.
+
+What I measured (×1e-3 per epoch unless marked):
+
+| Quantity | Synapse rule (s1 fresh, s2 fresh, s1 cont., s2 cont.) | Neuron rule (same order) |
+|---|---|---|
+| Summed score e, no A (per epoch, not ×1e-3) | +0.55±0.27, +0.17±0.23, +0.39±0.25, +0.35±0.21 | +0.02±1.17, +0.30±1.15, −0.37±0.77, −0.29±0.80 |
+| Its e>0 and e<0 halves (per epoch) | ±30 to 56 | ±107 to 276 |
+| Unclipped LR*A*e, summed | −0.20±1.89, −4.44±2.23, −0.72±1.29, −0.12±1.25 | +4.90±9.27, −7.90±7.24, +0.01±2.13, −0.88±3.18 |
+
+- **Split by the sign of A** (synapse, seed 1, fresh): given A>0 the e>0 half pushes +288 and the e<0 half −283, net +5.0±2.3. Given A<0 they push −336 and +329, net −6.4±3.1. The two conditional nets cancel. They come from the small positive mean of e times the sign of A, and A averages about zero, so that product is only +0.006 to +0.03 ×1e-3.
+- **Rough estimate, inferred:** 38 escapes × a marginal of −0.015 × the trace at an escape (about 1.45) × the learning rate gives about −1.7e-3 an epoch. The pooled measurement is −0.85 ± 0.76, which fits both that estimate and zero.
+
+## Why the neuron rule's outputs quiet down and the synapse rule's don't
+- **Starting counts per epoch.** Synapse rule: 546 and 516 in the first 12 epochs (500 and 474 own spikes, 46 and 43 read escapes). 45 and 37 outputs spike in every one of the first 100 epochs. Neuron rule: 404 and 389.
+- **Later counts.** Synapse rule: 544 and 504 in epochs 3500–4000, and 508 and 516 in epochs 25k–28k. Neuron rule: 237 and 246 by epoch 4000, and 109 to 134 at 25k–28k.
+- **Weight drift.**
+  - Sum of the input-to-output weights over 4000 fresh epochs: synapse −5.3 and −23.7; neuron −117.6 and −102.3.
+  - From the 25k disk runs, the mean weight ends at −0.034 to −0.054 under the synapse rule and −0.16 to −0.18 under the neuron rule. The synapse rule needs lr 0.01 to reach −0.16 to −0.22.
+- **Most of the fall is the clip at the weight range, not the critic.** Over the 4000 fresh epochs:
+  - neuron rule: clip −137 and −71 against unclipped +20 and −32
+  - synapse rule: clip −4.5 and −5.9 against unclipped −0.8 and −17.8
+- **Why the clip only pushes down.** The per-synapse runs show updates are 3 to 4 times larger on weights near +1 than near −1 (typical push 0.010 vs 0.003 under the neuron rule, 0.0023 vs 0.0006 under the synapse rule). So the ceiling clips far more often than the floor:
+  - neuron rule: 7468 and 5295 clips at the top, against 1621 and 1356 at the bottom
+  - synapse rule: 985 and 1001 at the top, against 104 and 40 at the bottom
+- **Why pushes are larger on positive weights (inferred):** negative-weight arrivals drive the output's potential to zero or to the floor, which closes the gate or clears the trace.
+- **Why the synapse rule's pushes are smaller.** Only the read escapes are scored decisions: 30–46 an epoch against 110–400 scored spikes under the neuron rule. The roughly 480–500 deterministic spikes an epoch count in the reward but post nothing, so the rule never sees that fewer of them would score better.
+- **This drift is second order in the learning rate (inferred).** Under the neuron rule, going from lr 0.0005 to 0.002 (4×) moved the mean weight about 20× as far over 25k epochs: −0.008 against −0.17.
+
+## How sure
+- **High:** the critic does not reward activity, and the synapse rule has no upward sign bias. The zero-mean result is exact from the file, and every run agrees.
+- **Medium:** that the clip, rather than the critic's pull, is most of the neuron rule's downward drift. It rests on 2 seeds and 4000 epochs, and the critic's own pull is only estimated roughly.
+- **One loose end:** under the synapse rule the summed score e comes out slightly positive in all four runs (pooled about +0.35 ± 0.12, about 3 standard errors), where the rule says it should be zero. It is too small to move the weights, but it may be worth a check in the engine.
+
+Everything is in `/tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/critic-sign/`:
+- probe_arm.py
+- analyse.py (full output in analyse-out.txt)
+- per_edge.py (output in edges-*.log)
+- disk_weights.py
+- debug_pay.py
+- the eight probe records (*.npz) with their logs

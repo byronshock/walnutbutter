@@ -1,0 +1,299 @@
+== lr 0 controls (1,000 epochs): what the floor alone does to activity ==
+floor -0.2 seed 1: busy (own spike in >99% of epochs) 46/60, spikes/epoch  493.3, read escapes/epoch  44.9, outputs silent in >99% of epochs 0
+floor -0.2 seed 2: busy (own spike in >99% of epochs) 41/60, spikes/epoch  473.8, read escapes/epoch  41.8, outputs silent in >99% of epochs 0
+floor -0.6 seed 1: busy (own spike in >99% of epochs) 29/60, spikes/epoch  376.8, read escapes/epoch  35.3, outputs silent in >99% of epochs 0
+floor -0.6 seed 2: busy (own spike in >99% of epochs) 28/60, spikes/epoch  362.0, read escapes/epoch  30.9, outputs silent in >99% of epochs 1
+floor -1.2 seed 1: busy (own spike in >99% of epochs) 14/60, spikes/epoch  285.8, read escapes/epoch  27.7, outputs silent in >99% of epochs 1
+floor -1.2 seed 2: busy (own spike in >99% of epochs) 19/60, spikes/epoch  280.8, read escapes/epoch  24.3, outputs silent in >99% of epochs 3
+
+-- floor -0.2 (line = 1.333 theta) lr 0.002 seed 1 -- score trace [-11.8, -1.22, -8.61, -3.35, -2.9]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |          10 |                               7 |               - |         - |        -
+     250 |                         17 |          17 |                              11 |              47 |     499.3 |     43.2
+    1000 |                         23 |          23 |                              14 |              46 |     506.0 |     39.4
+    2500 |                         28 |          28 |                              16 |              46 |     514.7 |     36.9
+    5000 |                         33 |          33 |                              19 |              47 |     514.4 |     36.3
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7421  mean |dw| 0.0134  unmoved 0.060  mean |e|/epoch 0.0586  share |e|<1e-3 0.124
+      0..th/2     n  2963  mean |dw| 0.0312  unmoved 0.000  mean |e|/epoch 0.2103  share |e|<1e-3 0.000
+      th/2..th    n  2542  mean |dw| 0.0359  unmoved 0.000  mean |e|/epoch 0.2477  share |e|<1e-3 0.000
+      th..4th/3   n   938  mean |dw| 0.0316  unmoved 0.000  mean |e|/epoch 0.2071  share |e|<1e-3 0.000
+      4th/3..2th  n   496  mean |dw| 0.0002  unmoved 0.724  mean |e|/epoch 0.0008  share |e|<1e-3 0.974
+      2th..3th    n    20  mean |dw| 0.0002  unmoved 0.900  mean |e|/epoch 0.0000  share |e|<1e-3 1.000
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 11228  mean |dw| 0.0197  unmoved 0.040  mean |e|/epoch 0.1105  share |e|<1e-3 0.082
+      0.5..0.75       n  1699  mean |dw| 0.0364  unmoved 0.000  mean |e|/epoch 0.2636  share |e|<1e-3 0.000
+      0.75..0.9       n   746  mean |dw| 0.0320  unmoved 0.000  mean |e|/epoch 0.2081  share |e|<1e-3 0.000
+      0.9..1          n   191  mean |dw| 0.0303  unmoved 0.000  mean |e|/epoch 0.2030  share |e|<1e-3 0.000
+      >=1 (own line)  n   516  mean |dw| 0.0002  unmoved 0.731  mean |e|/epoch 0.0008  share |e|<1e-3 0.975
+   end: outputs whose line is under the weight cap 24; holding a synapse >= own line 19, of them busy 17; not holding one 41, of them busy 30; busy by rate memory > 0.99: 47
+
+-- floor -0.2 (line = 1.333 theta) lr 0.002 seed 2 -- score trace [-1.65, -4.78, -4.24, -2.27, -6.28]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |          12 |                              11 |               - |         - |        -
+     250 |                         16 |          16 |                              12 |              37 |     472.2 |     40.8
+    1000 |                         26 |          26 |                              20 |              42 |     492.8 |     35.5
+    2500 |                         33 |          33 |                              21 |              39 |     478.1 |     31.8
+    5000 |                         43 |          43 |                              24 |              40 |     474.9 |     27.1
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7645  mean |dw| 0.0143  unmoved 0.087  mean |e|/epoch 0.0390  share |e|<1e-3 0.190
+      0..th/2     n  2922  mean |dw| 0.0396  unmoved 0.000  mean |e|/epoch 0.1652  share |e|<1e-3 0.000
+      th/2..th    n  2083  mean |dw| 0.0463  unmoved 0.000  mean |e|/epoch 0.2177  share |e|<1e-3 0.000
+      th..4th/3   n  1010  mean |dw| 0.0357  unmoved 0.001  mean |e|/epoch 0.1753  share |e|<1e-3 0.000
+      4th/3..2th  n   620  mean |dw| 0.0003  unmoved 0.724  mean |e|/epoch 0.0002  share |e|<1e-3 0.976
+      2th..3th    n     0
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 11368  mean |dw| 0.0228  unmoved 0.059  mean |e|/epoch 0.0826  share |e|<1e-3 0.128
+      0.5..0.75       n  1283  mean |dw| 0.0488  unmoved 0.000  mean |e|/epoch 0.2299  share |e|<1e-3 0.000
+      0.75..0.9       n   746  mean |dw| 0.0372  unmoved 0.000  mean |e|/epoch 0.1817  share |e|<1e-3 0.000
+      0.9..1          n   263  mean |dw| 0.0314  unmoved 0.004  mean |e|/epoch 0.1566  share |e|<1e-3 0.000
+      >=1 (own line)  n   620  mean |dw| 0.0003  unmoved 0.724  mean |e|/epoch 0.0002  share |e|<1e-3 0.976
+   end: outputs whose line is under the weight cap 27; holding a synapse >= own line 24, of them busy 22; not holding one 36, of them busy 18; busy by rate memory > 0.99: 40
+
+-- floor -0.2 (line = 1.333 theta) lr 0.01 seed 1 -- score trace [-6.26, -0.4, -4.36, -6.5, -1.83]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |          10 |                               7 |               - |         - |        -
+     250 |                         38 |          38 |                              21 |              41 |     513.6 |     37.3
+    1000 |                         58 |          58 |                              22 |              33 |     454.0 |     26.5
+    2500 |                         63 |          63 |                              23 |              38 |     453.4 |     23.3
+    5000 |                         72 |          72 |                              23 |              38 |     456.9 |     22.7
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  8673  mean |dw| 0.0326  unmoved 0.163  mean |e|/epoch 0.0240  share |e|<1e-3 0.379
+      0..th/2     n  2130  mean |dw| 0.1090  unmoved 0.000  mean |e|/epoch 0.1203  share |e|<1e-3 0.016
+      th/2..th    n  1763  mean |dw| 0.1411  unmoved 0.000  mean |e|/epoch 0.2042  share |e|<1e-3 0.000
+      th..4th/3   n   616  mean |dw| 0.1199  unmoved 0.005  mean |e|/epoch 0.1965  share |e|<1e-3 0.000
+      4th/3..2th  n  1178  mean |dw| 0.0006  unmoved 0.751  mean |e|/epoch 0.0002  share |e|<1e-3 0.974
+      2th..3th    n    20  mean |dw| 0.0000  unmoved 0.950  mean |e|/epoch 0.0000  share |e|<1e-3 1.000
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 11485  mean |dw| 0.0533  unmoved 0.123  mean |e|/epoch 0.0513  share |e|<1e-3 0.289
+      0.5..0.75       n  1085  mean |dw| 0.1405  unmoved 0.001  mean |e|/epoch 0.2173  share |e|<1e-3 0.000
+      0.75..0.9       n   517  mean |dw| 0.1156  unmoved 0.000  mean |e|/epoch 0.1916  share |e|<1e-3 0.000
+      0.9..1          n    95  mean |dw| 0.1433  unmoved 0.021  mean |e|/epoch 0.2174  share |e|<1e-3 0.000
+      >=1 (own line)  n  1198  mean |dw| 0.0005  unmoved 0.755  mean |e|/epoch 0.0002  share |e|<1e-3 0.974
+   end: outputs whose line is under the weight cap 24; holding a synapse >= own line 23, of them busy 22; not holding one 37, of them busy 16; busy by rate memory > 0.99: 38
+
+-- floor -0.2 (line = 1.333 theta) lr 0.01 seed 2 -- score trace [-11.31, -7.57, -2.37, -1.56, -6.51]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |          12 |                              11 |               - |         - |        -
+     250 |                         48 |          48 |                              24 |              37 |     488.6 |     32.0
+    1000 |                         59 |          59 |                              26 |              38 |     482.7 |     23.3
+    2500 |                         69 |          69 |                              25 |              38 |     472.2 |     21.4
+    5000 |                         74 |          74 |                              26 |              32 |     413.0 |     17.7
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  9017  mean |dw| 0.0373  unmoved 0.215  mean |e|/epoch 0.0196  share |e|<1e-3 0.470
+      0..th/2     n  2118  mean |dw| 0.1386  unmoved 0.000  mean |e|/epoch 0.1046  share |e|<1e-3 0.005
+      th/2..th    n  1325  mean |dw| 0.1874  unmoved 0.000  mean |e|/epoch 0.1944  share |e|<1e-3 0.000
+      th..4th/3   n   536  mean |dw| 0.1597  unmoved 0.009  mean |e|/epoch 0.1659  share |e|<1e-3 0.000
+      4th/3..2th  n  1284  mean |dw| 0.0009  unmoved 0.721  mean |e|/epoch 0.0002  share |e|<1e-3 0.981
+      2th..3th    n     0
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 11636  mean |dw| 0.0620  unmoved 0.167  mean |e|/epoch 0.0418  share |e|<1e-3 0.365
+      0.5..0.75       n   824  mean |dw| 0.1904  unmoved 0.000  mean |e|/epoch 0.2057  share |e|<1e-3 0.000
+      0.75..0.9       n   432  mean |dw| 0.1637  unmoved 0.002  mean |e|/epoch 0.1751  share |e|<1e-3 0.000
+      0.9..1          n   104  mean |dw| 0.1431  unmoved 0.038  mean |e|/epoch 0.1277  share |e|<1e-3 0.000
+      >=1 (own line)  n  1284  mean |dw| 0.0009  unmoved 0.721  mean |e|/epoch 0.0002  share |e|<1e-3 0.981
+   end: outputs whose line is under the weight cap 27; holding a synapse >= own line 26, of them busy 24; not holding one 34, of them busy 8; busy by rate memory > 0.99: 31
+
+-- floor -0.6 (line = 2.000 theta) lr 0.002 seed 1 -- score trace [-7.39, -0.07, -6.37, -0.08, -1.41]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |           1 |                               1 |               - |         - |        -
+     250 |                         11 |           1 |                               1 |              30 |     391.3 |     34.6
+    1000 |                         11 |           1 |                               1 |              30 |     382.6 |     31.5
+    2500 |                         13 |           1 |                               1 |              31 |     383.8 |     30.2
+    5000 |                         15 |           1 |                               1 |              28 |     366.6 |     28.2
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7352  mean |dw| 0.0196  unmoved 0.007  mean |e|/epoch 0.0889  share |e|<1e-3 0.036
+      0..th/2     n  2834  mean |dw| 0.0351  unmoved 0.000  mean |e|/epoch 0.2103  share |e|<1e-3 0.000
+      th/2..th    n  2784  mean |dw| 0.0386  unmoved 0.000  mean |e|/epoch 0.2567  share |e|<1e-3 0.000
+      th..4th/3   n  1151  mean |dw| 0.0288  unmoved 0.000  mean |e|/epoch 0.1754  share |e|<1e-3 0.000
+      4th/3..2th  n   239  mean |dw| 0.0260  unmoved 0.000  mean |e|/epoch 0.1717  share |e|<1e-3 0.000
+      2th..3th    n    20  mean |dw| 0.0002  unmoved 0.850  mean |e|/epoch 0.0001  share |e|<1e-3 0.950
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 12970  mean |dw| 0.0271  unmoved 0.004  mean |e|/epoch 0.1514  share |e|<1e-3 0.020
+      0.5..0.75       n  1295  mean |dw| 0.0285  unmoved 0.000  mean |e|/epoch 0.1745  share |e|<1e-3 0.000
+      0.75..0.9       n    95  mean |dw| 0.0255  unmoved 0.000  mean |e|/epoch 0.1789  share |e|<1e-3 0.000
+      0.9..1          n     0
+      >=1 (own line)  n    20  mean |dw| 0.0002  unmoved 0.850  mean |e|/epoch 0.0001  share |e|<1e-3 0.950
+   4th/3 <= w < own line, outputs with theta > 0.5: n 239, mean |dw| 0.0260, unmoved 0.000, mean |e|/epoch 0.1717
+   end: outputs whose line is under the weight cap 2; holding a synapse >= own line 1, of them busy 1; not holding one 59, of them busy 27; busy by rate memory > 0.99: 31
+
+-- floor -0.6 (line = 2.000 theta) lr 0.002 seed 2 -- score trace [-5.75, -5.74, -4.57, -2.61, -8.67]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |           0 |                               0 |               - |         - |        -
+     250 |                         15 |           1 |                               1 |              29 |     369.7 |     29.8
+    1000 |                         15 |           1 |                               1 |              31 |     376.3 |     29.5
+    2500 |                         14 |           1 |                               1 |              30 |     366.0 |     30.1
+    5000 |                         18 |           1 |                               1 |              30 |     381.2 |     29.1
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7444  mean |dw| 0.0200  unmoved 0.007  mean |e|/epoch 0.0852  share |e|<1e-3 0.076
+      0..th/2     n  2864  mean |dw| 0.0351  unmoved 0.000  mean |e|/epoch 0.1875  share |e|<1e-3 0.000
+      th/2..th    n  2466  mean |dw| 0.0414  unmoved 0.000  mean |e|/epoch 0.2507  share |e|<1e-3 0.000
+      th..4th/3   n  1145  mean |dw| 0.0319  unmoved 0.001  mean |e|/epoch 0.1730  share |e|<1e-3 0.000
+      4th/3..2th  n   342  mean |dw| 0.0268  unmoved 0.000  mean |e|/epoch 0.1627  share |e|<1e-3 0.000
+      2th..3th    n    19  mean |dw| 0.0000  unmoved 1.000  mean |e|/epoch 0.0012  share |e|<1e-3 0.842
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 12774  mean |dw| 0.0275  unmoved 0.004  mean |e|/epoch 0.1401  share |e|<1e-3 0.045
+      0.5..0.75       n  1379  mean |dw| 0.0309  unmoved 0.001  mean |e|/epoch 0.1689  share |e|<1e-3 0.000
+      0.75..0.9       n   108  mean |dw| 0.0291  unmoved 0.000  mean |e|/epoch 0.1921  share |e|<1e-3 0.000
+      0.9..1          n     0
+      >=1 (own line)  n    19  mean |dw| 0.0000  unmoved 1.000  mean |e|/epoch 0.0012  share |e|<1e-3 0.842
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 21, mean |dw| 0.0309, unmoved 0.000, mean |e|/epoch 0.1013
+   4th/3 <= w < own line, outputs with theta > 0.5: n 321, mean |dw| 0.0265, unmoved 0.000, mean |e|/epoch 0.1667
+   end: outputs whose line is under the weight cap 1; holding a synapse >= own line 1, of them busy 1; not holding one 59, of them busy 29; busy by rate memory > 0.99: 29
+
+-- floor -0.6 (line = 2.000 theta) lr 0.01 seed 1 -- score trace [-1.98, -9.08, -3.61, -15.01, -3.72]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |           1 |                               1 |               - |         - |        -
+     250 |                         16 |           1 |                               1 |              30 |     400.0 |     30.4
+    1000 |                         22 |           2 |                               1 |              26 |     379.5 |     23.8
+    2500 |                         16 |           3 |                               1 |              18 |     279.0 |     17.4
+    5000 |                         16 |           4 |                               1 |              12 |     180.8 |     13.6
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  8495  mean |dw| 0.0582  unmoved 0.252  mean |e|/epoch 0.0300  share |e|<1e-3 0.518
+      0..th/2     n  2577  mean |dw| 0.1401  unmoved 0.032  mean |e|/epoch 0.0891  share |e|<1e-3 0.197
+      th/2..th    n  1631  mean |dw| 0.2027  unmoved 0.000  mean |e|/epoch 0.1594  share |e|<1e-3 0.001
+      th..4th/3   n  1335  mean |dw| 0.1379  unmoved 0.005  mean |e|/epoch 0.0988  share |e|<1e-3 0.005
+      4th/3..2th  n   287  mean |dw| 0.1522  unmoved 0.003  mean |e|/epoch 0.1150  share |e|<1e-3 0.000
+      2th..3th    n    55  mean |dw| 0.0004  unmoved 0.927  mean |e|/epoch 0.0001  share |e|<1e-3 0.964
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 12703  mean |dw| 0.0934  unmoved 0.175  mean |e|/epoch 0.0586  share |e|<1e-3 0.387
+      0.5..0.75       n  1554  mean |dw| 0.1384  unmoved 0.005  mean |e|/epoch 0.0994  share |e|<1e-3 0.005
+      0.75..0.9       n    67  mean |dw| 0.1849  unmoved 0.015  mean |e|/epoch 0.1552  share |e|<1e-3 0.000
+      0.9..1          n     1  mean |dw| 0.3135  unmoved 0.000  mean |e|/epoch 0.0776  share |e|<1e-3 0.000
+      >=1 (own line)  n    55  mean |dw| 0.0004  unmoved 0.927  mean |e|/epoch 0.0001  share |e|<1e-3 0.964
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 4, mean |dw| 0.2086, unmoved 0.000, mean |e|/epoch 0.0627
+   4th/3 <= w < own line, outputs with theta > 0.5: n 283, mean |dw| 0.1514, unmoved 0.004, mean |e|/epoch 0.1157
+   end: outputs whose line is under the weight cap 2; holding a synapse >= own line 1, of them busy 1; not holding one 59, of them busy 11; busy by rate memory > 0.99: 12
+
+-- floor -0.6 (line = 2.000 theta) lr 0.01 seed 2 -- score trace [-3.04, -11.87, -5.92, -3.35, -7.16]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |           0 |                               0 |               - |         - |        -
+     250 |                         13 |           1 |                               1 |              21 |     342.7 |     26.1
+    1000 |                         22 |           1 |                               1 |              20 |     313.9 |     19.2
+    2500 |                         28 |           2 |                               1 |              20 |     279.9 |     17.9
+    5000 |                         16 |           3 |                               1 |              16 |     220.9 |     15.3
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  8823  mean |dw| 0.0496  unmoved 0.176  mean |e|/epoch 0.0240  share |e|<1e-3 0.455
+      0..th/2     n  2357  mean |dw| 0.1212  unmoved 0.000  mean |e|/epoch 0.0750  share |e|<1e-3 0.129
+      th/2..th    n  1370  mean |dw| 0.1843  unmoved 0.000  mean |e|/epoch 0.1418  share |e|<1e-3 0.001
+      th..4th/3   n  1362  mean |dw| 0.1275  unmoved 0.004  mean |e|/epoch 0.0995  share |e|<1e-3 0.005
+      4th/3..2th  n   339  mean |dw| 0.1351  unmoved 0.000  mean |e|/epoch 0.1116  share |e|<1e-3 0.000
+      2th..3th    n    29  mean |dw| 0.0017  unmoved 0.966  mean |e|/epoch 0.0018  share |e|<1e-3 0.828
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 12550  mean |dw| 0.0778  unmoved 0.124  mean |e|/epoch 0.0464  share |e|<1e-3 0.344
+      0.5..0.75       n  1615  mean |dw| 0.1265  unmoved 0.003  mean |e|/epoch 0.0994  share |e|<1e-3 0.004
+      0.75..0.9       n    85  mean |dw| 0.1727  unmoved 0.000  mean |e|/epoch 0.1470  share |e|<1e-3 0.000
+      0.9..1          n     1  mean |dw| 0.4681  unmoved 0.000  mean |e|/epoch 0.3033  share |e|<1e-3 0.000
+      >=1 (own line)  n    29  mean |dw| 0.0017  unmoved 0.966  mean |e|/epoch 0.0018  share |e|<1e-3 0.828
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 5, mean |dw| 0.2875, unmoved 0.000, mean |e|/epoch 0.1050
+   4th/3 <= w < own line, outputs with theta > 0.5: n 334, mean |dw| 0.1328, unmoved 0.000, mean |e|/epoch 0.1117
+   end: outputs whose line is under the weight cap 1; holding a synapse >= own line 1, of them busy 1; not holding one 59, of them busy 15; busy by rate memory > 0.99: 15
+
+-- floor -1.2 (line = 3.000 theta) lr 0.002 seed 1 -- score trace [-17.51, -1.43, -0.36, -0.04, -1.02]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |           0 |                               0 |               - |         - |        -
+     250 |                         12 |           0 |                               0 |              16 |     297.8 |     26.3
+    1000 |                         13 |           0 |                               0 |              18 |     296.5 |     24.0
+    2500 |                         19 |           0 |                               0 |              20 |     287.1 |     23.5
+    5000 |                         18 |           0 |                               0 |              19 |     278.3 |     22.1
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7485  mean |dw| 0.0280  unmoved 0.013  mean |e|/epoch 0.0987  share |e|<1e-3 0.087
+      0..th/2     n  2745  mean |dw| 0.0428  unmoved 0.000  mean |e|/epoch 0.1729  share |e|<1e-3 0.011
+      th/2..th    n  2747  mean |dw| 0.0487  unmoved 0.000  mean |e|/epoch 0.2118  share |e|<1e-3 0.001
+      th..4th/3   n  1065  mean |dw| 0.0419  unmoved 0.002  mean |e|/epoch 0.1930  share |e|<1e-3 0.000
+      4th/3..2th  n   319  mean |dw| 0.0340  unmoved 0.000  mean |e|/epoch 0.1599  share |e|<1e-3 0.000
+      2th..3th    n    19  mean |dw| 0.0237  unmoved 0.000  mean |e|/epoch 0.0792  share |e|<1e-3 0.000
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 14246  mean |dw| 0.0360  unmoved 0.007  mean |e|/epoch 0.1427  share |e|<1e-3 0.048
+      0.5..0.75       n   132  mean |dw| 0.0328  unmoved 0.000  mean |e|/epoch 0.1546  share |e|<1e-3 0.000
+      0.75..0.9       n     2  mean |dw| 0.0385  unmoved 0.000  mean |e|/epoch 0.1967  share |e|<1e-3 0.000
+      0.9..1          n     0
+      >=1 (own line)  n     0
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 21, mean |dw| 0.0275, unmoved 0.000, mean |e|/epoch 0.0954
+   4th/3 <= w < own line, outputs with theta > 0.5: n 317, mean |dw| 0.0338, unmoved 0.000, mean |e|/epoch 0.1594
+   end: outputs whose line is under the weight cap 0; holding a synapse >= own line 0, of them busy 0; not holding one 60, of them busy 19; busy by rate memory > 0.99: 19
+
+-- floor -1.2 (line = 3.000 theta) lr 0.002 seed 2 -- score trace [-8.52, -20.63, -7.0, -6.11, -5.03]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |           0 |                               0 |               - |         - |        -
+     250 |                         17 |           0 |                               0 |              19 |     280.1 |     23.7
+    1000 |                         17 |           0 |                               0 |              13 |     247.6 |     21.1
+    2500 |                         13 |           0 |                               0 |              20 |     274.0 |     21.3
+    5000 |                         12 |           0 |                               0 |              18 |     246.4 |     19.1
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  7583  mean |dw| 0.0286  unmoved 0.048  mean |e|/epoch 0.0814  share |e|<1e-3 0.191
+      0..th/2     n  2930  mean |dw| 0.0435  unmoved 0.006  mean |e|/epoch 0.1333  share |e|<1e-3 0.082
+      th/2..th    n  2216  mean |dw| 0.0571  unmoved 0.002  mean |e|/epoch 0.1961  share |e|<1e-3 0.013
+      th..4th/3   n  1274  mean |dw| 0.0445  unmoved 0.001  mean |e|/epoch 0.1514  share |e|<1e-3 0.000
+      4th/3..2th  n   277  mean |dw| 0.0437  unmoved 0.000  mean |e|/epoch 0.1683  share |e|<1e-3 0.000
+      2th..3th    n     0
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 14179  mean |dw| 0.0377  unmoved 0.027  mean |e|/epoch 0.1174  share |e|<1e-3 0.121
+      0.5..0.75       n   101  mean |dw| 0.0473  unmoved 0.000  mean |e|/epoch 0.1641  share |e|<1e-3 0.000
+      0.75..0.9       n     0
+      0.9..1          n     0
+      >=1 (own line)  n     0
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 40, mean |dw| 0.0410, unmoved 0.000, mean |e|/epoch 0.1297
+   4th/3 <= w < own line, outputs with theta > 0.5: n 237, mean |dw| 0.0442, unmoved 0.000, mean |e|/epoch 0.1748
+   end: outputs whose line is under the weight cap 0; holding a synapse >= own line 0, of them busy 0; not holding one 60, of them busy 18; busy by rate memory > 0.99: 18
+
+-- floor -1.2 (line = 3.000 theta) lr 0.01 seed 1 -- score trace [-7.83, -3.03, -27.98, -16.31, -0.34]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         10 |           0 |                               0 |               - |         - |        -
+     250 |                         22 |           0 |                               0 |              15 |     322.7 |     24.1
+    1000 |                         18 |           0 |                               0 |              16 |     232.9 |     15.3
+    2500 |                         16 |           0 |                               0 |              13 |     189.0 |     12.0
+    5000 |                          6 |           0 |                               0 |               8 |     134.9 |     11.0
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  8850  mean |dw| 0.0407  unmoved 0.507  mean |e|/epoch 0.0172  share |e|<1e-3 0.744
+      0..th/2     n  2654  mean |dw| 0.1033  unmoved 0.168  mean |e|/epoch 0.0408  share |e|<1e-3 0.478
+      th/2..th    n  1325  mean |dw| 0.1768  unmoved 0.016  mean |e|/epoch 0.0882  share |e|<1e-3 0.155
+      th..4th/3   n  1290  mean |dw| 0.1160  unmoved 0.007  mean |e|/epoch 0.0555  share |e|<1e-3 0.017
+      4th/3..2th  n   226  mean |dw| 0.1549  unmoved 0.102  mean |e|/epoch 0.0557  share |e|<1e-3 0.181
+      2th..3th    n    35  mean |dw| 0.0052  unmoved 0.114  mean |e|/epoch 0.0009  share |e|<1e-3 0.857
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 14202  mean |dw| 0.0730  unmoved 0.350  mean |e|/epoch 0.0321  share |e|<1e-3 0.569
+      0.5..0.75       n   177  mean |dw| 0.0962  unmoved 0.141  mean |e|/epoch 0.0342  share |e|<1e-3 0.390
+      0.75..0.9       n     1  mean |dw| 0.0492  unmoved 0.000  mean |e|/epoch 0.0064  share |e|<1e-3 0.000
+      0.9..1          n     0
+      >=1 (own line)  n     0
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 101, mean |dw| 0.0553, unmoved 0.248, mean |e|/epoch 0.0135
+   4th/3 <= w < own line, outputs with theta > 0.5: n 160, mean |dw| 0.1850, unmoved 0.013, mean |e|/epoch 0.0704
+   end: outputs whose line is under the weight cap 0; holding a synapse >= own line 0, of them busy 0; not holding one 60, of them busy 8; busy by rate memory > 0.99: 8
+
+-- floor -1.2 (line = 3.000 theta) lr 0.01 seed 2 -- score trace [-1.17, -12.58, -2.99, -10.33, -9.17]
+   epoch | often-on synapses >= 4th/3 | >= own line | outputs holding one >= own line | busy (last 250) | spikes/ep | reads/ep
+       0 |                         12 |           0 |                               0 |               - |         - |        -
+     250 |                         24 |           0 |                               0 |              12 |     257.1 |     19.9
+    1000 |                         18 |           0 |                               0 |              13 |     231.3 |     16.1
+    2500 |                         23 |           0 |                               0 |              13 |     240.9 |     15.2
+    5000 |                         22 |           0 |                               0 |              15 |     213.4 |     13.9
+   per 250-epoch window, often-on inputs, by w/theta at the window's start:
+      w<0         n  8149  mean |dw| 0.0383  unmoved 0.260  mean |e|/epoch 0.0273  share |e|<1e-3 0.588
+      0..th/2     n  2875  mean |dw| 0.0661  unmoved 0.032  mean |e|/epoch 0.0485  share |e|<1e-3 0.359
+      th/2..th    n  1574  mean |dw| 0.1174  unmoved 0.004  mean |e|/epoch 0.1007  share |e|<1e-3 0.078
+      th..4th/3   n  1184  mean |dw| 0.0887  unmoved 0.001  mean |e|/epoch 0.0815  share |e|<1e-3 0.008
+      4th/3..2th  n   497  mean |dw| 0.0752  unmoved 0.004  mean |e|/epoch 0.0732  share |e|<1e-3 0.032
+      2th..3th    n     1  mean |dw| 0.1695  unmoved 0.000  mean |e|/epoch 0.0878  share |e|<1e-3 0.000
+      >=3th       n     0
+   same windows, by w over the arm's own line (theta - floor) at the window's start:
+      w/line<0.5      n 14100  mean |dw| 0.0578  unmoved 0.158  mean |e|/epoch 0.0452  share |e|<1e-3 0.423
+      0.5..0.75       n   180  mean |dw| 0.0806  unmoved 0.011  mean |e|/epoch 0.0911  share |e|<1e-3 0.044
+      0.75..0.9       n     0
+      0.9..1          n     0
+      >=1 (own line)  n     0
+   4th/3 <= w < own line, outputs with theta <= 0.5: n 46, mean |dw| 0.0982, unmoved 0.000, mean |e|/epoch 0.1031
+   4th/3 <= w < own line, outputs with theta > 0.5: n 452, mean |dw| 0.0730, unmoved 0.004, mean |e|/epoch 0.0702
+   end: outputs whose line is under the weight cap 0; holding a synapse >= own line 0, of them busy 0; not holding one 60, of them busy 15; busy by rate memory > 0.99: 15
+

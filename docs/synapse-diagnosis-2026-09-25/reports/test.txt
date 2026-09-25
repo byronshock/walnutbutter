@@ -1,0 +1,90 @@
+Verdict: supported. The trap sits at θ − floor, it moves when the floor moves, whatever the lr, and a synapse past it stays past it. Pulling trapped synapses back below the line quiets their outputs, and under the synapse rule they walk back in. Two of the synthesis's numeric predictions missed, and neither miss comes from the trap. It explains part of the busy state, not all of it.
+
+**The claim tested.** Under §8.16, a synapse whose single arrival fires its output from anywhere at or above the floor (weight at least θ − floor, which is 4θ/3 at the pinned point) gets zero credit. A random walk that carries one past that line leaves it there, and its output then fires on every presentation. The floor sets the line, not the lr.
+
+**What I ran.** All runs are on the Rust loop at the pinned point.
+- **Floor test (as the synthesis named it):** synapse rule, rate drive, minimum_potential −0.2, −0.6 or −1.2, lr 0.002 and 0.01, seeds 1–2, 5,000 epochs each (12 arms). The same wiring and starting weights at every floor; I checked this.
+- **Learning-off controls:** lr 0 at each floor, seeds 1–2, 1,000 epochs (6 arms).
+- **Cap test:** resume the synapse rule's lr 0.01 25k checkpoints (seeds 1–2) and pull every synapse at or above 4θ/3 down to 0.9θ (118 and 137 synapses; 77 and 81 from inputs on more than half the time). Continue 3,000 epochs, capped and uncapped. The same weights also went into the neuron rule's lr 0.002 25k checkpoint of the same seed and ran under the neuron rule (8 arms).
+
+In the tables, "frozen" means the weight did not change at all over a 250-epoch window. Synapse counts are for inputs on more than half the time.
+
+**Floor test, measured.** The −0.2 control arms match the sweep's own score traces exactly.
+
+At −0.2, the control reproduces the synthesis's numbers:
+
+| | Prediction | Measured |
+|---|---|---|
+| Synapses at or above 4θ/3, lr 0.01 seed 1 | 10 → 38 → 72 | 10 → 38 (epoch 250) → 72 (epoch 5,000); seed 2: 12 → 48 → 74 |
+| Same, lr 0.002 | 10 → 33 | 10 → 33; seed 2: 12 → 43 |
+| Frozen windows above the line | at least 70% | 72–75% |
+| Frozen windows just below (θ to 4θ/3) | under 1% | 0–0.9% |
+| Eligibility per epoch just below the line | – | 0.17–0.21 |
+| Eligibility per epoch above the line | – | 0.0002–0.0008 |
+
+At −0.6 (line at 2θ), the class between 4θ/3 and 2θ now moves:
+
+| | Prediction | Measured |
+|---|---|---|
+| Frozen windows | under 5% | 0–0.3% |
+| Eligibility per epoch | – | 0.16–0.17 at lr 0.002, 0.11 at lr 0.01; the same class in the control had 0.0002–0.0008 |
+| Weight change per window, lr 0.01 | at least 0.1 | 0.152 and 0.135 |
+| Weight change per window, lr 0.002 | at least 0.03 | 0.026 and 0.027: **missed**, though it moves like its neighbours (θ to 4θ/3 at this floor: 0.029 and 0.032) |
+| Eligibility drop | moves to 2θ | it does: at or above 2θ, 0.0001–0.0018 per epoch, 85–100% frozen, only on outputs with θ ≤ 0.5 (1–2 per seed) |
+| Count at or above 4θ/3 at lr 0.01 by epoch 5,000 | under half of 72 | 16 and 16 |
+
+At −1.2 (line at 3θ; no output can hold a trapped synapse, since θ runs 0.433–1.133):
+- **Prediction:** no weight class above 0 has more than 5% of windows frozen.
+- **Holds in 3 of 4 arms:** at most 0.6% at lr 0.002, 3.2% at lr 0.01 seed 2.
+- **Fails at lr 0.01 seed 1:** 16.8% frozen for weights between 0 and θ/2, 10.2% for 4θ/3 to 2θ, 11.4% for 2θ to 3θ.
+- **Different cause, measured:** 467 of the 503 frozen windows (93%) are synapses into outputs that fired no spike of their own in that window. 37 of 60 outputs fired none in the last 250 epochs, though their read synapses still escaped at the rest rate. §8.16 posts nothing while V ≤ 0, so an output held below zero stops learning. This is a second blind spot, at the silent end, and the deep floor with a high lr exposes it.
+
+**Floor test, busy outputs.** A busy output fired in more than 99% of epochs.
+
+| Floor | lr 0 | lr 0.002 at 5k | lr 0.01 at 5k |
+|---|---|---|---|
+| −0.2 | 46 / 41 | 47 / 40 | 38 / 32 |
+| −0.6 | 29 / 28 | 28 / 30 | 12 / 16 |
+| −1.2 | 14 / 19 | 19 / 18 | 8 / 15 |
+
+(seed 1 / seed 2)
+
+- The floor alone does most of this: spikes per epoch at lr 0 fall 493 → 377 → 286.
+- At lr 0.002, learning changes busy by −1 to +5 at every floor over 5,000 epochs, with or without the trap.
+- At lr 0.01, learning removes 17 and 12 busy outputs at −0.6, against 8 and 9 at −0.2.
+- In the lr 0.002 controls, 30 of 47 and 18 of 40 busy outputs hold no trapped synapse.
+
+**Cap test, measured (pinned point, 25k lr 0.01 checkpoints).**
+- **Uncapped, synapse rule:** all 118 and 137 trapped synapses stay above the line for 3,000 epochs. Their mean weight over θ stays at 1.415 and 1.410.
+- **Capped, synapse rule:** busy falls at once from 29 to 18 and from 25 to 12. Spikes per epoch fall from 351 to 228 and from 325 to 180. The effect is specific to outputs that held a trapped synapse: 23 → 13 and 24 → 11 of them are busy, while the others go 6 → 5 and 1 → 1.
+- **The capped synapses walk back in:**
+  - Count at or above 4θ/3: 0 → 39 and 48 at 1,000 epochs, then 56 and 68 at 3,000.
+  - From often-on inputs: 35 and 42 at 1,000 epochs. The synthesis predicted past 38 within about 1,000; seed 2 makes it, seed 1 gets there at 1,500.
+  - Busy climbs back: 18 → 23 and 12 → 19.
+  - The capped synapses' mean weight over θ stays at 0.87–0.91. That is what an unbiased walk with a one-way exit at the line would give (inference).
+- **Same weights, neuron rule (lr 0.002):**
+  - Uncapped, the trapped count falls: 118 → 31 and 137 → 24.
+  - Capped, only 15 and 7 come back above 4θ/3, and the mean weight over θ falls from 0.90 to 0.69–0.74.
+
+**Why supported.** The eligibility drop sits exactly at θ − floor at both floors where the line is under the weight cap, and at both lrs. Moving the floor makes a class that was frozen (0.0002–0.0008 per epoch) learn at 0.11–0.17. Intervening on the trapped synapses at the pinned point removes about half their outputs' busy state, and the synapse rule refills the trap while the neuron rule does not.
+
+**Qualifications:**
+- **The lr 0.002 miss:** the 4θ/3–2θ class moved 0.026–0.027 per window against the predicted 0.03 or more. It does not bear on the mechanism.
+- **Silent-end freeze:** the −1.2 prediction fails at lr 0.01 seed 1 because a deep floor with a high lr starts silencing outputs.
+- **Not the whole story:** the trap does not explain most of the busy state at lr 0.002 in the first 5,000 epochs, which the floor sets before any learning. Even at 25k with lr 0.01, 13 and 11 capped holders stay busy with no synapse above the line.
+
+For the long runs: a deeper floor removes the trap and also lowers the starting activity (busy at lr 0: 46 → 29 → 14), so a floor −0.6 or −1.2 arm changes two things at once. The cap test is the clean isolation of the trap.
+
+Nothing was written under the walnutbutter checkout. Everything is in /tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/test/:
+- floor_test.py
+- analyse_floor.py
+- floor_analysis.txt
+- silent_check2.py
+- silent_check2.txt
+- cap_test.py
+- analyse_cap.py
+- cap_analysis.txt
+- cap_split.py
+- cap_split.txt
+- ft-*.npz
+- cap-*.npz

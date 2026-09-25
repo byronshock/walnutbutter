@@ -1,0 +1,92 @@
+Short answer: the outputs' excitation comes almost entirely from relayed input, and it is there before any learning. A fresh network with frozen weights already has 49–50 of 60 outputs firing in every epoch. The synapse rule mostly fails to remove that excitation; it does not create it. Ventured input is a small part. Under the rate drive it adds about 1.5% of output spikes and its net weight is slightly inhibitory.
+
+**What I ran.** Everything is in `/tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/excitation/`.
+- `instrument.py` (and `instrument_v2.py`, which adds a no-floor option) runs 40 epochs on the object engine with weights frozen and no Teacher, using the lr 0.002, seed 1 networks and the mnist stream. It hooks every wave and records, per output per epoch:
+  - integrated relayed and ventured weight, split excitatory/inhibitory;
+  - arrivals dropped while the output was refractory, and floor clamps with the charge they erased;
+  - spikes, and whether each followed a ventured arrival;
+  - read escapes and the u they escaped at;
+  - V every 1 ms, and per-input ventured escapes by bit.
+- Its V bookkeeping matched the engine on every wave (0 mismatches), and its spike counts matched `epoch_spikes`.
+- Launchers are `run_all.sh` and `run_nofloor.sh`. `summary.py` writes `summary.out`. `weights.py` writes `weights.out`: weights and expected drive for seeds 1–3, fresh against 25k, using the mnist pixel statistics. Per-run data is in `<arm>.json` and `<arm>.log`.
+- 13 arms of 40 epochs each:
+  - synapse rule, rate and charged drive, at the 25k checkpoint and fresh;
+  - neuron rule, at the 25k checkpoint and fresh;
+  - "suppress" versions of all four synapse arms: escapes are still decided but not delivered, so draws, gains and read escapes run as usual;
+  - "no floor" versions of the synapse-rate arms (25k and fresh) and the neuron-rule 25k arm.
+
+Below, "every epoch" means an output fired in all 40 epochs, and weights are in units of the output's own threshold θ.
+
+**1. The excitation is there from the start (measured).**
+
+| network | outputs firing every epoch | output spikes per epoch (all 60) |
+|---|---|---|
+| synapse rule, fresh, rate | 49 | 494 |
+| synapse rule, 25k, rate | 39 (rate memory: 42) | 481 |
+| synapse rule, fresh, charged | 50 | 509 |
+| synapse rule, 25k, charged | 47 (rate memory: 46) | 503 |
+| neuron rule, fresh | 47 | 409 |
+| neuron rule, 25k | 10 | 122 |
+
+- The sweep summaries in `runs/` agree. The synapse rule's stuck-on count falls as the learning rate rises: 40–49 at lr 0.0005, 36–46 at 0.002, 26–34 at 0.01. The neuron rule at lr 0.0005 is also at 30–38 after 25k epochs.
+- How far the weights into outputs moved from fresh in 25k epochs:
+  - synapse rule: mean change −0.02 to −0.04, mean size of change 0.11–0.14;
+  - neuron rule: mean change −0.15 to −0.17, mean size of change 0.27–0.32.
+- The expected relayed drive per output per epoch fell by 4 to 7 θ under the synapse rule and by 28 to 33 θ under the neuron rule. In both it came almost all through the complement inputs, so both rules push the same way.
+- The stuck-on outputs' own drive barely moved under the synapse rule. For seed 1 rate it went from +2.4 to +4.0 θ per epoch; for seed 3 from +4.1 to +3.5.
+
+**2. What drives the outputs: relayed kicks and the floor (measured).**
+- Each output hears 13–34 inputs, and θ = 0.6 × fan-in/18 = 0.43–1.13. Weights are uniform in ±1, so the average excitatory arrival is 0.62 θ.
+- A fresh output has about 2 synapses with weight ≥ θ, so one arrival fires it from rest. On-inputs spike 8.0 times per epoch.
+- Stuck-on outputs have 2.8–3.4 such trigger synapses, giving 12–16 trigger arrivals per epoch. The other outputs have 0.8–1.2 (1.2–2.9 arrivals). The neuron rule's few stuck-on outputs look the same.
+- V at a spike has a median of 1.27–1.30 θ, so most spikes come from one big kick. A stuck-on output is refractory about half the time (10 spikes × 5 ms), has V > 0 only 15–17% of the time, and sits at the floor 16–18% of the time.
+- The floor at −θ/3 caps inhibition. In the 25k rate network it erased 14.7 θ per output per epoch, against 20.8 θ of integrated inhibition.
+- Removing the floor (counterfactual) collapses activity:
+
+| network | every-epoch outputs, with → without floor | spikes per epoch, with → without floor |
+|---|---|---|
+| synapse rule, fresh | 49 → 10 | 494 → 162 |
+| synapse rule, 25k | 39 → 11 | 481 → 183 |
+| neuron rule, 25k | 10 → 2 | 122 → 43 |
+
+- V over the epoch is flat, with no structure locked to the epoch. Mean V/θ is about +0.01 for stuck-on outputs and −0.11 to −0.13 for the rest, which sit at the floor about half the time.
+
+**3. Ventured input is small (measured).**
+
+Rate drive:
+- Ventured escapes per synapse per epoch are 0.139 from on-inputs and 0.141 from off-inputs, against 0.142 predicted (100/2.55 × 0.363 × 0.01). They carry no information about the pattern. Relayed input is 8.0 spikes per on-input per epoch and 0 per off-input.
+- Per output per epoch: 2.0 ventured arrivals integrated (1.3–1.4 more dropped at refractory) against 59–61 relayed (35–38 dropped).
+- Integrated weight per output per epoch:
+
+| network | ventured (E / I / net) | relayed (E / I / net) |
+|---|---|---|
+| fresh | +0.58 / −0.66 / −0.08 θ | +18.6 / −18.5 / +0.2 θ |
+| 25k | +0.53 / −0.72 / −0.19 θ | +16.9 / −20.8 / −4.0 θ |
+
+- Ventured input is 3% of the excitatory weight.
+- Removing ventured delivery takes spikes from 494 to 486 (fresh) and 481 to 473 (25k); every-epoch outputs go 49 → 47 and 39 → 38.
+- Spikes with a ventured arrival within a hop before them: 8.0–8.9%, against 7.9–8.1% by chance. Only 2.5–3.3% of spikes needed the ventured charge in their own wave.
+- Across epochs, the standard deviation of the net drive is 1.0 θ for ventured and 6.8–6.9 θ for relayed. Per-epoch spikes correlate +0.75 to +0.81 with the relayed drive and +0.10 to +0.12 with the ventured drive.
+
+Charged drive:
+- Ventured input is bigger: 13–16% of the excitatory weight, 9–11 integrated arrivals per output per epoch. Its net weight is −0.09 θ (fresh) and −0.92 θ (25k).
+- Removing it takes spikes from 509 to 477 (fresh) and 503 to 463 (25k), a drop of 6–8%; every-epoch outputs go 50 → 44 and 47 → 43.
+- About 15% of spikes are fired directly by a ventured arrival, but most would have come a little later from relayed input.
+- Under the charged drive, ventured input barely depends on the pattern either:
+  - escapes per synapse are 0.82 from on-inputs and 0.77 from off-inputs in the 25k network (0.42 in the fresh one);
+  - with no leak and no discharge, an input that goes off keeps whatever charge its last deliveries left, and keeps escaping at that level;
+  - in the 25k checkpoint, 69 of the 395 inputs sit at θ/3 and 65 at 2θ/3.
+
+**4. Read escapes are minor (measured).** They number 29–31 per epoch in the 25k networks and 43 in the fresh ones, about 0.5–0.7 per output, which is 6–8% of the count. At the escape, u was ≥ 0.9 in 19–31% of cases, between 0.5 and 0.9 in about 45%, and 0 in 15–25%.
+
+**Answer and how sure I am.** The excitation comes from relayed spikes landing on a few strong excitatory synapses, fanning in onto accumulator neurons whose floor throws away most of their inhibition. That wiring and scale are already in the fresh network.
+- I am confident ventured input is not the source: 1.5% of spikes under the rate drive and 6–8% under the charged drive, from direct counterfactuals over 40 epochs.
+- I am confident the high activity is inherited rather than grown. That rests on the frozen fresh networks and on the sweep's stuck-on counts at each learning rate.
+
+Why the synapse rule quiets the outputs 5–7 times more slowly is inference, not something I measured:
+- Its only credit for an input-to-output weight comes from the output's read synapse: about 0.5 escapes per epoch, posted only while V > 0, which is 15–20% of the time.
+- The reward, meanwhile, is set by 8–10 deterministic spikes per output per epoch, which carry no credit.
+- Under the neuron rule, every spike is a decision that carries credit.
+- I did not measure the size of either rule's gradient.
+
+One unexplained detail that does not affect the answer: the 15 synapses from the three always-on inputs escape at 0.17–0.18 per epoch, against the predicted 0.14. That is about 2–3 standard deviations on roughly 100 events.
