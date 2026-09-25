@@ -27,7 +27,7 @@ def run(arm):
     pop, out_n = grid.population, grid.outputs
 
     def probe(epoch, engine, grid, out, book):
-        counts = engine.epoch_spike_counts()
+        counts = fast._counts(engine)  # spikes, plus under exploration at the synapse the read synapses' escapes (§5.10)
         outs = [counts[i] for i in out]
         groups = [sum(outs[c * pop:(c + 1) * pop]) for c in range(len(outs) // pop)]
         label = grid.input_label
