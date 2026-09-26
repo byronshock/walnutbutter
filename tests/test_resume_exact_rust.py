@@ -23,11 +23,12 @@ def test_a_rust_sweep_resume_carries_the_matched_filter(tmp_path, critic):
     import random
     spec = importlib.util.spec_from_file_location("rs", Path(__file__).resolve().parent.parent / "docs" / "rust-sweep.py")
     rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
-    arm, fixed = {"hidden_neurons": 0.0, "seed": 3, "threshold": 0.6}, ("--critic", critic, "--filter-memory", "40")
+    # §9.4: a memory of ten, so the filter starts paying at epoch eleven, on the far side of the resume
+    arm, fixed = {"hidden_neurons": 0.0, "seed": 3, "threshold": 0.6}, ("--critic", critic, "--filter-memory", "10")
     rng = random.Random(5)
     labels = [rng.randrange(3) for _ in range(12)]  # three of the ten, so that classes come round again within six
     whole, cli = rs.grid_of("mnist", arm, "hazard", True, -4.0, None, fixed)
-    assert (cli.critic, cli.filter_memory) == (critic, 40)
+    assert (cli.critic, cli.filter_memory) == (critic, 10)
     patterns = input_stream(12, whole.raw_bit_count(), 3)
     common = dict(target="label", trace_every=1, eligibility="hazard", homeostasis=0.0, unstick=0.0, critic=critic,
                   filter_memory=cli.filter_memory)
@@ -51,7 +52,7 @@ def test_a_rust_sweep_resume_carries_the_matched_filter(tmp_path, critic):
     _, second_half, engine2, report2 = resume(True)
     assert second_half == straight[6:], "the resumed run must be the same run, continued"
     assert report2["filter"] == whole_report["filter"]
-    assert list(engine2.weights()) == list(engine_w.weights())
+    assert list(engine2.weights()) == list(engine_w.weights()) != list(engine.weights())  # it paid, after the resume
     assert resume(False)[1] != straight[6:], "an empty filter pays another run"
 
 

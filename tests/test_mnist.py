@@ -199,6 +199,33 @@ def test_the_poisson_filter_on_alike_outputs_is_the_evidence_critic_it_replaced(
         assert f.read(counts, label)[0] == pytest.approx(evidence, abs=1e-9)
 
 
+@pytest.mark.parametrize("critic", ["whitened", "poisson"])
+def test_a_matched_filter_learns_before_it_pays(critic):
+    """§9.4 (Byron, September 26, 2026, "learn, then pay"): until the filter has folded FILTER_MEMORY epochs the
+    advantage is zero -- no weight moves and the baseline neither starts nor moves -- though every epoch is read; from
+    the first epoch it pays on, the baseline starts there and the rule learns."""
+    pytest.importorskip("numpy")
+    rng = random.Random(4)
+    patterns = [[rng.random() < 0.5 for _ in range(4)] for _ in range(30)]
+    labels = [rng.randrange(2) for _ in range(30)]
+    g = Goo(count=46, across=8, outputs=12, seed=3, weight=None)  # §5.11: 2 classes * 3 a half
+    g.population, g.read, g.rule, g.drive = 3, "count", "reinforce", "rate"
+    g.set_delta(0.455)
+    g.use_input_stream(patterns, labels)
+    teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, filter_memory=12, lr=0.5)
+    start = [c.weight for c in g.connections.values()]
+    for epoch in range(12):
+        assert not teacher.filter.paying
+        teacher.epoch(verbose=False)
+        assert teacher.baseline is None and [c.weight for c in g.connections.values()] == start, epoch
+    assert teacher.filter.paying and sum(teacher.filter.presented) == 12
+    first = teacher.epoch(verbose=False)
+    assert teacher.baseline == first  # §9.3: started at the first paid epoch's reward, which moves it nowhere
+    for _ in range(10):
+        teacher.epoch(verbose=False)
+    assert [c.weight for c in g.connections.values()] != start  # and from there the rule learns
+
+
 def test_the_teacher_pays_mnist_through_the_whitened_filter():
     """11.9: mnist's critic is whitened; a matched filter scores a label, so it needs the label target and a stream
     that carries labels, and the evidence critic is gone (§9.4)."""
@@ -236,8 +263,9 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 
     mesh, twin = make(), make()
     net = ArrayNetwork(twin)
-    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
-                for x in (mesh, net)]
+    memory = 10  # §9.4: a filter pays from its tenth epoch, so the forty below learn under it
+    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1,
+                        filter_memory=memory) for x in (mesh, net)]
     rewards = []
     for _ in range(40):
         rewards.append([t.epoch(verbose=False) for t in teachers])
@@ -255,11 +283,12 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
         assert any(r[0] == 1.0 for r in rewards) and any(r[0] == 0.0 for r in rewards)
     if fast.available():
         g = make()
-        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
+        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1,
+                          filter_memory=memory)
         assert fast.compare(g, epochs=40, teacher=teacher) == []
         g = make()
         mean, trace, engine, report = fast.train(g, 60, target="label", critic=critic, patterns=patterns, labels=labels,
-                                                 eligibility="hazard", seed=7, trace_every=0)
+                                                 eligibility="hazard", seed=7, trace_every=0, filter_memory=memory)
         assert g.input_at == 60  # the stream of 50 went round again
         assert mean <= 0.0 if filtered else 0.0 <= mean <= 1.0
         # §9.7: the fraction right, the filter's own under a filter, and by the class sums beside it
@@ -371,7 +400,7 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     patterns, labels = dataset_stream("mnist", 1)
     mean, trace, engine, report = fast.train(goo, 40, lr=0.001, target="label", trace_every=10, patterns=patterns, labels=labels,
                                              eligibility="hazard", seed=1, homeostasis=0.0, unstick=0.0, critic="whitened",
-                                             direction=direction)
+                                             direction=direction, filter_memory=10)  # §9.4: paying from epoch 11
     est = report["estimator"]
     assert [e["epoch"] for e in est] == [10, 20, 30, 40]
     assert all(e["corr_cum"] is None or -1.0 <= e["corr_cum"] <= 1.0 for e in est)

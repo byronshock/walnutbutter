@@ -1259,7 +1259,8 @@ in this order:
 
 1. read the output zone and compute the epoch's reinforcement $R$ from the critic
    (§9.4–§9.7);
-2. pay the rule at the read with the advantage $A = R - b$ (§9.3);
+2. pay the rule at the read with the advantage $A = R - b$ (§9.3) — zero while a matched filter is still learning
+   (§9.4);
 3. move each neuron's firing-rate memory (§9.8);
 4. move thresholds by homeostasis (§9.9), and then by un-sticking (§9.10);
 5. move the baseline $b$ (§9.3);
@@ -1278,6 +1279,8 @@ The reinforcement reaches a synapse as an advantage against a running baseline, 
 paying rule's own and is stated once, at §8.2: $A = R - b$ with $b$ as it
 stands, and $b$ moves only after the update has used it. The advantage is one
 scalar an epoch, the same number for every synapse the paying rule touches.
+$b$ starts at the first epoch's reinforcement — under a matched filter, the first
+epoch the filter pays on (§9.4), and it does not move before then.
 
 The baseline is part of what a checkpoint carries and a resume restores
 (§12.9, §12.11): a resumed run is the same run continued, so it is paid
@@ -1336,6 +1339,16 @@ with $\bar m$ the epochs $S$ holds, capped as above. At the start $\Sigma = I$, 
 still has a variance, so $\Sigma$ can always be inverted. FILTER_MEMORY is 5,000 epochs and a run option (Byron,
 September 26, 2026, "about 5,000"); FILTER_SHRINKAGE $= 0.1$ and FILTER_POISSON_FLOOR $= 0.01$ spikes are Claude's,
 the first the middle of what the continuations' fits chose (0 to 0.3 on the rate drive), and both are open.
+
+*The filter learns before it pays.* Until it has folded FILTER_MEMORY epochs — the presentations in its templates,
+summed over the classes — the rule is paid an advantage of zero (§9.2, step 2), which moves no weight and settles the
+scores as any read does, and the baseline neither starts nor moves (§9.3): it starts at the first epoch that is paid.
+The filter reads every epoch from the first, and what it reads is reported; it is only not paid on. A filter built
+from a handful of epochs has a noise estimate that is nearly flat in most directions, and is confident beyond anything
+its data warrant: on the first run under it from scratch (mnist's synapse point, lr 0.0005), its first 50 epochs paid
+a mean of $-871$ and as little as $-5{,}970$, and the weights, summed over the synapses, moved some 600 times as far in
+those 50 epochs as in any 50 after the filter had settled. At a million epochs the wait is half a percent of a run. *Byron, September 26, 2026, choosing to learn, then pay, over a
+warm-up of its own length or a sturdier starting estimate paid on from the first epoch.*
 
 *What the filter is.* It is the teacher's, and stands outside the network (§9): nothing of it reaches a neuron except
 through the reinforcement it pays. It learns from the label, which the critic reads already, and it asks nothing of

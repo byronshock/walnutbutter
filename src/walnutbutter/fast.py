@@ -374,11 +374,13 @@ def compare(network, epochs=20, bits=None, *, teacher=None, rng=None):
                 mine = _reward(engine, network, out, teacher.critic, TARGETS[teacher.target])
             if mine != reward:
                 parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
-            if baseline is None:
+            paying = mirror is None or mirror.paying  # §9.4: a filter learns before it pays
+            if baseline is None and paying:
                 baseline = reward
-            engine.reinforce_scores(reward - baseline, teacher.lr)  # §8.4, under either eligibility
+            engine.reinforce_scores(reward - baseline if paying else 0.0, teacher.lr)  # §8.4, under either eligibility
             book.step()
-            baseline += teacher.baseline_rate * (reward - baseline)
+            if paying:
+                baseline += teacher.baseline_rate * (reward - baseline)
             if mirror is not None:
                 mirror.fold(counts, network.input_label)  # §9.2, step 6
                 if mirror.state() != teacher.filter.state():
@@ -659,11 +661,13 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
             reward, filter_won = read_filter.read(counts, network.input_label)
         else:
             reward = _reward(engine, network, out, critic, want_of)
-        if baseline is None:
-            baseline = reward
-        engine.reinforce_scores(reward - baseline, lr)  # §8.4, under either eligibility
+        paying = read_filter is None or read_filter.paying  # §9.4: a filter learns before it pays
+        if baseline is None and paying:
+            baseline = reward  # §9.3: from the first epoch that is paid
+        engine.reinforce_scores(reward - baseline if paying else 0.0, lr)  # §8.4, under either eligibility
         book.step()
-        baseline += baseline_rate * (reward - baseline)
+        if paying:
+            baseline += baseline_rate * (reward - baseline)
         if read_filter is not None:
             read_filter.fold(counts, network.input_label)  # §9.2, step 6
         total += reward

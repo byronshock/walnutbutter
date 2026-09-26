@@ -230,7 +230,9 @@ class MatchedFilter:
 
     `read` scores an epoch as the filter stands; `fold` then moves it (§9.2, step 6): the noise toward the epoch's
     deviation from its class's template, as a plain mean of up to `memory` epochs and forgetting after, and the
-    template toward the counts, the same way up to memory / C presentations. Every engine reads and folds through
+    template toward the counts, the same way up to memory / C presentations. It learns before it pays: until it has
+    folded `memory` epochs it is not `paying`, and the rule is paid an advantage of zero, which moves no weight
+    (Byron, September 26, 2026, after its first few epochs paid rewards down to -5,970). Every engine reads and folds through
     this object, in 64-bit floats, on the integer counts of the read, so the three agree to the bit; `state` and
     `from_state` carry it through a checkpoint (§12.9) so that a resume is exact (§12.11).
     """
@@ -258,6 +260,12 @@ class MatchedFilter:
         self.presented = [0] * classes  # each class's presentations folded so far
         self.folded = 0  # the epochs folded into S, uncapped
         self._weights = None  # the scores' weights and offsets as the filter stands, until the next fold
+
+    @property
+    def paying(self) -> bool:
+        """Whether the filter has folded its memory's worth of epochs and pays the rule (§9.4): until then its reads
+        are reported and the advantage is zero."""
+        return sum(self.presented) >= self.memory
 
     def _scoring(self):
         """(W, b) with s = x W + b, as the filter stands: computed once between folds."""
@@ -699,15 +707,17 @@ class Teacher:
             reward, self.last_right = self.filter.read(counts, label)
         else:
             reward = CRITICS[self.critic](self.network, self.target)
-        if self.baseline is None:
-            self.baseline = reward
-        advantage = reward - self.baseline
+        paying = self.filter is None or self.filter.paying  # §9.4: a filter learns before it pays
+        if self.baseline is None and paying:
+            self.baseline = reward  # §9.3: from the first epoch that is paid
+        advantage = reward - self.baseline if paying else 0.0  # zero moves no weight and settles the scores as ever
         if self.rule == "reinforce":
             reinforce(self.network, advantage, self.lr, self.eligibility)
         update_rates(self.network)
         homeostasis(self.network, self.homeostasis, self.target_rate)
         self.unstuck_count += len(unstick(self.network, self.unstick, self.unstick_target))
-        self.baseline += self.baseline_rate * (reward - self.baseline)
+        if paying:
+            self.baseline += self.baseline_rate * (reward - self.baseline)
         if self.filter is not None:
             self.filter.fold(counts, label)  # §9.2, step 6
         self.epochs += 1
