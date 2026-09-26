@@ -16,7 +16,7 @@ import pytest
 from walnutbutter import constants as C
 from walnutbutter import fast
 from walnutbutter.goo import Goo
-from walnutbutter.learning import Teacher, class_sums, evidence_score, homeostasis, reinforce, unstick, update_rates
+from walnutbutter.learning import Teacher, class_sums, homeostasis, reinforce, unstick, update_rates
 from walnutbutter.monitor import run_epoch
 from walnutbutter.network import EXPLORATIONS, Network, escape_scale
 from walnutbutter.neuron import Neuron
@@ -589,7 +589,7 @@ def test_under_trace_ventured_a_relayed_arrival_is_not_there_for_the_synapse(tau
 
 def test_the_read_count_reaches_every_count_reader_and_nothing_that_reads_a_spike():
     """§5.10: the count is the output's spikes plus its read synapse's escapes this epoch, and every clause that reads a
-    count reads the sum -- the class evidence and the evidence critic among them; the rate memory reads spikes (§2.6)."""
+    count reads the sum -- the class evidence and the matched filter among them; the rate memory reads spikes (§2.6)."""
     g = Goo(count=24, across=4, outputs=12, seed=1, weight=None)
     g.population, g.read = 3, "count"
     g.set_exploration("synapse")
@@ -600,7 +600,6 @@ def test_the_read_count_reaches_every_count_reader_and_nothing_that_reads_a_spik
     assert g.output_counts() == [0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 5, 0]
     assert g.output_counts_hz() == [k * (1000.0 / g.interval) for k in g.output_counts()]
     assert class_sums(g) == [0 + 1 + 2 - (0 + 0 + 0), 3 - (0 + 5 + 0)]
-    assert evidence_score(g) == pytest.approx(math.log(math.exp(3 / 2) / (math.exp(3 / 2) + math.exp(-2 / 2))))
     assert g.output_fired() == [k >= g.pickiness for k in g.output_counts()]
     rates = [n.rate for n in g.all_neurons()]
     update_rates(g)

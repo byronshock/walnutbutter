@@ -629,7 +629,7 @@ def test_the_mnist_configuration_agrees(drive, trace, family, scaling, tau, seed
     Neuron.tau = tau
     mesh, net = meshes[0], ArrayNetwork(meshes[1])
     assert len(net) == 455 and len(set(mesh.output_row())) == 60
-    side_by_side(mesh, net, 12, learning, seed + 100, target="label", critic="evidence", lr=cli.lr,
+    side_by_side(mesh, net, 12, learning, seed + 100, target="label", critic="whitened", lr=cli.lr,
                  homeostasis=options.get("homeostasis", 0.0), unstick=options.get("unstick", 0.0))
     assert sum(n.spikes for n in mesh.all_neurons()) > 0
 

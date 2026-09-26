@@ -201,11 +201,16 @@ LR = 0.03  # learning rate, both rules
 
 # --- the reinforce rule of the pre-alpha, factored out behind RULE = "reinforce" ---
 TARGET = "reversed"  # what the output zone should show, derived from the input zone (learning.TARGETS)
-CRITIC = "row"  # how the reward is judged (learning.CRITICS)
-TEMPERATURE = 2.0  # the evidence critic's temperature (AUTHORITY.md §8; Byron, September 16, 2026: "the spikes are EVIDENCE"):
-# the class sums are read as log-odds at this scale, q_k = exp(n_k / T) / sum_j exp(n_j / T), and the reward is ln q_y; a lead of
-# T spikes makes a class e times as likely. 0 would be the class critic, infinity a flat ln 0.1. Set at the middle of the first
-# sweep, {1, 2, 4}; "We will have to sweep for temperature eventually"
+CRITIC = "row"  # how the reward is judged (learning.CRITICS, or a matched filter of learning.FILTERS)
+# The matched-filter critics (AUTHORITY.md §9.4; Byron, September 26, 2026: "default to a noise-whitened matched
+# filter, with Poisson matched filter also an option"), which replaced the evidence critic and its TEMPERATURE that day.
+FILTER_MEMORY = 5000  # epochs a matched filter's templates and noise estimate remember: each is a plain mean until its
+# cap and forgets after it, a template capped at FILTER_MEMORY / C presentations of its class. A run option (Byron:
+# "about 5,000")
+FILTER_SHRINKAGE = 0.1  # how far the whitened filter's noise estimate is shrunk toward its own diagonal. Claude's, the
+# middle of what the fits on the September 26 continuations chose (0 to 0.3 on the rate drive); open
+FILTER_POISSON_FLOOR = 0.01  # spikes: the least rate the poisson filter takes a template to give, so that an output a
+# template never saw fire does not score minus infinity. Claude's; open
 ELIGIBILITY = "hazard"  # which of the two eligibilities of AUTHORITY.md §8.3 a run gets when it names none. Both are
 # the single-spike rule of §8.4 and differ in what a decision's credit and expectation are: hazard takes the escape
 # decision's own score (§8.7), which is exactly zero-mean at every decision; hebb takes the neuron's own estimate of its

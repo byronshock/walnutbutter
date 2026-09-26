@@ -96,7 +96,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "pickiness": "--pickiness",  # the count read's line, in spikes (§5.10, §9.5)
     "goo": "--goo",  # goo (§3.4) in place of the grid, with this many neurons
     "hidden_neurons": "--hidden-neurons",  # goo's hidden count, the goo being inputs + hidden + outputs (§8, mnist)
-    "temperature": "--temperature",  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
+    "filter_memory": "--filter-memory",  # the epochs a matched filter's templates and noise remember (§9.4)
     "projection": "--projection",  # the probability of goo's three earlier wirings, under --wiring (§3.4)
     "scaling_factor": "--scaling-factor",  # goo's scaled rule: every neuron hears N times this in expectation (§3.4)
     "synapse_hazard": "--synapse-hazard",  # h0, the rest hazard, under --exploration synapse (§7.6)
@@ -153,6 +153,9 @@ def parse() -> argparse.Namespace:
     if args.drive_steps and any(not math.isfinite(steps) or steps != int(steps) or steps < 1 for steps in args.drive_steps):
         parser.error(f"DRIVE_STEPS is a count of deliveries, a whole number of at least 1; got "
                      f"{' '.join(f'{steps:g}' for steps in args.drive_steps)} (5.4b)")
+    if args.filter_memory and any(not math.isfinite(m) or m != int(m) or m < 1 for m in args.filter_memory):
+        parser.error(f"the filter's memory is a whole number of epochs; got "
+                     f"{' '.join(f'{m:g}' for m in args.filter_memory)} (§9.4)")
     if args.goo == []:  # bare --goo: the working network's count
         from walnutbutter.constants import GOO_COUNT
         args.goo = [float(GOO_COUNT)]
@@ -200,7 +203,7 @@ def grid_of(problem: str, arm: dict, eligibility: str | None = None, scale: bool
         if knob in STRING_KNOBS:  # a swept string knob, a word like the eligibility's
             argv += [f"--{knob.replace('_', '-')}", value]
             continue
-        if knob == "drive_steps":  # a whole number, which parse checked: as the command line takes it, 1e6 not "1e+06"
+        if knob in ("drive_steps", "filter_memory"):  # whole numbers, which parse checked: as the command line takes them, 1e6 not "1e+06"
             argv += [KNOBS[knob], str(int(value))]
             continue
         argv += [KNOBS[knob], f"{value:g}"]
@@ -217,7 +220,6 @@ def grid_of(problem: str, arm: dict, eligibility: str | None = None, scale: bool
                scale_with_fan_in=scale, projection=args.projection, outputs=args.outputs, wiring=args.wiring,
                scaling_factor=args.scaling_factor)
     grid.population, grid.clock = args.population, args.clock
-    grid.temperature = args.temperature  # the evidence critic's (§8)
     grid.readout, grid.read, grid.read_window = args.readout, args.read, args.read_window
     grid.pickiness = args.pickiness  # the count read's line, in spikes (§5.10, §9.5)
     grid.interval, grid.drive = args.interval, args.drive
@@ -316,6 +318,7 @@ def _save_network(engine, grid, report: dict, path, progress: dict | None = None
     data = checkpoint(grid, writing)
     data["engine_pending"] = pending  # §12.11: the queue in the engine's terms, for fast.train(pending_events=...)
     data["baseline"] = report.get("baseline")  # §9.3: b as the run left it, so a resume is paid against it
+    data["filter"] = report.get("filter")  # §9.4, §12.9: and the matched filter's book, so it reads on from where it was
     data["progress"] = progress  # the trace rows and the estimator to date, so a continuation carries the whole record
     writing.write_text(_json.dumps(data))
     os.replace(writing, path)  # atomic: the checkpoint on disk is always one the run can be continued from
@@ -346,7 +349,7 @@ def _queue_into(grid, edges, pending) -> None:
 
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "presentation", "input_rate", "input_rate_off",
-                    "temperature", "population", "clock", "quash_rate", "quash_k",
+                    "population", "clock", "quash_rate", "quash_k",
                     )  # what the arm's settings decide, applied to a restored network over its checkpoint. Not the drive:
 # a checkpoint resumes under the drive it was saved under unless the sweep names one (§12.9, resume_grid)
 
@@ -424,6 +427,8 @@ def resume_grid(fresh, source):
         edge_index = {id(c): k for k, c in enumerate(c for n in neurons for c in n.outgoing)}
         restored.engine_pending = _queue(restored, index, edge_index)
     restored.engine_progress = data.get("progress")  # the record the checkpoint carried, for the caller to continue
+    restored.engine_filter = data.get("filter")  # §9.4: the matched filter's book, for fast.train(filter_state=...); a
+    # checkpoint saved under another critic carries none, and the filter starts empty
     baseline = data.get("baseline")  # §9.3: the driver's, beside the checkpoint's fields, or an object checkpoint's
     if baseline is None:  # Teacher's, in its learning record; until September 25, 2026 that one was dropped
         baseline = (data.get("learning") or {}).get("baseline")
@@ -454,16 +459,17 @@ def _output_counts(engine, grid) -> list[int]:
     return [int(c) for c in counts[len(counts) - grid.outputs:]]
 
 
-def _trace_rows(earlier, trace, right, offset: int, trace_every: int) -> list:
-    """The arm's trace as its csv holds it: whatever record came before, then this leg's points at their own epochs.
+def _trace_rows(earlier, trace, right, offset: int, trace_every: int, right_sums=()) -> list:
+    """The arm's trace as its csv holds it: whatever record came before, then this leg's points at their own epochs --
+    the score, the fraction right and the fraction right by the class sums (§9.7).
 
     One place builds it, so the record a continued arm writes is the record the
     uninterrupted run would have written, row for row.
     """
     rows = [tuple(row) for row in earlier]
+    at = lambda values, k: "" if k > len(values) or values[k - 1] is None else f"{values[k - 1]:.6g}"
     for k, score in enumerate(trace, start=1):
-        was_right = right[k - 1] if k <= len(right) else None
-        rows.append((offset + k * trace_every, f"{score:.6g}", "" if was_right is None else f"{was_right:.6g}"))
+        rows.append((offset + k * trace_every, f"{score:.6g}", at(right, k), at(right_sums, k)))
     return rows
 
 
@@ -513,7 +519,8 @@ def run_arm(job: tuple) -> dict:
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
         earlier_csv = source.with_name(f"{arm_name(arm)}.csv")
         if not earlier_trace and earlier_csv.exists():
-            earlier_trace = [(int(r["epoch"]), r["score"], r.get("right", "")) for r in csv.DictReader(open(earlier_csv))]
+            earlier_trace = [(int(r["epoch"]), r["score"], r.get("right", ""), r.get("right_sums") or "")
+                             for r in csv.DictReader(open(earlier_csv))]
     direction = None
     if PROBLEMS[problem].data == "mnist" and hasattr(grid, "outputs"):  # the estimator's correlation over time (§8)
         from walnutbutter.mnist import supervised_direction
@@ -535,7 +542,8 @@ def run_arm(job: tuple) -> dict:
 
     def write_checkpoint(epoch: int, engine, grid_now, report_now: dict) -> None:
         """The arm as it stands, at every --checkpoint-every epochs: the state to go on from and the record so far."""
-        rows = _trace_rows(earlier_trace, report_now["trace"], report_now["right"], offset, trace_every)
+        rows = _trace_rows(earlier_trace, report_now["trace"], report_now["right"], offset, trace_every,
+                           report_now.get("right_sums") or [])
         _save_network(engine, grid_now, report_now, network_path,
                       {"rows": rows, "estimator": earlier_estimator + (report_now.get("estimator") or [])})
 
@@ -548,6 +556,7 @@ def run_arm(job: tuple) -> dict:
             unstick_target=args.unstick_target, critic=args.critic, direction=direction,
             checkpoint=write_checkpoint if checkpoint_every else None, checkpoint_every=checkpoint_every,
             reference_weights=reference, epoch_offset=offset, baseline=baseline,
+            filter_memory=args.filter_memory, filter_state=getattr(grid, "engine_filter", None),
         )
     except ValueError as exc:  # and not the sweep's death, with every sibling arm's work
         return {"arm": arm_name(arm), "refused": str(exc)}
@@ -555,12 +564,12 @@ def run_arm(job: tuple) -> dict:
     from walnutbutter.neuron import Neuron
     if report.get("estimator") is not None:
         report["estimator"] = earlier_estimator + report["estimator"]
-    rows = _trace_rows(earlier_trace, trace, report.get("right") or [], offset, trace_every)
+    rows = _trace_rows(earlier_trace, trace, report.get("right") or [], offset, trace_every, report.get("right_sums") or [])
     _save_network(engine, grid, report, network_path,  # so an arm can be resumed, not rerun
                   {"rows": rows, "estimator": report.get("estimator") or []})
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["epoch", "score", "right"])
+        writer.writerow(["epoch", "score", "right", "right_sums"])
         writer.writerows(rows)
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
@@ -584,8 +593,10 @@ def run_arm(job: tuple) -> dict:
               "wiring": getattr(grid, "wiring", None),  # goo's rule (§3.4), and its knobs
               "projection": getattr(grid, "projection", None),
               "scaling_factor": getattr(grid, "scaling_factor", None),
-              "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
-              "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
+              "filter": None if report.get("filter") is None else {  # the matched filter the arm was paid through (§9.4)
+                  key: report["filter"][key] for key in ("form", "memory", "shrinkage", "floor", "folded")},
+              "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the fraction right beside the score, and
+              "accuracy_last_tenth_sums": report.get("accuracy_last_tenth_sums"),  # by the class sums beside it (§9.7)
               "last_tenth_over": "engine",  # every epoch of the last tenth, as the engine counted them
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
               "estimator": report.get("estimator"),  # the estimator's correlation over time (§8), for a dataset on goo
@@ -602,6 +613,8 @@ def run_arm(job: tuple) -> dict:
         result["last_tenth"] = statistics.fmean(float(row[1]) for row in tenth)
         right_of = [float(row[2]) for row in tenth if row[2] != ""]
         result["accuracy_last_tenth"] = statistics.fmean(right_of) if right_of else None
+        sums_of = [float(row[3]) for row in tenth if len(row) > 3 and row[3] != ""]
+        result["accuracy_last_tenth_sums"] = statistics.fmean(sums_of) if sums_of else None
         result["last_tenth_over"] = f"the record's last tenth, {len(tenth)} points from epoch {tenth[0][0]:,}"
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result

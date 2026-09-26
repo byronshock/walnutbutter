@@ -172,7 +172,6 @@ class ArrayNetwork(Network):
         self.horizon = mesh.horizon
         self.readout, self.read, self.read_window = mesh.readout, mesh.read, mesh.read_window
         self.population, self.quash_rate, self.quash_k = mesh.population, mesh.quash_rate, mesh.quash_k
-        self.temperature = mesh.temperature  # the evidence critic's temperature (§8)
         self.clock = mesh.clock  # clock neurons at the front of the input zone (§4.3)
         self.drive, self.input_rate, self.input_rate_off = mesh.drive, mesh.input_rate, mesh.input_rate_off
         self.drive_steps = mesh.drive_steps  # DRIVE_STEPS under the charged drive (5.4b)

@@ -183,7 +183,7 @@ def test_the_mnist_configuration_agrees_to_the_bit(drive, trace, family, scaling
     g.use_input_stream(patterns[:100], labels[:100])
     assert len(g.all_neurons()) == 455 and len(set(g.output_row())) == 60
     if learning:
-        teacher = Teacher(g, seed=seed + 100, rule="reinforce", eligibility="hazard", target="label", critic="evidence",
+        teacher = Teacher(g, seed=seed + 100, rule="reinforce", eligibility="hazard", target="label", critic="whitened",
                           lr=cli.lr, homeostasis=options.get("homeostasis", 0.0), unstick=options.get("unstick", 0.0))
         parted = fast.compare(g, epochs=20, teacher=teacher)
     else:

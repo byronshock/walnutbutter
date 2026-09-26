@@ -314,3 +314,53 @@ def test_a_resume_is_the_same_run_continued(tmp_path):
         assert [n.expectation for n in back.all_neurons()] == [n.expectation for n in whole.all_neurons()]
     finally:
         Neuron.tau = was
+
+
+@pytest.mark.parametrize("critic", ["whitened", "poisson"])
+def test_a_resume_carries_the_matched_filter_and_is_the_same_run_continued(tmp_path, critic):
+    """§9.4, §12.9, §12.11: a Teacher paid through a matched filter writes the filter's book into the learning record,
+    and a resumed Teacher reads and folds on from it -- sixteen epochs straight against eight, a checkpoint, eight more,
+    every reward, weight and the filter itself alike. A Teacher resumed without it starts from an empty filter and is
+    another run."""
+    pytest.importorskip("numpy")
+    import random
+    rng = random.Random(4)
+    patterns = [[rng.random() < 0.5 for _ in range(4)] for _ in range(16)]  # §5.2: 8 places take 4 raw bits
+    labels = [rng.randrange(2) for _ in range(16)]
+
+    def build():
+        g = Goo(count=46, across=8, outputs=12, seed=3, weight=None)  # §5.11: 2 classes * 3 a half
+        g.population, g.read, g.rule, g.drive = 3, "count", "reinforce", "rate"
+        g.set_delta(ESCAPE_DELTA)
+        g.use_input_stream(patterns, labels)
+        return g
+
+    def teach(grid, seed=7):
+        teacher = Teacher(grid, seed=seed, rule="reinforce", target="label", critic=critic, filter_memory=8)
+        grid.explore_rng = teacher.rng
+        return teacher
+
+    whole = build()
+    straight = teach(whole)
+    rewards = [straight.epoch(verbose=False) for _ in range(16)]
+    part = build()
+    teacher = teach(part)
+    assert [teacher.epoch(verbose=False) for _ in range(8)] == rewards[:8]
+    data = checkpoint(part, tmp_path / "half.json", teacher)
+    assert data["learning"]["filter"] == teacher.filter.state() and data["learning"]["filter"]["form"] == critic
+
+    def resumed_rewards(carry: bool):
+        back, data = restore(tmp_path / "half.json")
+        back.use_input_stream(patterns, labels)
+        back.input_at = data["input_at"]
+        resumed = teach(back, seed=999)
+        if not carry:
+            data["learning"]["filter"] = None
+        resume_teacher(resumed, data)
+        return back, resumed, [resumed.epoch(verbose=False) for _ in range(8)]
+
+    back, resumed, after = resumed_rewards(True)
+    assert after == rewards[8:], "the resumed run must be the same run, continued"
+    assert resumed.filter.state() == straight.filter.state()
+    assert [c.weight for c in back.connections.values()] == [c.weight for c in whole.connections.values()]
+    assert resumed_rewards(False)[2] != rewards[8:], "an empty filter pays another run"

@@ -31,7 +31,7 @@ def show_on_output(grid, pattern):
 
 
 def test_critics_registry_and_teacher_validation():
-    assert set(CRITICS) == {"row", "sustained", "population", "class", "graded", "evidence"}
+    assert set(CRITICS) == {"row", "sustained", "population", "class", "graded"}  # and the filters, held apart (§9.4)
     grid = coded_grid()
     run_epoch(grid, verbose=False)
     teacher = Teacher(grid, critic="population", seed=1)

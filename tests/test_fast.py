@@ -70,7 +70,7 @@ def test_it_agrees_on_the_shallow_grid_too():
 def test_compare_refuses_what_it_cannot_mirror():
     from walnutbutter.learning import Teacher
     grid = mesh(rows=2, seed=1, delta=ESCAPE_DELTA)
-    with pytest.raises(ValueError, match="row, class, graded or evidence critic"):
+    with pytest.raises(ValueError, match="row, class, graded, whitened or poisson critic"):
         fast.compare(grid, epochs=1, teacher=Teacher(grid, seed=1, rule="reinforce", target="copy",
                                                     critic="sustained", homeostasis=0.0, unstick=0.0))
 
