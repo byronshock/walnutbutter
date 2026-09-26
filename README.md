@@ -11,16 +11,7 @@ one-way along weighted connections, one hop per connection, on a clock in
 nominal milliseconds; a wave is everything that happens at one moment. A
 neuron may fire as often as its refractory period allows, so a tight loop
 can carry a neuron's own spike back to refire it, and activity sustains
-itself. The network's input is a complement-coded, permuted bit pattern
-forced onto its bottom row; its output is the top row. Learning is
-**dopamine**: a neuron that fires again after its refractory period
-releases dopamine, most when it refires the instant it may, into one
-global pool; at that same refire its incoming synapses that carried a
-signal since its previous spike move together in proportion to the pool
-minus the network's expectation of it. There is no training run and no
-evaluation run, only one run that keeps going: the window is a 30 Hz
-monitor on a free-running system that learns, checkpoints itself, and
-reports as it goes.
+itself.
 
 Two containers build networks. The **hex grid** wires every cell to its two
 rings of neighbours plus a few random small-world shortcuts. **Walnut butter**
