@@ -33,10 +33,18 @@ saved at the end of that sweep's run of it: the checkpoint's weights, thresholds
 spike times, widths and expectations, the input stream advanced to the epoch it reached,
 `--epochs` more epochs from there, the estimator still measured against the first
 start's weights, and the trace and record continued from the earlier ones. The reinforcement
-baseline is carried over (§9.3). Still not a resume to the bit, which §12.11 requires: the
-exploration stream starts afresh (seed + 1,000,000) and no checkpoint carries a generator's
-state. `--population` and `--outputs`, fixed for the
+baseline is carried over (§9.3), and so is the state of every stream, so the continuation is
+the same run to the bit, as §12.11 requires (September 21, 2026; before that the exploration
+stream was reseeded and the engine's state was left behind, and a resume parted from the
+uninterrupted run at its first epoch). `--population` and `--outputs`, fixed for the
 sweep, rebuild an arm under a layout the problem no longer defaults to.
+
+`--checkpoint-every N` (25,000 epochs by default; 0 turns it off) writes each arm's
+checkpoint as it goes rather than only at the end, with the arm's record so far inside it.
+An arm that has a checkpoint and no `.csv` was cut short, so rerunning the sweep's own
+command picks each one up where it stopped and finishes the epochs asked for -- a machine
+going down costs at most N epochs an arm instead of the whole run. The checkpoint is moved
+into place once written, so the file on disk is always one a run can go on from.
 """
 
 from __future__ import annotations
@@ -107,6 +115,9 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--population", type=int, default=None, help="neurons per population, fixed for the sweep (the problem's unless given)")
     parser.add_argument("--outputs", type=int, default=None, help="the output zone's width, fixed for the sweep (the problem's unless given)")
     parser.add_argument("--trace-every", type=int, default=1000)
+    parser.add_argument("--checkpoint-every", type=int, default=25_000, metavar="N",
+                        help="write each arm's checkpoint every N epochs, so a run cut short resumes from there "
+                             "rather than starting over (0 saves only at the end, as before September 22, 2026)")
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--summary", action="store_true", help="summarise what is on disk; run nothing")
     args = parser.parse_args()
@@ -167,13 +178,21 @@ def grid_of(problem: str, arm: dict, eligibility: str = "hebb", scale: bool = Tr
     return grid, args
 
 
-def _save_network(engine, grid, report: dict, path) -> None:
-    """The arm's network at the end of the run: the engine's weights and thresholds written back to the mesh and checkpointed.
+def _save_network(engine, grid, report: dict, path, progress: dict | None = None) -> None:
+    """The arm's network as the run has it, the engine's state written back to the mesh and checkpointed.
 
-    A run restored from it continues with those weights (the CLI's --load-weights, or
-    docs/mnist-watch.py); it is not a resume to the bit, since the stream's position
-    and the exploration stream's state are not in a checkpoint. The reinforcement
-    baseline is (§9.3), written beside the checkpoint's own fields.
+    Called at the end of a run and, with `--checkpoint-every`, as it goes. A run
+    restored from it is the same run continued, to the bit (§12.11): the stream
+    positions and the exploration stream's state go in with the weights, and so
+    does the reinforcement baseline (§9.3), written beside the checkpoint's own
+    fields. `progress` is the arm's record so far -- its trace rows and its
+    estimator -- so that a continuation's record is whole and not just the leg
+    it ran.
+
+    The file appears whole or not at all. A checkpoint is written for the sake of
+    a run that gets cut short, so it must not be the thing a crash catches
+    half-written: the state goes to a temporary name and is moved over the old
+    checkpoint, which stands until the new one is complete.
     """
     import json as _json
     from walnutbutter.persistence import checkpoint
@@ -214,10 +233,13 @@ def _save_network(engine, grid, report: dict, path) -> None:
     from walnutbutter.fast import sync_explore
     grid.explore_rng = _random.Random()  # §12.11: the checkpoint carries the exploration stream's state. The Rust
     sync_explore(engine, grid.explore_rng)  # engine advanced it; without this it is saved null and a resume reseeds
-    data = checkpoint(grid, path)
+    writing = path.with_name(path.name + ".writing")
+    data = checkpoint(grid, writing)
     data["engine_pending"] = engine.pending_events()  # §12.11: signals in flight at the boundary, in delivery order
     data["baseline"] = report.get("baseline")  # §9.3: b as the run left it, so a resume is paid against it
-    path.write_text(_json.dumps(data))
+    data["progress"] = progress  # the trace rows and the estimator to date, so a continuation carries the whole record
+    writing.write_text(_json.dumps(data))
+    os.replace(writing, path)  # atomic: the checkpoint on disk is always one the run can be continued from
 
 
 RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "presentation", "drive", "input_rate", "input_rate_off",
@@ -251,6 +273,7 @@ def resume_grid(fresh, source):
         setattr(restored, attr, getattr(fresh, attr))
     restored.rule = "reinforce"
     restored.engine_pending = data.get("engine_pending")  # §12.11: for fast.train(pending_events=...)
+    restored.engine_progress = data.get("progress")  # the record the checkpoint carried, for the caller to continue
     return restored, int(data["epoch"]), reference, data.get("baseline"), data.get("explore_state")
 
 
@@ -276,12 +299,26 @@ def _output_counts(engine, grid) -> list[int]:
     return [int(c) for c in counts[len(counts) - grid.outputs:]]
 
 
+def _trace_rows(earlier, trace, right, offset: int, trace_every: int) -> list:
+    """The arm's trace as its csv holds it: whatever record came before, then this leg's points at their own epochs.
+
+    One place builds it, so the record a continued arm writes is the record the
+    uninterrupted run would have written, row for row.
+    """
+    rows = [tuple(row) for row in earlier]
+    for k, score in enumerate(trace, start=1):
+        was_right = right[k - 1] if k <= len(right) else None
+        rows.append((offset + k * trace_every, f"{score:.6g}", "" if was_right is None else f"{was_right:.6g}"))
+    return rows
+
+
 def arm_name(arm: dict) -> str:
     return "-".join(f"{knob}{value}" if isinstance(value, str) else f"{knob}{value:g}" for knob, value in arm.items())
 
 
 def run_arm(job: tuple) -> dict:
-    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring, resume_from, fixed = job
+    arm, problem, epochs, trace_every, name, eligibility, scale, floor_ratio, wiring, resume_from, fixed = job[:11]
+    checkpoint_every = job[11] if len(job) > 11 else 0  # a worker the Pool respawns under a driver older than the flag
     from walnutbutter import fast
     from walnutbutter.network import input_stream
     from walnutbutter.problems import PROBLEMS, dataset_stream
@@ -290,6 +327,11 @@ def run_arm(job: tuple) -> dict:
     path = out / f"{arm_name(arm)}.csv"
     if path.exists():
         return {"arm": arm_name(arm), "skipped": True}
+    resumed_self = False
+    if resume_from is None and (out / f"{arm_name(arm)}-network.json").exists():
+        # the arm has a checkpoint and no record: it was cut short. Rerunning the sweep's own command finishes it,
+        # so recovering from a machine going down is the same line again and costs at most --checkpoint-every epochs.
+        resume_from, resumed_self = name, True
     grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring, fixed)
     eligibility = arm.get("eligibility", eligibility)
     offset, reference, earlier_trace, earlier_estimator, baseline = 0, None, [], [], None
@@ -298,11 +340,18 @@ def run_arm(job: tuple) -> dict:
         if not source.exists():
             return {"arm": arm_name(arm), "missing": str(source)}
         grid, offset, reference, baseline, resumed_explore_state = resume_grid(grid, source)
-        earlier = source.with_name(f"{arm_name(arm)}.json")
-        if earlier.exists():
+        if resumed_self:  # --epochs is the whole run a recovery finishes, not a leg added on to it
+            asked, epochs = epochs, epochs - offset
+            if epochs <= 0:  # the checkpoint is already at the end: ask for more epochs, or move it aside
+                return {"arm": arm_name(arm), "checkpoint_at": offset, "epochs_asked": asked}
+        carried = getattr(grid, "engine_progress", None) or {}  # the record the checkpoint itself carried
+        earlier_trace = [tuple(row) for row in carried.get("rows") or []]
+        earlier_estimator = carried.get("estimator") or []
+        earlier = source.with_name(f"{arm_name(arm)}.json")  # a sweep that finished wrote its record beside the
+        if not earlier_estimator and earlier.exists():  # checkpoint; a run cut short has only what the checkpoint holds
             earlier_estimator = json.loads(earlier.read_text()).get("estimator") or []
         earlier_csv = source.with_name(f"{arm_name(arm)}.csv")
-        if earlier_csv.exists():
+        if not earlier_trace and earlier_csv.exists():
             earlier_trace = [(int(r["epoch"]), r["score"], r.get("right", "")) for r in csv.DictReader(open(earlier_csv))]
     direction = None
     if PROBLEMS[problem].data == "mnist" and hasattr(grid, "outputs"):  # the estimator's correlation over time (§8)
@@ -321,29 +370,34 @@ def run_arm(job: tuple) -> dict:
         grid.input_at = offset
         patterns = labels = None
         explore_state = resumed_explore_state
+    network_path = path.with_name(path.stem + "-network.json")
+
+    def write_checkpoint(epoch: int, engine, grid_now, report_now: dict) -> None:
+        """The arm as it stands, at every --checkpoint-every epochs: the state to go on from and the record so far."""
+        rows = _trace_rows(earlier_trace, report_now["trace"], report_now["right"], offset, trace_every)
+        _save_network(engine, grid_now, report_now, network_path,
+                      {"rows": rows, "estimator": earlier_estimator + (report_now.get("estimator") or [])})
+
     started = time.perf_counter()
     mean, trace, engine, report = fast.train(
         grid, epochs, lr=args.lr, target=args.target, trace_every=trace_every, patterns=patterns, labels=labels,
         eligibility=args.eligibility, seed=explore_seed, explore_state=explore_state, pending_events=getattr(grid, "engine_pending", None),
         homeostasis=args.homeostasis, target_rate=args.target_rate, unstick=args.unstick,
         unstick_target=args.unstick_target, critic=args.critic, direction=direction,
+        checkpoint=write_checkpoint if checkpoint_every else None, checkpoint_every=checkpoint_every,
         reference_weights=reference, epoch_offset=offset, baseline=baseline,
     )
     elapsed = time.perf_counter() - started
-    _save_network(engine, grid, report, path.with_name(path.stem + "-network.json"))  # so an arm can be resumed, not rerun
-    with open(path, "w", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["epoch", "score", "right"])
-        for epoch, score, was_right in earlier_trace:
-            writer.writerow([epoch, score, was_right])
-        traced_right = report.get("right") or []
-        for k, score in enumerate(trace, start=1):
-            was_right = traced_right[k - 1] if k <= len(traced_right) else None
-            writer.writerow([offset + k * trace_every, f"{score:.6g}",
-                             "" if was_right is None else f"{was_right:.6g}"])
     from walnutbutter.neuron import Neuron
     if report.get("estimator") is not None:
         report["estimator"] = earlier_estimator + report["estimator"]
+    rows = _trace_rows(earlier_trace, trace, report.get("right") or [], offset, trace_every)
+    _save_network(engine, grid, report, network_path,  # so an arm can be resumed, not rerun
+                  {"rows": rows, "estimator": report.get("estimator") or []})
+    with open(path, "w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["epoch", "score", "right"])
+        writer.writerows(rows)
     result = {"arm": arm_name(arm), "mean": mean, "last_tenth": report["last_tenth"], "stuck_on": report["stuck_on"],
               "stuck_off": report["stuck_off"], "unstuck": report["unstuck"], "seconds": round(elapsed),
               "epochs_per_second": round(epochs / elapsed), "eligibility": eligibility, **started_at,
@@ -364,10 +418,23 @@ def run_arm(job: tuple) -> dict:
               "scaling_factor": getattr(grid, "scaling_factor", None),
               "temperature": grid.temperature if args.critic == "evidence" else None,  # the evidence critic's (§8), and
               "accuracy_last_tenth": report.get("accuracy_last_tenth"),  # the class critic's fraction right beside it
+              "last_tenth_over": "engine",  # every epoch of the last tenth, as the engine counted them
               "rate_by_zone": _rate_by_zone(grid, report["rates"]),  # the final rate memories, averaged over each zone
               "estimator": report.get("estimator"),  # the estimator's correlation over time (§8), for a dataset on goo
               "output_counts_last": _output_counts(engine, grid),  # the last epoch's output spikes, in order
               "container": repr(grid)}  # goo is the only container (§4.1)
+    if offset:
+        # A continued arm's leg is not the run. fast.train measures the last tenth of what it was asked to run, so an
+        # arm that lost its last 25,000 epochs to a reboot would report a tenth of those and not a tenth of the
+        # million -- a noisier number than its siblings' and, read beside them, a wrong one. Take it from the record
+        # instead, over the last tenth of the whole run, and say that is where it came from. The fraction right is
+        # exact either way (each traced point is the mean over its own interval); the score is those points' mean,
+        # sampled every --trace-every epochs rather than counted over all of them.
+        tenth = rows[-max(1, len(rows) // 10):]
+        result["last_tenth"] = statistics.fmean(float(row[1]) for row in tenth)
+        right_of = [float(row[2]) for row in tenth if row[2] != ""]
+        result["accuracy_last_tenth"] = statistics.fmean(right_of) if right_of else None
+        result["last_tenth_over"] = f"the record's last tenth, {len(tenth)} points from epoch {tenth[0][0]:,}"
     path.with_suffix(".json").write_text(json.dumps(result))  # the summary the trace cannot give: the mean over the last tenth
     return result
 
@@ -436,12 +503,13 @@ def main() -> int:
         # two cores short of the machine, not one: the driver takes one and Byron keeps one for a single run he can
         # watch beside the sweep (September 16, 2026: "default to 30 workers" on the 32-core machine)
         workers = args.workers or min(len(arms), max(1, (os.cpu_count() or 3) - 2))
-        print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, sweeping {swept}", flush=True)
+        cadence = f"checkpointing every {args.checkpoint_every:,}" if args.checkpoint_every else "no checkpoints until the end"
+        print(f"{len(arms)} arms on {workers} workers, {args.epochs:,} epochs each, {cadence}, sweeping {swept}", flush=True)
         started = time.perf_counter()
         fixed = ([] if args.population is None else ["--population", str(args.population)]) + \
                 ([] if args.outputs is None else ["--outputs", str(args.outputs)])
         jobs = [(arm, args.problem, args.epochs, args.trace_every, args.name, args.eligibility[0], args.scale,
-                 args.floor_ratio, args.wiring, args.resume_from, tuple(fixed)) for arm in arms]
+                 args.floor_ratio, args.wiring, args.resume_from, tuple(fixed), args.checkpoint_every) for arm in arms]
         with Pool(workers) as pool:
             for result in pool.imap_unordered(run_arm, jobs):
                 print(f"[{time.perf_counter() - started:6.0f}s] {json.dumps(result)}", flush=True)
