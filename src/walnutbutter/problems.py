@@ -82,7 +82,7 @@ PROBLEMS: dict[str, Problem] = {
         "cross-entropy ln q_label, chance ln 0.1. --critic graded is the night before's fraction of the other classes "
         "out-spiked and --critic class the earlier 1-or-0, on the same evidence. And "
         "no homeostasis or un-sticking: the hazard keeps nothing stuck and the un-sticking carried the network into "
-        "silence. Posed on goo with 199 hidden neurons unless --hidden-neurons says otherwise (644 neurons; Byron, September "
+        "silence. Posed on goo with 199 hidden neurons unless --hidden-neurons says otherwise (654 neurons; Byron, September "
         "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule "
         "at LR 0.002 (Byron, September 16, 'default LR to 0.002 for this task'); the train split in a seeded shuffle, "
         "cycling (mnist.stream)",

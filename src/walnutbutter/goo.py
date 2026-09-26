@@ -24,8 +24,8 @@ hear: the N - I - O hidden neurons for an input, the N - O inputs and
 hidden neurons for an output, the N - 1 others for a hidden neuron, I and
 O being the zones' widths. Every projection is one-way and each direction
 is its own draw, as every connection in this system is (§3). So every
-neuron with sources enough hears N s synapses in expectation -- 32.2 on
-the mnist goo of 644, 3 on goo 60 -- and the density is the same at any
+neuron with sources enough hears N s synapses in expectation -- 32.7 on
+the mnist goo of 654, 3 on goo 60 -- and the density is the same at any
 count. An output hears the inputs directly and the hidden neurons, and
 projects onto the hidden neurons alone; an input hears the hidden neurons
 alone; with no hidden neurons the goo is inputs -> outputs and nothing

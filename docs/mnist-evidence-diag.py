@@ -4,7 +4,12 @@
 Every 100 epochs, over that window: the evidence reward, the class critic's
 fraction right, the mean output spike count, the fraction of outputs at the
 refractory ceiling (7 spikes an epoch), the interior's mean count, and the
-spread of the class sums. Written to runs/mnist-evidence-diag/<arm>.json.
+spread of the classes' evidence. Written to runs/mnist-evidence-diag/<arm>.json.
+
+On mnist as it is posed now: the problem's own goo, its zones and its 199
+hidden neurons, 654 (AUTHORITY.md §11.7), the output zone complement-coded
+and read through class_evidence as every engine reads it (§5.11) -- not the
+644 of the 50-output layout the sweep itself ran on.
 """
 import json, statistics as st, sys
 from multiprocessing import Pool
@@ -19,8 +24,9 @@ def run(arm):
     T, lr = arm
     spec = importlib.util.spec_from_file_location("rs", ROOT / "docs" / "rust-sweep.py"); rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
     from walnutbutter import fast
+    from walnutbutter.learning import class_evidence
     from walnutbutter.problems import dataset_stream
-    grid, args = rs.grid_of("mnist", {"goo": 644.0, "seed": 1, "threshold": 0.6, "temperature": T, "lr": lr}, "hazard", True, -4.0)
+    grid, args = rs.grid_of("mnist", {"seed": 1, "threshold": 0.6, "temperature": T, "lr": lr}, "hazard", True, -4.0)
     patterns, labels = dataset_stream("mnist", 1)
     window = {"reward": [], "right": [], "out": [], "ceiling": [], "interior": [], "spread": []}
     rows = []
@@ -29,7 +35,7 @@ def run(arm):
     def probe(epoch, engine, grid, out, book):
         counts = fast._counts(engine)  # spikes, plus under exploration at the synapse the read synapses' escapes (§5.10)
         outs = [counts[i] for i in out]
-        groups = [sum(outs[c * pop:(c + 1) * pop]) for c in range(len(outs) // pop)]
+        groups = class_evidence([int(c) for c in outs], pop)  # each class's fire-if-one sum minus its fire-if-zero sum
         label = grid.input_label
         window["reward"].append(fast._reward(engine, grid, out, "evidence", None))
         window["right"].append(1.0 if all(groups[label] > g for c, g in enumerate(groups) if c != label) else 0.0)
