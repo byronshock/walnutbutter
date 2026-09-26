@@ -248,6 +248,17 @@ word. Where the record says a synapse is **charged**, this
 file says an entry is **posted** to its score: the accounting words are the
 ones meant throughout, and *charge* is kept for electrons.*
 
+---
+
+*An idea, named here and not a clause. Byron and Cedric, September 23, 2026,
+in Byron's words: "IDEA (Byron and Cedric discussed): What if the synapse
+discounts spikes it passed on as signal with fidelity after V_pre exceeds
+threshold? In other words, when the synapse fires deterministically, it does
+not try to learn at all." It belongs to the direction of §0.11, under which a
+synapse escapes on its source's potential and fires for certain at threshold
+(`docs/synaptic-escape-noise-2026-09-22.md` §7); nothing in this section is
+written from it, and the synapse's learning stays what §8 says until it is.*
+
 ## 2. The neuron
 
 **2.1 What a neuron holds.** One of each, per neuron:
