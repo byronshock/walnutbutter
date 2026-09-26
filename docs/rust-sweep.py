@@ -170,11 +170,13 @@ def grid_of(problem: str, arm: dict, eligibility: str | None = None, scale: bool
     exploration at the synapse. What explores, and the width, are settled as
     the command line settles them (cli.apply_exploration): the default width
     under the neuron rule only, none under exploration at the synapse (§6.13).
-    The settings the arm and `fixed` name are kept on the network as
-    `named_settings`, for resume_grid (§12.9).
+    A goo whose size is not its zones and its hidden count together is
+    refused as the command line refuses it (§11.7). The settings the arm
+    and `fixed` name are kept on the network as `named_settings`, for
+    resume_grid (§12.9).
     """
     eligibility = arm.get("eligibility", eligibility)
-    from walnutbutter.cli import apply_exploration, apply_problem, build_parser
+    from walnutbutter.cli import apply_exploration, apply_problem, build_parser, refuse_goo_size
     from walnutbutter.goo import Goo
     from walnutbutter.neuron import Neuron
 
@@ -206,6 +208,7 @@ def grid_of(problem: str, arm: dict, eligibility: str | None = None, scale: bool
         argv += ["--cv", f"{arm['cv']:.12g}"]
     args = build_parser().parse_args(argv)
     apply_problem(args)
+    refuse_goo_size(args)  # a goo that is not the zones and the hidden count together, refused as the command line refuses it (§11.7)
     apply_exploration(args)  # the exploration and the width, refused where the command line refuses them (§6.13, 5.4b)
     Neuron.refractory, Neuron.hop = args.refractory, args.hop
     Neuron.tau, Neuron.bored_after, Neuron.rate_tau = args.tau, args.bored_after, args.rate_tau

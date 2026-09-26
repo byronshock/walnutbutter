@@ -432,6 +432,28 @@ def test_the_command_line_sizes_goo_sets_its_wiring_and_refuses_what_a_wiring_ca
     assert "is a goo of 20, not --goo 24" in capsys.readouterr().err
 
 
+def test_a_seed_batch_and_the_sweep_driver_refuse_the_goo_size_a_run_refuses(capsys):
+    # §11.7: the goo is its zones and its hidden count together. --seeds and docs/rust-sweep.py's grid_of build without
+    # passing through a run's refusal, so each asks cli.refuse_goo_size itself: the mnist evidence diagnostic, handing
+    # grid_of the 50-output layout's 644, was built at 644 for want of it
+    import importlib.util
+    assert cli_main(["--goo", "24", "--hidden-neurons", "4", "--seeds", "2", "--seed", "1", "--epochs", "5", "--no-save"]) == 2
+    assert "is a goo of 20, not --goo 24" in capsys.readouterr().err
+    spec = importlib.util.spec_from_file_location("rs", pathlib.Path(__file__).resolve().parent.parent / "docs" / "rust-sweep.py")
+    rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
+    with pytest.raises(ValueError, match="is a goo of 20, not --goo 24"):
+        rs.grid_of("copy", {"goo": 24.0, "hidden_neurons": 4.0, "seed": 1})
+    with pytest.raises(ValueError, match="--hidden-neurons must be at least 0, got -1"):
+        rs.grid_of("copy", {"hidden_neurons": -1.0, "seed": 1})
+    with pytest.raises(ValueError, match="--hidden-neurons 199 with 395 in and 60 out is a goo of 654, not --goo 644"):
+        rs.grid_of("mnist", {"goo": 644.0, "seed": 1})
+    for arm in ({"seed": 1}, {"goo": 654.0, "seed": 1}):  # the problem's own count, and the same count named
+        grid, args = rs.grid_of("mnist", arm)
+        assert (len(grid.all_neurons()), args.hidden_neurons) == (654, 199)
+    grid, _ = rs.grid_of("copy", {"goo": 20.0, "hidden_neurons": 4.0, "seed": 1})  # a size the hidden count makes
+    assert len(grid.all_neurons()) == 20
+
+
 def test_the_command_line_reports_the_scaling_and_can_turn_it_off(capsys):
     assert cli_main(["--goo", "--wiring", "zones-equal", "--projection", "1", "--headless", "--epochs", "3", "--seed", "1", "--no-save"]) == 0
     err = capsys.readouterr().err
