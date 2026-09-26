@@ -152,6 +152,54 @@ What it says:
 - The diagnosis's prediction — that the arms at −1.2 would stay at chance while the neuron rule left it, if the
   blindness to deterministic spikes were the obstacle — did not come true: both learned at the pinned floor.
 
+## 6. The synapse rule at 1,000,000 epochs (September 26)
+
+Byron's choice after section 5: the synapse rule at lr 0.002 and 0.001, seeds 1–5, 1,000,000 epochs, the pinned
+point and the rate drive, on the landed engine (f539f98), from the main checkout (`runs/launch-synapse-2026-09-25.sh`,
+21:36 September 25 to 13:00 September 26); and the charged drive at 200,000 epochs, lr 0.002, seeds 1–4. The engine
+is the one sections 3–5 measured: seeds 1–3 at lr 0.002 retrace section 5's windows to the last digit for their first
+200,000 epochs. The neuron rule beside it is its own September 24 run at the pinned point (runs/mnist-1m-lowlr,
+seeds 1–3). Chance is 0.100; the last tenth is epochs 900,000–1,000,000.
+
+| rule | lr | last tenth | seeds | score | outputs stuck on |
+|---|---|---|---|---|---|
+| neuron | 0.0005 | 0.314 ± 0.021 | 3 | −2.03 | 11 |
+| neuron | 0.00075 | 0.311 ± 0.012 | 3 | −1.95 | 6 |
+| neuron | 0.001 | 0.304 ± 0.015 | 3 | −1.98 | 4 |
+| neuron | 0.0015 | 0.281 ± 0.013 | 3 | −1.93 | 3 |
+| synapse | 0.001 | 0.247 ± 0.013 | 5 | −2.70 | 28 |
+| synapse | 0.002 | 0.208 ± 0.012 | 5 | −2.82 | 31 |
+
+Accuracy by 100,000-epoch block, mean over seeds:
+
+| arm | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| synapse 0.001 | 0.118 | 0.163 | 0.188 | 0.207 | 0.214 | 0.223 | 0.234 | 0.239 | 0.246 | 0.247 |
+| synapse 0.002 | 0.116 | 0.161 | 0.174 | 0.184 | 0.179 | 0.185 | 0.197 | 0.202 | 0.207 | 0.208 |
+| neuron 0.0005 | 0.131 | 0.180 | 0.211 | 0.233 | 0.252 | 0.262 | 0.281 | 0.292 | 0.297 | 0.314 |
+
+Paired by seed (1–3): synapse 0.001 trails neuron 0.0005 by 0.047, 0.066 and 0.085 (mean 0.066); synapse 0.002
+trails it by 0.100, 0.102 and 0.133 (mean 0.112). The charged drive at 200,000 epochs reached 0.164 over its last
+tenth (seeds 0.157, 0.169, 0.152, 0.178; score −3.16), against the rate drive's 0.176 at the same point.
+
+What it says:
+
+- **The synapse rule learns mnist to about four-fifths of the neuron rule's best.** Its best, lr 0.001, reaches 0.247
+  on five seeds and is still creeping up in its last blocks; that is about where the neuron rule's standing cell at
+  lr 0.002 sits (0.258, ten seeds, September 24), and 0.066 below the neuron rule's best at the matched seeds.
+- **Section 5's reading did not hold.** At 200,000 epochs the synapse rule at lr 0.002 was at nine-tenths of the
+  neuron rule's accuracy; after that it flattened near 0.21 while the neuron rule kept climbing.
+- **The rate that matches the neuron rule's weight movement is not the synapse rule's best rate.** By weight movement
+  synapse 0.002 matches neuron 0.0005 (section 4); by accuracy the synapse rule does better at half that. A reading,
+  not tested: its signal reaches an output's fan-in only through the read escapes, 4–11% of the output's count, so
+  its estimate is noisier and wants a slower rate to average.
+- **Its outputs stay busy and its score stays below the uniform line** (−2.70; 28 stuck on against 3–11), as section 4
+  found at 25,000 epochs.
+- **The charged drive does not help** at 200,000 epochs.
+
+Running now (Byron, September 26): the synapse rule at lr 0.0005 and 0.00025, seeds 1–5, 1,000,000 epochs, the same
+point (`runs/launch-synapse-lowlr-2026-09-26.sh`, from 15:30 September 26).
+
 ## Open for Byron and Cedric
 
 Whether §8.16 should see a deterministic spike — the trap and the blindness both follow from the rule as written
