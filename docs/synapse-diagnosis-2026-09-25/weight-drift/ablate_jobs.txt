@@ -1,0 +1,11 @@
+synapse rate 0.002 1 synapse 0
+synapse rate 0.002 1 synapse 1
+synapse rate 0.01 1 synapse 0
+synapse rate 0.01 1 synapse 1
+synapse rate 0.002 2 synapse 0
+synapse rate 0.002 2 synapse 1
+synapse rate 0.002 1 neuron 0
+synapse rate 0.01 1 neuron 0
+neuron rate 0.002 1 synapse 0
+neuron rate 0.002 1 neuron 0
+neuron rate 0.0005 1 synapse 0

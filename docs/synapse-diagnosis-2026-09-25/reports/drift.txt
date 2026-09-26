@@ -1,0 +1,88 @@
+I ran every arm from its start to its 25,000-epoch checkpoint. Nothing on disk was written. The answer is no: there is no net upward drift of excitation into the outputs under the synapse rule. Excitation goes down under both rules. The synapse rule has two differences instead:
+
+- **It is slower.** At the same lr it moves the weights far less, about as much as the neuron rule does at a quarter of the lr.
+- **It has a blind spot.** Once a synapse is strong enough to fire its output on its own, the rule stops moving it. Synapses keep reaching that point and stay there. This is the only upward drift the neuron rule does not have.
+
+The outputs do not become busy during training. 41 to 49 of the 60 outputs already fire every epoch before any learning. The neuron rule silences most of them; the synapse rule mostly does not.
+
+**What I ran** (everything is in `/tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/weight-drift/`):
+- `drift_static.py`: rebuilds each of the 36 arms with grid_of. The wiring digest matched the checkpoint in every arm. It then compares the starting weights with the 25k weights. Outputs are in `drift_static.json` and `drift_static.txt`, with tables from `summarise_static.py` in `summary_static.txt`.
+- Further analyses of the same data: `busy_vs_drive.py`, `negdrive_busy.py`, `strong_synapses.py`, `by_start_weight.py`, `firer_overlap.py` and `rule_agreement.py`, each with a matching `.txt`.
+- There are no intermediate checkpoints: the driver overwrites the `-network.json` every 5,000 epochs. So I reran eight arms from the start for 5,000 epochs with a read-only probe (`drift_dynamic.py`, analysed by `analyse_dynamic.py` into `dynamic_analysis.txt`). All eight reproduce the sweep's own scores at epochs 1,000 to 5,000 digit for digit.
+- I also ran seven no-learning controls (lr 0, 1,000 epochs) to see how active the outputs are before any learning.
+- `ablate.py` (results in `ablate.log`) freezes a 25k weight set and runs it for 400 epochs under either rule's dynamics, optionally capping the strongest synapses.
+
+"Busy" means firing every epoch. In the checkpoints I used a rate memory above 0.99; in the reruns, firing in more than 99% of epochs in a 250- or 400-epoch window. These criteria are close but not identical.
+
+**1. Net drift, start to 25k** (all 1,425 synapses are input to output; mean over 3 seeds; measured):
+
+| Rule, drive | lr | Mean change | Spread (sd) | Weights that started positive | Weights that started negative | Busy (per seed) |
+|---|---|---|---|---|---|---|
+| synapse, rate | 0.0005 | -0.002 | 0.07 | -0.005 | +0.001 | 49, 42, 40 |
+| synapse, rate | 0.002 | -0.027 | 0.21 | -0.053 | -0.002 | 42, 40, 36 |
+| synapse, rate | 0.01 | -0.176 | 0.42 | -0.328 | -0.031 | 27, 26, 26 |
+| synapse, charged | 0.002 | -0.028 | 0.18 | -0.050 | -0.006 | 46, 45, 44 |
+| neuron | 0.0005 | -0.025 | 0.19 | -0.050 | -0.000 | 38, 30, 33 |
+| neuron | 0.002 | -0.157 | 0.38 | -0.310 | -0.011 | 7, 9, 13 |
+
+- **Direction:** the mean change is negative in 27 of 30 synapse arms. The three positive ones are at lr 0.0005 or 0.001 on the rate drive, and none is above +0.0021.
+- **Expected drive into each output** (each input's weight times how often its pixel is on in mnist): this falls in 28 of 30 synapse arms.
+- **Where the cut lands:** almost all of it is on positive weights, and it grows with how often the input is on. At synapse rate lr 0.002 the mean change is -0.001 for inputs on less than 2% of the time and -0.058 for inputs on more than 98%. For the neuron rule at 0.002 the same two figures are -0.034 and -0.253.
+- **Growth with lr:** the downward drift grows with lr under both rules (synapse rate: -0.002, -0.004, -0.027, -0.087, -0.176 for lr 0.0005 to 0.01).
+- **Speed:** at the same lr the synapse rule's mean drift is 6 to 12 times smaller than the neuron rule's.
+- **Matched pair:** synapse at lr 0.002 matches the neuron rule at lr 0.0005 almost exactly: mean change -0.027 against -0.025, spread 0.21 against 0.19, and 36–42 busy against 30–38.
+- **Mostly noise per synapse:** the change is largely a random walk. Its correlation between two arms on the same seed (same wiring, same start, same images) is only +0.05 to +0.36, even within one rule.
+
+**2. The busy outputs were busy from the start** (measured, from the lr-0 controls):
+- Before any learning, 41 to 49 of 60 outputs fire in more than 99% of epochs under both rules. That is about 400 spikes an epoch for the neuron rule, and about 500 spikes plus 40 read escapes for the synapse rule.
+- **Synapse rate lr 0.002:** of the 36 to 42 busy at 25k, 34 to 36 were busy at the start. It silenced only 7 to 10 of the start-busy outputs.
+- **Neuron lr 0.002:** it silenced 31 to 39 of them.
+
+Over time (seed 1):
+
+| Arm | Busy at epoch 250 | 1,000 | 5,000 | 25,000 |
+|---|---|---|---|---|
+| synapse, rate, lr 0.002 | 47 | 46 | 47 | 42 |
+| neuron, lr 0.002 | 40 | 35 | 11 | 7 |
+
+**3. How the drift relates to which outputs stay busy** (measured):
+- **Busy outputs' fan-in barely moved:** the average change over a busy output's incoming synapses is between -0.010 and +0.011 in every group. For the quiet outputs it is between -0.013 and -0.28.
+- **The weights decide it, not the rule's dynamics:** I swapped weight sets between rules.
+
+| 25k weights from | Busy under synapse dynamics | Busy under neuron dynamics |
+|---|---|---|
+| synapse lr 0.002, seed 1 | 38 | 39 |
+| neuron lr 0.002, seed 1 | 8 | 8 |
+| synapse lr 0.01, seed 1 | 28 | 23 |
+
+**4. The one upward drift: synapses too strong for the rule to see** (measured):
+- **Which synapses:** those from inputs on more than half the time, with a weight of at least four-thirds of the output's threshold. One arrival of such a synapse fires the output even from the floor (-0.2 at threshold 0.6).
+- **They stop moving:** in the reruns such a synapse moves 0.0000 to 0.0005 in a 250-epoch window, and 52–75% of windows show no change at all. Synapses just below that line move 0.03 to 0.14.
+- **The neuron rule has no such gap:** the same class moves 0.036 to 0.16 per window and is never unchanged. Over the full 25k the neuron rule cuts these synapses by 0.18 (lr 0.0005) and 0.69 (lr 0.002). Under the synapse rule, 76–100% of them end within 0.01 of where they started at lr up to 0.002.
+- **They accumulate:** counts pooled over 3 seeds, starting from 46.
+
+| Arm | lr 0.0005 | 0.001 | 0.002 | 0.005 | 0.01 |
+|---|---|---|---|---|---|
+| synapse, rate | 80 | 110 | 163 | 250 | 252 |
+| synapse, charged | 80 | 101 | 139 | 225 | 217 |
+| neuron | 45 | – | 16 | – | – |
+
+- **Over time** (seed 1):
+
+| Arm | Start | Epoch 250 | 1,000 | 5,000 | 25,000 |
+|---|---|---|---|---|---|
+| synapse, lr 0.002 | 10 | 17 | 23 | 33 | 45 |
+| synapse, lr 0.01 | 10 | 38 | 58 | 72 | 77 |
+| neuron, lr 0.002 | 10 | 14 | 11 | 3 | 3 |
+
+- **Why it levels off:** it stops rising at lr 0.005 because weights are capped at 1. Only outputs with a threshold of 0.75 or less (24, 27 and 30 of 60 per seed) can hold such a synapse, and by lr 0.005–0.01 20 to 29 of them do.
+- **These outputs are nearly always busy:** 87–97% of outputs holding such a synapse are busy. At synapse rate lr 0.01 they are most of the busy set (22, 25 and 26 of 27, 26 and 26). Under the neuron rule at 0.002 only 0 to 5 outputs hold one.
+- **Capping only part-explains the busy set:** capping these synapses at 0.9 of threshold cuts busy outputs from 38 to 32, 39 to 29 and 28 to 21. They are only part of the story; other strong synapses just below the line keep the rest going.
+
+**5. Why the rule cannot see them** (inferred from the text of §8.16, not instrumented): §8.16 posts nothing at a deterministic spike. A synapse's eligibility from an arrival is the read-synapse credit gathered between that arrival and the output's next reset. An arrival that alone takes the potential to threshold resets the output at once, so nothing is posted and that synapse gets no eligibility. Under the neuron rule the spike is itself a scored decision, so the same synapse keeps being credited.
+
+**How sure I am:**
+- **High** on the drift numbers: 36 arms, every digest matched, and the reruns are exact.
+- **High** that strong synapses are frozen only under the synapse rule, and that busy outputs are mostly the ones busy from the start.
+- **Medium** on the mechanism in point 5; it is read from the clause, not traced in the engine.
+- **Medium** on how much of the busy gap the frozen synapses explain. At lr 0.01 it is most of it. At lr 0.002 about half the busy outputs hold one, and the rest is simply the rule's slower drift.

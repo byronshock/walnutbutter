@@ -47,6 +47,32 @@ command line runs them at -- so a Rust run is the run `walnutbutter --seeds` wou
 `tests/test_fast.py` checks the moved thresholds against the object engine every epoch.
 `docs/rust-sweep.py` builds goo as well as the grid. This is the default engine for a sweep.
 
+**Exploration at the synapse** (AUTHORITY.md §7.5–§7.9, §8.16–§8.17, 5.4b), since September
+25, 2026, to the bit against the object engine. `set_exploration("synapse", h0, family,
+trace, kappa, outputs)` takes the settings, each neuron's κ_i as Python computed it, and the
+output zone by place, whose distinct neurons each get a read synapse; it refuses a width,
+hebb, a missing stream, an edge layout that is not source-major, and what the object engine
+refuses. Every wave takes E + O uniforms from Python's stream after the floor, into a buffer
+allocated once; after the fire phase every source that did not spike decides on its potential,
+its escapes pushed one hop later as ventured signals after the wave's spikes, in edge order.
+The mark rides on the event outside its order, and `pending_events(marks=True)` /
+`push_events(..., ventured)` carry it. The gain G_j replaces E_j and the credit, the read
+settle posts x·G − B and re-bases, and the read counts sit beside the spike counts
+(`read_counts()`). The charged drive is `set_charged_drive(steps)` and `charge_many`:
+EXTERNAL events of θ/DRIVE_STEPS on the threshold at delivery, taken before the wave's
+signals. The setters take h0 and DRIVE_STEPS as the objects do, a bool refused as neither
+a rate nor a count. `exploration_settings()` reads the settings back (h0, the family, the
+trace, κ_i, the read slots, DRIVE_STEPS) and `thresholds()` the thresholds the loop reads;
+`fast.compare` holds both to the network after every epoch, with the wave-by-wave fired
+order, the spike times, the driven marks and every synapse's `last_signal`, and builds the
+engine with the objects' queue, so a network that has already run is continued on both.
+The loglinear h at u = 0, `pow(h0, 1.0)`, is taken once in `set_exploration` rather than
+at every wave: the same call on the same arguments, about 1.3× on mnist's rate drive.
+Under exploration at the synapse `fast._Thresholds` hands each move to the engine where it
+is made, so a threshold homeostasis takes to zero is refused there (§7.5), as the objects
+refuse it, before un-sticking could lift it back. `tests/test_synapse_rust.py` holds the
+engines to each other with `==`.
+
 **A stamp that never repeats.** The neurons a wave touched are marked so each is checked
 once per wave; the mark was the epoch's wave number, which `reset()` zeroed, so a neuron last
 touched in wave *k* of an earlier epoch passed for touched in wave *k* of a later one and was

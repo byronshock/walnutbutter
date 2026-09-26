@@ -27,7 +27,14 @@ def test_the_command_line_defaults_are_the_constants():
     assert args.problem == C.PROBLEM
     assert args.target == C.TARGET
     assert args.eligibility is None and C.ELIGIBILITY == "hazard"  # §8.3: where a run names none, the eligibility is hazard
-    assert args.delta == C.ESCAPE_DELTA == 0.455  # escape noise on by default (§5.2, Byron, September 15, 2026)
+    # escape noise on by default (§5.2, Byron, September 15, 2026): --delta is a sentinel, so a width given can be told
+    # from none (§6.13, §12.9), and apply_exploration settles None to ESCAPE_DELTA under the neuron rule
+    assert args.delta is None and C.ESCAPE_DELTA == 0.455
+    from walnutbutter.cli import apply_exploration, apply_problem
+    settled = build_parser().parse_args([])
+    apply_problem(settled)
+    apply_exploration(settled)
+    assert (settled.delta, settled.exploration) == (C.ESCAPE_DELTA, C.EXPLORATION)
     assert args.critic is None and C.CRITIC == "row"  # the problem's critic, else the constant
     assert (args.lr, args.target_rate) == (None, C.TARGET_RATE)  # the problem's rate, else LR
     # §9.9, §9.10, §10.1: the three are latent knobs -- off unless a run asks, and the constant is what asking gets
@@ -109,6 +116,29 @@ def test_the_fan_in_the_threshold_is_quoted_at_has_one_home():
     assert args.scale_with_fan_in is None  # unset: goo scales, every other container does not
     assert build_parser().parse_args(["--scale-with-fan-in"]).scale_with_fan_in is True
     assert build_parser().parse_args(["--no-scale-with-fan-in"]).scale_with_fan_in is False
+
+
+def test_exploration_at_the_synapse_reads_the_constants():
+    """Appendix A's synapse rows (§7.1, §7.6, §7.7, §8.17, 5.4b): the register's values, and the setter's and the network's
+    defaults are those constants. EXPLORATION stays neuron until §7.6's conditions are met."""
+    assert (C.EXPLORATION, C.SYNAPSE_HAZARD_REST, C.SYNAPSE_HAZARD_FAMILY, C.SYNAPSE_HAZARD_SCALING, C.TRACE,
+            C.DRIVE_STEPS) == ("neuron", 0.01, "loglinear", "count", "all", 3)
+    d = defaults_of(Network.set_exploration)
+    assert (d["h0"], d["family"], d["scaling"], d["trace"]) == (
+        C.SYNAPSE_HAZARD_REST, C.SYNAPSE_HAZARD_FAMILY, C.SYNAPSE_HAZARD_SCALING, C.TRACE)
+    g = Goo(count=4, across=2)  # built under the neuron rule, as it is built deterministic until set_delta
+    assert (g.exploration, g.drive_steps) == ("neuron", C.DRIVE_STEPS)
+    # the command line's are sentinels, so a run that names none can be told from one that names the default (§12.9),
+    # and settle to the register's values
+    from walnutbutter.cli import apply_exploration, apply_problem
+    args = build_parser().parse_args([])
+    assert all(getattr(args, name) is None for name in ("exploration", "synapse_hazard", "hazard_family",
+                                                        "synapse_scaling", "trace_counts", "drive_steps", "drive"))
+    apply_problem(args)
+    apply_exploration(args)
+    assert (args.exploration, args.synapse_hazard, args.hazard_family, args.synapse_scaling, args.trace_counts,
+            args.drive_steps, args.drive) == (C.EXPLORATION, C.SYNAPSE_HAZARD_REST, C.SYNAPSE_HAZARD_FAMILY,
+                                              C.SYNAPSE_HAZARD_SCALING, C.TRACE, C.DRIVE_STEPS, C.INPUT_DRIVE)
 
 
 def test_the_teacher_and_the_rule_read_the_constants():

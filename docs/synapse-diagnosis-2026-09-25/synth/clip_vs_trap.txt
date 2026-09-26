@@ -1,0 +1,48 @@
+synapse seed 1: 1999 epochs; floor/theta -0.333, fire-from-anywhere line (theta-floor)/theta 1.333; total top clips 985, bottom 104
+   inputs on > 0.5 of the time
+      w/th < 0.5 n= 520  mean|e|/epoch 0.1072  median 0.0791  share with |e| < 1e-3/epoch 0.05  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0645
+      0.5..1     n= 132  mean|e|/epoch 0.2468  median 0.2377  share with |e| < 1e-3/epoch 0.00  top-clip events   462 (on 19 synapses)  |w1-w0| mean 0.1066
+      1..line    n=  54  mean|e|/epoch 0.1834  median 0.1601  share with |e| < 1e-3/epoch 0.00  top-clip events   455 (on 14 synapses)  |w1-w0| mean 0.0874
+      >= line    n=  13  mean|e|/epoch 0.0024  median 0.0000  share with |e| < 1e-3/epoch 0.77  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0097
+   inputs on <= 0.5 of the time
+      w/th < 0.5 n= 508  mean|e|/epoch 0.0171  median 0.0048  share with |e| < 1e-3/epoch 0.22  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0216
+      0.5..1     n= 136  mean|e|/epoch 0.0391  median 0.0093  share with |e| < 1e-3/epoch 0.00  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0364
+      1..line    n=  44  mean|e|/epoch 0.0336  median 0.0179  share with |e| < 1e-3/epoch 0.00  top-clip events    68 (on 5 synapses)  |w1-w0| mean 0.0325
+      >= line    n=  18  mean|e|/epoch 0.0002  median 0.0000  share with |e| < 1e-3/epoch 0.94  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0025
+   synapses with mean w > 0.9: 72, of which >= line: 22; their top clips: below line 897, at/above line 0
+synapse seed 2: 1999 epochs; floor/theta -0.333, fire-from-anywhere line (theta-floor)/theta 1.333; total top clips 1001, bottom 40
+   inputs on > 0.5 of the time
+      w/th < 0.5 n= 525  mean|e|/epoch 0.0888  median 0.0591  share with |e| < 1e-3/epoch 0.08  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0754
+      0.5..1     n= 111  mean|e|/epoch 0.2254  median 0.2078  share with |e| < 1e-3/epoch 0.00  top-clip events   314 (on 8 synapses)  |w1-w0| mean 0.1363
+      1..line    n=  62  mean|e|/epoch 0.1714  median 0.1433  share with |e| < 1e-3/epoch 0.00  top-clip events   540 (on 16 synapses)  |w1-w0| mean 0.0938
+      >= line    n=  16  mean|e|/epoch 0.0008  median 0.0002  share with |e| < 1e-3/epoch 0.88  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0117
+   inputs on <= 0.5 of the time
+      w/th < 0.5 n= 467  mean|e|/epoch 0.0155  median 0.0034  share with |e| < 1e-3/epoch 0.31  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0237
+      0.5..1     n= 129  mean|e|/epoch 0.0383  median 0.0117  share with |e| < 1e-3/epoch 0.00  top-clip events    54 (on 3 synapses)  |w1-w0| mean 0.0404
+      1..line    n=  59  mean|e|/epoch 0.0469  median 0.0274  share with |e| < 1e-3/epoch 0.00  top-clip events    93 (on 11 synapses)  |w1-w0| mean 0.0462
+      >= line    n=  13  mean|e|/epoch 0.0001  median 0.0000  share with |e| < 1e-3/epoch 1.00  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0006
+   synapses with mean w > 0.9: 68, of which >= line: 14; their top clips: below line 878, at/above line 0
+neuron seed 1: 1999 epochs; floor/theta -0.333, fire-from-anywhere line (theta-floor)/theta 1.333; total top clips 7468, bottom 1621
+   inputs on > 0.5 of the time
+      w/th < 0.5 n= 526  mean|e|/epoch 0.5144  median 0.4663  share with |e| < 1e-3/epoch 0.00  top-clip events   150 (on 9 synapses)  |w1-w0| mean 0.2291
+      0.5..1     n= 156  mean|e|/epoch 1.1792  median 1.2802  share with |e| < 1e-3/epoch 0.00  top-clip events  3560 (on 102 synapses)  |w1-w0| mean 0.3386
+      1..line    n=  32  mean|e|/epoch 1.3341  median 1.4244  share with |e| < 1e-3/epoch 0.00  top-clip events  1544 (on 31 synapses)  |w1-w0| mean 0.1877
+      >= line    n=   5  mean|e|/epoch 1.1959  median 1.1875  share with |e| < 1e-3/epoch 0.00  top-clip events   282 (on 5 synapses)  |w1-w0| mean 0.2252
+   inputs on <= 0.5 of the time
+      w/th < 0.5 n= 513  mean|e|/epoch 0.1352  median 0.0914  share with |e| < 1e-3/epoch 0.02  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.1071
+      0.5..1     n= 131  mean|e|/epoch 0.3315  median 0.2062  share with |e| < 1e-3/epoch 0.00  top-clip events   633 (on 22 synapses)  |w1-w0| mean 0.1906
+      1..line    n=  46  mean|e|/epoch 0.3599  median 0.2608  share with |e| < 1e-3/epoch 0.00  top-clip events   986 (on 29 synapses)  |w1-w0| mean 0.1566
+      >= line    n=  16  mean|e|/epoch 0.3122  median 0.2521  share with |e| < 1e-3/epoch 0.00  top-clip events   313 (on 11 synapses)  |w1-w0| mean 0.1361
+   synapses with mean w > 0.9: 23, of which >= line: 6; their top clips: below line 897, at/above line 178
+neuron seed 2: 1999 epochs; floor/theta -0.333, fire-from-anywhere line (theta-floor)/theta 1.333; total top clips 5295, bottom 1356
+   inputs on > 0.5 of the time
+      w/th < 0.5 n= 543  mean|e|/epoch 0.4674  median 0.3822  share with |e| < 1e-3/epoch 0.00  top-clip events    41 (on 4 synapses)  |w1-w0| mean 0.1917
+      0.5..1     n= 132  mean|e|/epoch 1.1517  median 1.1892  share with |e| < 1e-3/epoch 0.00  top-clip events  1294 (on 65 synapses)  |w1-w0| mean 0.3158
+      1..line    n=  34  mean|e|/epoch 1.3504  median 1.4103  share with |e| < 1e-3/epoch 0.00  top-clip events  1753 (on 32 synapses)  |w1-w0| mean 0.2121
+      >= line    n=   5  mean|e|/epoch 1.3734  median 1.4592  share with |e| < 1e-3/epoch 0.00  top-clip events   345 (on 5 synapses)  |w1-w0| mean 0.1430
+   inputs on <= 0.5 of the time
+      w/th < 0.5 n= 477  mean|e|/epoch 0.1240  median 0.0763  share with |e| < 1e-3/epoch 0.03  top-clip events     0 (on 0 synapses)  |w1-w0| mean 0.0846
+      0.5..1     n= 128  mean|e|/epoch 0.3224  median 0.2152  share with |e| < 1e-3/epoch 0.00  top-clip events   464 (on 21 synapses)  |w1-w0| mean 0.1754
+      1..line    n=  48  mean|e|/epoch 0.3995  median 0.3286  share with |e| < 1e-3/epoch 0.00  top-clip events  1021 (on 26 synapses)  |w1-w0| mean 0.1202
+      >= line    n=  15  mean|e|/epoch 0.3882  median 0.2576  share with |e| < 1e-3/epoch 0.00  top-clip events   377 (on 12 synapses)  |w1-w0| mean 0.1116
+   synapses with mean w > 0.9: 27, of which >= line: 8; their top clips: below line 1084, at/above line 287

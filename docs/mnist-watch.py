@@ -22,7 +22,10 @@ given must rebuild the arm's layout (`--interval`, `--population`,
 Every `--every` epochs one line: the epoch, the reward and the fraction right
 over the window, the cumulative correlation and sign agreement of the weight
 change with the supervised direction (AUTHORITY.md §8), the window's
-correlation, and the outputs' spikes a neuron. Every `--checkpoint-every`
+correlation, and the outputs' counts a neuron -- their spikes, plus under
+exploration at the synapse their read synapses' escapes, the count the read
+takes (AUTHORITY.md §5.10, §7.9), which a network resumed from a checkpoint
+saved under it runs by (§12.9). Every `--checkpoint-every`
 epochs the network is written back and checkpointed under runs/watch/, and
 once more at Ctrl-C, in the form `--resume` takes.
 """
@@ -60,6 +63,8 @@ def main() -> int:
     rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
     from walnutbutter import fast, mnist
     from walnutbutter.learning import class_evidence
+    from walnutbutter.network import TRACE_VENTURED_BIAS
+    from walnutbutter.neuron import Neuron
     from walnutbutter.problems import dataset_stream
 
     arm = {"hidden_neurons": float(args.hidden_neurons), "seed": args.seed, "threshold": args.threshold, "temperature": args.temperature}
@@ -86,8 +91,14 @@ def main() -> int:
     state = {"w_prev": np.array([c.weight for c in edges]), "rewards": [], "hits": [], "outs": [], "started": time.perf_counter(),
              "epoch": 0, "engine": None, "book": None}
     out_dir = ROOT / "runs" / "watch"
+    # what the network runs, a resumed one under its checkpoint's width, exploration and clock (§12.9); under TRACE
+    # ventured, that the estimator is biased (§8.17)
+    explored = (f"delta {grid.escape_delta:g} (hazard x {grid.escape_scale:.3f})" if grid.exploration == "neuron" else
+                f"exploration at the synapse, h0 {grid.synapse_hazard_rest:g}, {grid.synapse_hazard_family}, "
+                f"{grid.synapse_hazard_scaling} scaling, trace {grid.trace_mode}, {grid.drive} drive (hazard x {grid.escape_scale:.3f})"
+                f"{f' -- {TRACE_VENTURED_BIAS}' if grid.trace_mode == 'ventured' else ''}")
     print(f"{grid!r}; {args.eligibility} eligibility, LR {cli.lr:g}, T {args.temperature:g}, threshold {args.threshold:g}, "
-          f"floor {cli.minimum_potential:g}, delta {cli.delta:g} (hazard x {grid.escape_scale:.3f}), tau {cli.tau:g} ms, epoch {grid.interval:g} ms, "
+          f"floor {cli.minimum_potential:g}, {explored}, tau {Neuron.tau:g} ms, epoch {grid.interval:g} ms, "
           f"complement-coded outputs, seed {args.seed}; {int(mask.sum())} input-to-output synapses"
           f"{f'; resumed at epoch {offset:,} from {args.resume}' if args.resume else ''}; a line every {args.every:,} epochs, Ctrl-C to stop",
           flush=True)
@@ -108,7 +119,7 @@ def main() -> int:
 
     def probe(epoch, engine, grid, out, book):
         state["engine"], state["book"], state["epoch"] = engine, book, epoch
-        counts = engine.epoch_spike_counts()
+        counts = fast._counts(engine)  # spikes, plus the read synapses' escapes: the count read (§5.10, §7.9)
         groups = class_evidence([int(counts[i]) for i in out], grid.population)
         y = grid.input_label
         state["rewards"].append(fast._reward(engine, grid, out, "evidence", None))

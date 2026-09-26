@@ -38,7 +38,7 @@ rate = 0.05
 
 
 def probe(epoch, engine, grid, out, book):
-    counts = engine.epoch_spike_counts()
+    counts = fast._counts(engine)  # spikes, plus under exploration at the synapse the read synapses' escapes (§5.10)
     groups = [sum(counts[i] for i in out[c * 5:(c + 1) * 5]) for c in range(10)]
     y = grid.input_label
     top = max(groups); z = [math.exp((g - top) / T) for g in groups]; q = [x / sum(z) for x in z]

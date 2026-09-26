@@ -1,0 +1,91 @@
+**Synthesis: why the synapse rule's outputs fire every epoch**
+
+The outputs never become busy. They start busy, and the synapse rule mostly fails to quiet them. The neuron rule does quiet them, partly through noise. The synapse rule falls short for two reasons:
+
+- **Smaller steps.** Its steps are about 5 times smaller at the same lr.
+- **A blind spot.** It cannot see synapses strong enough to fire their output from the floor. Those synapses collect there and never move again.
+
+I ran no epochs. My one check, `clip_vs_trap.py`, rebuilds the grids and reads the critic investigator's per-synapse records from 2,000 fresh epochs at lr 0.002, seeds 1–2. Its output is in `clip_vs_trap.txt`.
+
+**Causes, strongest evidence first**
+
+1. **The busy state is there before any learning.** All four reports found it.
+   - With learning off, 41–50 of 60 outputs fire every epoch under both rules. Activity stays flat for 5,000 epochs (rest investigator, 22 arms; drift investigator, 7 controls; sources investigator, frozen fresh networks).
+   - Of the 36–42 busy outputs at 25k under the synapse rule (lr 0.002), 34–36 were busy at the start (drift).
+   - The cause is the pinned point: deterministic accumulators with no leak, a floor at −θ/3 that throws away most inhibition, about 96 relayed arrivals per output per epoch, and ±1 starting weights.
+   - Removing the floor with weights frozen takes busy outputs from 49 to 10 and spikes from 494 to 162 per epoch. This is one seed over 40 epochs (sources).
+   - At identical weights, deterministic firing gives 8.1–8.5 spikes per output per epoch, against 6.5–6.8 under the neuron rule's width 0.3125 (rest, lr 0). That is where the gap of about 500 against 410 comes from.
+
+2. **The synapse rule's steps are about 5 times smaller.** For an output's incoming weights, its only scored decisions are the read synapse's escapes: 0.5–0.75 per output per epoch, 6–8% of the count, posted only while V > 0.
+   - My check, synapses from inputs on more than half the time: the average eligibility size per epoch is 4.8–7.9 times smaller than the neuron rule's in every weight class below the line (0.09–0.25 against 0.47–1.37).
+   - The rest investigator found the same: 5–8 times smaller, and correlated −0.004 to +0.003 with the output's own spikes.
+   - In weight movement, synapse lr 0.002 matches neuron lr 0.0005: mean change −0.027 against −0.025, spread 0.21 against 0.19, busy 36–42 against 30–38. Synapse lr 0.01 matches neuron lr 0.002: −0.176 against −0.157, spread 0.42 against 0.38 (drift).
+
+3. **The blind spot at w ≥ θ − floor (4θ/3 here) traps synapses.** Under §8.16, such a synapse's arrival fires the output in the same wave. The spike then posts the synapse's trace times the gain accumulated since the arrival, which is zero. So its credit is exactly zero. I read this from the clause text; it has not been traced in the engine.
+   - My check: eligibility drops 75 to 215 times at exactly that line (0.17–0.18 just below, 0.0008–0.0024 above). 77–100% of synapses above the line get less than 0.001 per epoch.
+   - The neuron rule has no such drop: 1.20–1.37 above the line.
+   - In reruns, 73–75% of 250-epoch windows show no change above the line, against 0% below (drift, rate drive; 52% on the charged drive).
+   - These synapses collect over time. Per seed they go from 10–24 at the start to 45–65 at lr 0.002 and 77–94 at lr 0.01 by 25k.
+   - Only outputs with θ ≤ 0.75 can hold one (24–30 per seed). At lr 0.002, 22 of 24 (seed 1) and 27 of 27 (seed 2) already do by 25k. So the trap is essentially full by 25k.
+   - 87–97% of outputs holding one are busy.
+   - When the two rules move the weights equally far (synapse lr 0.01 against neuron lr 0.002), the trap accounts for 73 of the synapse rule's 79 busy outputs (3 seeds pooled). The neuron rule has 29 busy.
+
+4. **Minor.** Ventured input adds 1.5% of spikes on the rate drive and 6–8% on the charged drive. Read escapes are 6–8% of the count.
+
+**A reframing, medium evidence.** The neuron rule's quieting at lr 0.002 is mostly its noisy steps being clipped at the +1 weight cap. It is not the thing to reproduce.
+- Over 4,000 epochs the clip took −137 and −71 off the summed weight, against unclipped pushes of +20 and −32 (critic investigator, 2 seeds).
+- On drift's seed-1 trajectory, the neuron rule at lr 0.0005 after 25k epochs (busy 38, spread 0.19) looks like lr 0.002 after about 1,500 epochs. That is how a random walk scales. A gradient would predict it looks like 6,250 epochs, where busy is about 11. This is my inference from one seed.
+- At 1M epochs, the neuron rule's quieter arm is its worse arm: lr 0.002 reaches 0.258 with output rate 0.41, and lr 0.0005 reaches 0.314 with rate 0.62 (the Sept 24 1M sweeps).
+- So busy at 25k is not by itself a failure. The trapped outputs are the real harm: they fire from inputs that are almost always on, whatever the image.
+
+**Ruled out**
+- **The critic rewarding activity.** Its correlation with total count stays within ±0.065, and one more count always costs (−0.005 to −0.024), in all 8 of the critic investigator's runs.
+- **An upward bias in the update.** Its expected value is exactly zero from §8.16, and the measured unclipped sums straddle zero.
+- **Net upward weight drift.** The mean change is negative in 27 of 30 synapse arms and never above +0.0021; expected drive falls in 28 of 30.
+- **Activity rising with training.** It is flat at lr 0; the early climb in rate memory is warm-up from 0.5.
+- **Ventured input as the source.** Removing its delivery changes spikes by −1.6% on the rate drive.
+- **h0 setting the level.** A 30-times change in h0 moves spikes by 5% and leaves busy at 45–48.
+
+**Contradictions between the reports, settled**
+- **Critic ("biggest pushes near +1, about 1,000 clips at the top") against drift ("the strongest synapses are frozen").** Both are right. All 985 and 1,001 top clips fall on synapses below the line, on outputs with θ > 0.75. There are none above it (my check).
+- **Critic ("4× lr gives 20× the drift") against drift (6.4×).** The critic's −0.008 is seed 1 alone (−0.0084). The 3-seed means are −0.0246 and −0.1571, which is 6.4× (`drift_static.txt`).
+- **Sources ("busy outputs hold about 3 synapses ≥ θ") against rest ("14 of 17 outputs with none are still busy").** Both hold. Single big kicks are one route to busy; build-up above the floor is the larger one, as the floor counterfactual shows.
+
+**Most important causal claim, stated so it can be refuted.** Under §8.16, a synapse whose single arrival fires its output from anywhere at or above the floor gets zero credit. A random walk that carries one past that line leaves it there for good, and its output then fires on every presentation. The line is set by the floor, not by lr.
+
+- **Intervention.** Rerun the synapse rule (rate drive, pinned point) at lr 0.002 and 0.01, seeds 1–2, with minimum_potential −0.2 (the control), −0.6 (line moves to 2θ) and −1.2 (line moves to 3θ, above the weight cap of 1 for every output). That is 12 arms of 5,000 epochs, 6–17 minutes each in parallel. Record weights, busy count and synapse counts every 250 epochs.
+- **Predictions if the claim holds:**
+  - At −0.2, the control reproduces the sweep: synapses from often-on inputs at or above 4θ/3 go 10 → 38 at epoch 250 → 72 at epoch 5,000 (seed 1, lr 0.01), and 10 → 33 at lr 0.002. At least 70% of windows show no change above 4θ/3, and under 1% below.
+  - At −0.6, synapses between 4θ/3 and 2θ move like the rest: under 5% of windows unchanged, and at least 0.03 per window at lr 0.002 (at least 0.1 at lr 0.01). The drop in eligibility moves to 2θ. Freezing happens only on outputs with θ ≤ 0.5 (fan-in 15 or less). The count at or above 4θ/3 stays under half the control's 72 at lr 0.01.
+  - At −1.2, no weight class above 0 has more than 5% of windows unchanged.
+- **Refuted if** the synapses between 4θ/3 and 2θ stay frozen at −0.6, or the drop stays at 4θ/3.
+
+A second test keeps the pinned point: cap the trapped synapses in the lr 0.01 25k checkpoints at 0.9θ, then continue for 2,000 epochs. The claim predicts they walk back into the trap under the synapse rule, with the count climbing back past 38 within about 1,000 epochs, but not under the neuron rule.
+
+**Long runs worth running** (costs at 5–14 epochs a second)
+- **First, the floor test above:** under 20 minutes.
+- **Then the synapse rule at 200,000 epochs:** lr 0.002 and 0.005 (the step-size match for neuron lr 0.0005 and 0.001), seeds 1–3, rate drive. Run each at floor −0.2 and at a floor with no trap: minimum_potential −0.8 or deeper, for example −1.2, if the test confirms the claim.
+  - That is 12 arms, 4–11 hours of wall-clock time in parallel.
+  - Add a neuron-rule reference at the new floor (lr 0.0005, 3 seeds, 200,000 epochs): 3 more arms.
+  - The floor −0.2 arms could resume from the existing 25k checkpoints, but only if resume is exact on this build.
+  - Judge on accuracy against the neuron rule's own windows: chance is 0.10; the neuron rule scores 0.15–0.18 over epochs 50,000–100,000 and 0.16–0.22 over 100,000–200,000. Do not judge on busy counts.
+  - Keep a checkpoint copy every 25,000 epochs; the driver overwrites its checkpoint every 5,000.
+- **Go to 1M (20–56 hours an arm)** only for arms that have left chance by 200,000.
+
+**Long runs that would be wasted**
+- Anything judged at 25k. The neuron rule is also at chance there: 0.083–0.115 over its first 25k at every lr.
+- 1M runs at floor −0.2 before the test: the trap is already full in outputs.
+- Synapse lr 0.001 or below: that matches neuron lr 0.00025 or below, which would need more than 1M epochs to show anything.
+- lr 0.01 at floor −0.2: the trap is saturated by epoch 5,000.
+- h0 sweeps.
+- Long runs on the charged drive. It is busier, and with no leak an input that goes off keeps its charge, so its escapes carry no image information (sources).
+- Ventured-input or read-escape studies.
+- Trying to match the neuron rule's quiet outputs at lr 0.002.
+
+**Open questions**
+- The blind spot follows from §8.16 as written. Whether to avoid it with the floor or change the rule is Byron's call; I have not decided it.
+- The critic investigator found the synapse rule's summed eligibility slightly positive, about +0.35 ± 0.12 per epoch, where it should be zero. The engine's credit form in §8.16 is exact, so this may be worth a check of the engine against the clause. It is too small to affect this answer.
+
+Files are in `/tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/synth/`:
+- `clip_vs_trap.py`
+- `clip_vs_trap.txt`

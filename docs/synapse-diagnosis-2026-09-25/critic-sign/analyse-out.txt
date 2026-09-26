@@ -1,0 +1,184 @@
+
+=== neuron-seed1-fresh-4000  (epochs 1-4000, lr 0.002)
+R mean -5.753 (uniform -2.303); b mean -5.757; A mean +0.004 +- 0.065, sd 4.093; share A>0 0.571
+per epoch: count 300.7 (spikes 300.7, read escapes 0.0); fire-if-one 115.7, fire-if-zero 184.9; label's fire-if-one 11.21, label's fire-if-zero 18.51
+  corr(A, total count           ) -0.014 [-0.045,+0.017]   corr(R, .) -0.016
+  corr(A, total spikes          ) -0.014 [-0.045,+0.017]   corr(R, .) -0.016
+  corr(A, total read escapes    ) +nan [+nan,+nan]   corr(R, .) +nan
+  corr(A, fire-if-one total     ) -0.007 [-0.038,+0.024]   corr(R, .) -0.028
+  corr(A, fire-if-zero total    ) -0.023 [-0.054,+0.008]   corr(R, .) +0.008
+  corr(A, label's fire-if-one   ) +0.341 [+0.313,+0.368]   corr(R, .) +0.332
+  corr(A, label's fire-if-zero  ) -0.745 [-0.759,-0.731]   corr(R, .) -0.737
+  corr(A, n_y (label evidence)  ) +0.901 [+0.895,+0.907]   corr(R, .) +0.887
+  score e summed over in->out (no A): e>0 part +275.859 +- 0.947, e<0 part -275.841 +- 1.160, net +0.018 +- 1.171  [net/sd of net +0.0002]
+  update LR*A*e summed, x1e3:  from e>0 +1.9282 +- 35.7358   from e<0 +2.9699 +- 36.0295   net +4.8981 +- 9.2725
+    given A>0 (2283 epochs): from e>0 +1525.1561 +- 21.8479   from e<0 -1515.3977 +- 22.4526   net +9.7585 +- 10.1592   | e net +1.126 +- 1.559
+    given A<0 (1716 epochs): from e>0 -2024.6028 +- 43.6082   from e<0 +2023.0376 +- 44.6711   net -1.5653 +- 16.8693   | e net -1.378 +- 1.772
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0002e-3, LR*Cov(A,e) = +4.8980e-3;  corr(A, net e) +0.008
+  applied weight change summed over in->out, x1e3: -29.4113 +- 9.1392; sum of in->out weights -20.831 -> -138.476 (change -117.645); at the bounds low/high 0/0 -> 2/1
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped +19.593, clip -137.238 (per epoch x1e3 -34.3094 +- 0.9995; epochs with clip < 0: 0.903, > 0: 0.056)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0061 +- 0.0000; fire-if-one -0.0065, fire-if-zero -0.0058
+    weighted by where read escapes fell +0.0000; by where spikes fell -0.0213; one more count on every output at once: -0.3673 +- 0.0025 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum +4.8980, positive for 26/60; corr over outputs with mean marginal -0.165, with mean count +0.711; mean marginal vs mean count -0.203
+    applied weight change per output over the run vs its mean count: corr +0.454; outputs whose fan-in sum rose 10/60
+
+=== neuron-seed1-resume25k-3000  (epochs 25001-28000, lr 0.002)
+R mean -2.859 (uniform -2.303); b mean -2.860; A mean +0.001 +- 0.026, sd 1.425; share A>0 0.562
+per epoch: count 113.5 (spikes 113.5, read escapes 0.0); fire-if-one 46.1, fire-if-zero 67.3; label's fire-if-one 4.59, label's fire-if-zero 6.16
+  corr(A, total count           ) -0.058 [-0.094,-0.022]   corr(R, .) -0.075
+  corr(A, total spikes          ) -0.058 [-0.094,-0.022]   corr(R, .) -0.075
+  corr(A, total read escapes    ) +nan [+nan,+nan]   corr(R, .) +nan
+  corr(A, fire-if-one total     ) -0.070 [-0.106,-0.035]   corr(R, .) -0.081
+  corr(A, fire-if-zero total    ) -0.021 [-0.056,+0.015]   corr(R, .) -0.036
+  corr(A, label's fire-if-one   ) +0.059 [+0.023,+0.094]   corr(R, .) +0.065
+  corr(A, label's fire-if-zero  ) -0.439 [-0.467,-0.410]   corr(R, .) -0.442
+  corr(A, n_y (label evidence)  ) +0.914 [+0.908,+0.920]   corr(R, .) +0.929
+  score e summed over in->out (no A): e>0 part +106.644 +- 0.360, e<0 part -107.014 +- 0.546, net -0.369 +- 0.774  [net/sd of net -0.0087]
+  update LR*A*e summed, x1e3:  from e>0 -2.0846 +- 5.7463   from e<0 +2.0961 +- 5.7418   net +0.0115 +- 2.1294
+    given A>0 (1687 epochs): from e>0 +208.4664 +- 3.6088   from e<0 -206.6888 +- 3.6960   net +1.7776 +- 2.3766   | e net +0.189 +- 1.033
+    given A<0 (1313 epochs): from e>0 -272.6097 +- 7.1940   from e<0 +270.3520 +- 7.2174   net -2.2577 +- 3.7880   | e net -1.088 +- 1.169
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = -0.0009e-3, LR*Cov(A,e) = +0.0124e-3;  corr(A, net e) +0.000
+  applied weight change summed over in->out, x1e3: -1.8882 +- 2.1191; sum of in->out weights -262.535 -> -268.200 (change -5.665); at the bounds low/high 2/1 -> 1/0
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped +0.034, clip -5.699 (per epoch x1e3 -1.8997 +- 0.1079; epochs with clip < 0: 0.426, > 0: 0.065)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0093 +- 0.0000; fire-if-one -0.0102, fire-if-zero -0.0084
+    weighted by where read escapes fell +0.0000; by where spikes fell -0.0185; one more count on every output at once: -0.5596 +- 0.0016 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum +0.0124, positive for 29/60; corr over outputs with mean marginal +0.098, with mean count +0.580; mean marginal vs mean count -0.043
+    applied weight change per output over the run vs its mean count: corr +0.374; outputs whose fan-in sum rose 30/60
+
+=== neuron-seed2-fresh-4000  (epochs 1-4000, lr 0.002)
+R mean -4.742 (uniform -2.303); b mean -4.770; A mean +0.029 +- 0.049, sd 3.093; share A>0 0.536
+per epoch: count 290.8 (spikes 290.8, read escapes 0.0); fire-if-one 162.9, fire-if-zero 127.9; label's fire-if-one 16.56, label's fire-if-zero 12.56
+  corr(A, total count           ) +0.030 [-0.001,+0.061]   corr(R, .) -0.107
+  corr(A, total spikes          ) +0.030 [-0.001,+0.061]   corr(R, .) -0.107
+  corr(A, total read escapes    ) +nan [+nan,+nan]   corr(R, .) +nan
+  corr(A, fire-if-one total     ) +0.046 [+0.015,+0.077]   corr(R, .) -0.053
+  corr(A, fire-if-zero total    ) +0.016 [-0.015,+0.047]   corr(R, .) -0.126
+  corr(A, label's fire-if-one   ) +0.566 [+0.545,+0.587]   corr(R, .) +0.539
+  corr(A, label's fire-if-zero  ) -0.431 [-0.456,-0.405]   corr(R, .) -0.497
+  corr(A, n_y (label evidence)  ) +0.882 [+0.875,+0.889]   corr(R, .) +0.917
+  score e summed over in->out (no A): e>0 part +264.996 +- 0.726, e<0 part -264.699 +- 0.999, net +0.297 +- 1.145  [net/sd of net +0.0041]
+  update LR*A*e summed, x1e3:  from e>0 +20.1961 +- 27.1263   from e<0 -28.0990 +- 27.3197   net -7.9030 +- 7.2443
+    given A>0 (2146 epochs): from e>0 +1269.1928 +- 19.8077   from e<0 -1273.2708 +- 21.0484   net -4.0780 +- 9.5000   | e net -0.258 +- 1.593
+    given A<0 (1853 epochs): from e>0 -1426.2837 +- 28.2544   from e<0 +1413.9466 +- 28.1476   net -12.3370 +- 11.1151   | e net +0.919 +- 1.646
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0171e-3, LR*Cov(A,e) = -7.9201e-3;  corr(A, net e) -0.018
+  applied weight change summed over in->out, x1e3: -25.5868 +- 7.2083; sum of in->out weights -26.878 -> -129.225 (change -102.347); at the bounds low/high 0/0 -> 0/3
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -31.612, clip -70.735 (per epoch x1e3 -17.6838 +- 0.4874; epochs with clip < 0: 0.830, > 0: 0.079)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0062 +- 0.0000; fire-if-one -0.0066, fire-if-zero -0.0059
+    weighted by where read escapes fell +0.0000; by where spikes fell -0.0192; one more count on every output at once: -0.3746 +- 0.0025 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -7.9201, positive for 18/60; corr over outputs with mean marginal -0.193, with mean count +0.518; mean marginal vs mean count -0.117
+    applied weight change per output over the run vs its mean count: corr +0.356; outputs whose fan-in sum rose 13/60
+
+=== neuron-seed2-resume25k-3000  (epochs 25001-28000, lr 0.002)
+R mean -3.327 (uniform -2.303); b mean -3.331; A mean +0.003 +- 0.036, sd 1.994; share A>0 0.546
+per epoch: count 127.0 (spikes 127.0, read escapes 0.0); fire-if-one 97.2, fire-if-zero 29.8; label's fire-if-one 9.95, label's fire-if-zero 2.57
+  corr(A, total count           ) -0.041 [-0.077,-0.005]   corr(R, .) -0.077
+  corr(A, total spikes          ) -0.041 [-0.077,-0.005]   corr(R, .) -0.077
+  corr(A, total read escapes    ) +nan [+nan,+nan]   corr(R, .) +nan
+  corr(A, fire-if-one total     ) -0.036 [-0.071,+0.000]   corr(R, .) -0.042
+  corr(A, fire-if-zero total    ) -0.023 [-0.058,+0.013]   corr(R, .) -0.069
+  corr(A, label's fire-if-one   ) +0.723 [+0.705,+0.740]   corr(R, .) +0.721
+  corr(A, label's fire-if-zero  ) -0.468 [-0.495,-0.439]   corr(R, .) -0.482
+  corr(A, n_y (label evidence)  ) +0.901 [+0.894,+0.908]   corr(R, .) +0.907
+  score e summed over in->out (no A): e>0 part +119.818 +- 0.379, e<0 part -120.109 +- 0.587, net -0.291 +- 0.801  [net/sd of net -0.0066]
+  update LR*A*e summed, x1e3:  from e>0 -1.9239 +- 9.0082   from e<0 +1.0470 +- 9.1609   net -0.8770 +- 3.1816
+    given A>0 (1639 epochs): from e>0 +347.6357 +- 6.0881   from e<0 -349.0565 +- 6.4721   net -1.4209 +- 3.7095   | e net +0.327 +- 1.067
+    given A<0 (1361 epochs): from e>0 -422.8851 +- 10.1082   from e<0 +422.6632 +- 10.3884   net -0.2220 +- 5.4078   | e net -1.036 +- 1.212
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = -0.0019e-3, LR*Cov(A,e) = -0.8751e-3;  corr(A, net e) -0.005
+  applied weight change summed over in->out, x1e3: -3.7997 +- 3.1651; sum of in->out weights -239.441 -> -250.840 (change -11.399); at the bounds low/high 2/0 -> 0/0
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -2.631, clip -8.768 (per epoch x1e3 -2.9227 +- 0.1716; epochs with clip < 0: 0.433, > 0: 0.108)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0080 +- 0.0000; fire-if-one -0.0087, fire-if-zero -0.0073
+    weighted by where read escapes fell +0.0000; by where spikes fell -0.0242; one more count on every output at once: -0.4796 +- 0.0025 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -0.8751, positive for 28/60; corr over outputs with mean marginal -0.054, with mean count +0.262; mean marginal vs mean count -0.081
+    applied weight change per output over the run vs its mean count: corr +0.053; outputs whose fan-in sum rose 27/60
+
+=== synapse-seed1-fresh-4000  (epochs 1-4000, lr 0.002)
+R mean -5.442 (uniform -2.303); b mean -5.472; A mean +0.030 +- 0.054, sd 3.417; share A>0 0.543
+per epoch: count 546.4 (spikes 508.2, read escapes 38.2); fire-if-one 251.8, fire-if-zero 294.6; label's fire-if-one 24.87, label's fire-if-zero 29.73
+  corr(A, total count           ) -0.022 [-0.053,+0.009]   corr(R, .) -0.012
+  corr(A, total spikes          ) -0.027 [-0.058,+0.004]   corr(R, .) -0.004
+  corr(A, total read escapes    ) +0.011 [-0.020,+0.042]   corr(R, .) -0.020
+  corr(A, fire-if-one total     ) -0.026 [-0.057,+0.005]   corr(R, .) +0.004
+  corr(A, fire-if-zero total    ) -0.004 [-0.035,+0.027]   corr(R, .) -0.022
+  corr(A, label's fire-if-one   ) +0.558 [+0.537,+0.579]   corr(R, .) +0.573
+  corr(A, label's fire-if-zero  ) -0.516 [-0.538,-0.493]   corr(R, .) -0.526
+  corr(A, n_y (label evidence)  ) +0.885 [+0.878,+0.891]   corr(R, .) +0.906
+  score e summed over in->out (no A): e>0 part +55.515 +- 0.231, e<0 part -54.969 +- 0.097, net +0.545 +- 0.273  [net/sd of net +0.0316]
+  update LR*A*e summed, x1e3:  from e>0 +3.2573 +- 6.3229   from e<0 -3.4603 +- 6.0112   net -0.2030 +- 1.8928
+    given A>0 (2173 epochs): from e>0 +288.0614 +- 4.5618   from e<0 -283.0328 +- 4.0762   net +5.0286 +- 2.2972   | e net +0.550 +- 0.369
+    given A<0 (1826 epochs): from e>0 -335.6670 +- 6.8260   from e<0 +329.2382 +- 6.1884   net -6.4289 +- 3.1119   | e net +0.533 +- 0.407
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0322e-3, LR*Cov(A,e) = -0.2352e-3;  corr(A, net e) -0.002
+  applied weight change summed over in->out, x1e3: -1.3351 +- 1.8882; sum of in->out weights -20.831 -> -26.171 (change -5.340); at the bounds low/high 0/0 -> 2/1
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -0.812, clip -4.528 (per epoch x1e3 -1.1321 +- 0.0483; epochs with clip < 0: 0.369, > 0: 0.041)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0060 +- 0.0000; fire-if-one -0.0063, fire-if-zero -0.0056
+    weighted by where read escapes fell -0.0150; by where spikes fell -0.0141; one more count on every output at once: -0.3587 +- 0.0027 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -0.2352, positive for 28/60; corr over outputs with mean marginal +0.262, with mean count +0.357; mean marginal vs mean count -0.157
+    applied weight change per output over the run vs its mean count: corr +0.350; outputs whose fan-in sum rose 25/60
+
+=== synapse-seed1-resume25k-3000  (epochs 25001-28000, lr 0.002)
+R mean -4.120 (uniform -2.303); b mean -4.128; A mean +0.008 +- 0.047, sd 2.549; share A>0 0.530
+per epoch: count 509.9 (spikes 480.1, read escapes 29.8); fire-if-one 243.1, fire-if-zero 266.9; label's fire-if-one 24.64, label's fire-if-zero 26.35
+  corr(A, total count           ) +0.020 [-0.015,+0.056]   corr(R, .) +0.022
+  corr(A, total spikes          ) +0.014 [-0.021,+0.050]   corr(R, .) +0.018
+  corr(A, total read escapes    ) +0.019 [-0.017,+0.054]   corr(R, .) +0.013
+  corr(A, fire-if-one total     ) -0.028 [-0.063,+0.008]   corr(R, .) -0.029
+  corr(A, fire-if-zero total    ) +0.067 [+0.032,+0.103]   corr(R, .) +0.072
+  corr(A, label's fire-if-one   ) +0.285 [+0.252,+0.318]   corr(R, .) +0.288
+  corr(A, label's fire-if-zero  ) -0.430 [-0.459,-0.400]   corr(R, .) -0.438
+  corr(A, n_y (label evidence)  ) +0.849 [+0.839,+0.859]   corr(R, .) +0.861
+  score e summed over in->out (no A): e>0 part +39.366 +- 0.214, e<0 part -38.979 +- 0.085, net +0.387 +- 0.251  [net/sd of net +0.0282]
+  update LR*A*e summed, x1e3:  from e>0 -0.3692 +- 3.8233   from e<0 -0.3522 +- 3.6676   net -0.7214 +- 1.2938
+    given A>0 (1590 epochs): from e>0 +152.3542 +- 2.7271   from e<0 -151.9651 +- 2.4853   net +0.3891 +- 1.5220   | e net +0.532 +- 0.344
+    given A<0 (1410 epochs): from e>0 -172.5891 +- 4.1259   from e<0 +170.6155 +- 3.7310   net -1.9736 +- 2.1522   | e net +0.224 +- 0.367
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0062e-3, LR*Cov(A,e) = -0.7276e-3;  corr(A, net e) -0.010
+  applied weight change summed over in->out, x1e3: -1.2386 +- 1.2914; sum of in->out weights -48.980 -> -52.696 (change -3.716); at the bounds low/high 3/3 -> 1/1
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -2.164, clip -1.552 (per epoch x1e3 -0.5172 +- 0.0332; epochs with clip < 0: 0.251, > 0: 0.046)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0067 +- 0.0000; fire-if-one -0.0071, fire-if-zero -0.0062
+    weighted by where read escapes fell -0.0208; by where spikes fell -0.0120; one more count on every output at once: -0.3997 +- 0.0029 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -0.7276, positive for 31/60; corr over outputs with mean marginal -0.119, with mean count +0.120; mean marginal vs mean count -0.013
+    applied weight change per output over the run vs its mean count: corr +0.115; outputs whose fan-in sum rose 31/60
+
+=== synapse-seed2-fresh-4000  (epochs 1-4000, lr 0.002)
+R mean -6.473 (uniform -2.303); b mean -6.517; A mean +0.044 +- 0.077, sd 4.843; share A>0 0.572
+per epoch: count 513.6 (spikes 480.5, read escapes 33.1); fire-if-one 257.7, fire-if-zero 255.9; label's fire-if-one 26.28, label's fire-if-zero 25.29
+  corr(A, total count           ) -0.026 [-0.057,+0.005]   corr(R, .) -0.019
+  corr(A, total spikes          ) -0.028 [-0.059,+0.003]   corr(R, .) -0.015
+  corr(A, total read escapes    ) -0.000 [-0.031,+0.031]   corr(R, .) -0.017
+  corr(A, fire-if-one total     ) -0.009 [-0.040,+0.022]   corr(R, .) -0.003
+  corr(A, fire-if-zero total    ) -0.030 [-0.061,+0.001]   corr(R, .) -0.026
+  corr(A, label's fire-if-one   ) +0.716 [+0.700,+0.730]   corr(R, .) +0.729
+  corr(A, label's fire-if-zero  ) -0.619 [-0.637,-0.599]   corr(R, .) -0.619
+  corr(A, n_y (label evidence)  ) +0.923 [+0.919,+0.928]   corr(R, .) +0.934
+  score e summed over in->out (no A): e>0 part +43.968 +- 0.213, e<0 part -43.798 +- 0.120, net +0.171 +- 0.229  [net/sd of net +0.0118]
+  update LR*A*e summed, x1e3:  from e>0 +3.4926 +- 7.0332   from e<0 -7.9365 +- 6.7901   net -4.4439 +- 2.2267
+    given A>0 (2286 epochs): from e>0 +306.4743 +- 4.4985   from e<0 -309.3562 +- 4.2225   net -2.8819 +- 2.5063   | e net -0.214 +- 0.300
+    given A<0 (1713 epochs): from e>0 -400.8347 +- 8.1679   from e<0 +394.3038 +- 7.3752   net -6.5309 +- 3.9813   | e net +0.681 +- 0.353
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0152e-3, LR*Cov(A,e) = -4.4590e-3;  corr(A, net e) -0.032
+  applied weight change summed over in->out, x1e3: -5.9256 +- 2.2241; sum of in->out weights -26.878 -> -50.580 (change -23.702); at the bounds low/high 0/0 -> 2/0
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -17.775, clip -5.927 (per epoch x1e3 -1.4817 +- 0.0588; epochs with clip < 0: 0.352, > 0: 0.018)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0050 +- 0.0000; fire-if-one -0.0052, fire-if-zero -0.0048
+    weighted by where read escapes fell -0.0155; by where spikes fell -0.0162; one more count on every output at once: -0.2997 +- 0.0027 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -4.4590, positive for 25/60; corr over outputs with mean marginal -0.025, with mean count +0.493; mean marginal vs mean count -0.239
+    applied weight change per output over the run vs its mean count: corr +0.485; outputs whose fan-in sum rose 25/60
+
+=== synapse-seed2-resume25k-3000  (epochs 25001-28000, lr 0.002)
+R mean -4.748 (uniform -2.303); b mean -4.756; A mean +0.008 +- 0.055, sd 3.039; share A>0 0.530
+per epoch: count 517.4 (spikes 492.3, read escapes 25.2); fire-if-one 262.5, fire-if-zero 254.9; label's fire-if-one 26.51, label's fire-if-zero 25.33
+  corr(A, total count           ) -0.064 [-0.099,-0.028]   corr(R, .) -0.063
+  corr(A, total spikes          ) -0.069 [-0.105,-0.033]   corr(R, .) -0.069
+  corr(A, total read escapes    ) +0.008 [-0.028,+0.044]   corr(R, .) +0.010
+  corr(A, fire-if-one total     ) -0.049 [-0.085,-0.013]   corr(R, .) -0.050
+  corr(A, fire-if-zero total    ) -0.039 [-0.075,-0.003]   corr(R, .) -0.038
+  corr(A, label's fire-if-one   ) +0.405 [+0.374,+0.434]   corr(R, .) +0.409
+  corr(A, label's fire-if-zero  ) -0.566 [-0.590,-0.541]   corr(R, .) -0.570
+  corr(A, n_y (label evidence)  ) +0.872 [+0.863,+0.881]   corr(R, .) +0.880
+  score e summed over in->out (no A): e>0 part +29.770 +- 0.177, e<0 part -29.423 +- 0.072, net +0.348 +- 0.206  [net/sd of net +0.0308]
+  update LR*A*e summed, x1e3:  from e>0 +0.7220 +- 3.5023   from e<0 -0.8436 +- 3.2899   net -0.1217 +- 1.2493
+    given A>0 (1591 epochs): from e>0 +141.6283 +- 2.4918   from e<0 -139.4839 +- 2.1446   net +2.1445 +- 1.5433   | e net +0.401 +- 0.286
+    given A<0 (1409 epochs): from e>0 -158.3852 +- 3.7158   from e<0 +155.7047 +- 3.2248   net -2.6806 +- 2.0081   | e net +0.287 +- 0.296
+  E[U] = LR*(E[A]E[e] + Cov(A,e)): LR*E[A]*E[e] = +0.0056e-3, LR*Cov(A,e) = -0.1273e-3;  corr(A, net e) -0.002
+  applied weight change summed over in->out, x1e3: -0.5566 +- 1.2461; sum of in->out weights -60.037 -> -61.707 (change -1.670); at the bounds low/high 1/0 -> 1/0
+  applied = unclipped LR*A*e + clip residual; over the run, summed: unclipped -0.365, clip -1.305 (per epoch x1e3 -0.4349 +- 0.0389; epochs with clip < 0: 0.199, > 0: 0.036)
+  critic's marginal for one more count, R(n+1_j)-R(n): mean over all 60 outputs -0.0060 +- 0.0000; fire-if-one -0.0063, fire-if-zero -0.0057
+    weighted by where read escapes fell -0.0209; by where spikes fell -0.0129; one more count on every output at once: -0.3599 +- 0.0030 (first order)
+  per output (60): LR*Cov(A,e_j) x1e3 sum -0.1273, positive for 29/60; corr over outputs with mean marginal +0.093, with mean count +0.148; mean marginal vs mean count -0.102
+    applied weight change per output over the run vs its mean count: corr +0.140; outputs whose fan-in sum rose 28/60

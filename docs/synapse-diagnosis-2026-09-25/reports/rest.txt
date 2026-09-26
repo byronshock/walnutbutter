@@ -1,0 +1,56 @@
+I ran the 22 arms (not just the 18 asked for) on the Rust loop at the pinned point, 5,000 epochs each. **Output activity does not rise over training, with or without learning.** The untrained network is already saturated under both rules. The neuron rule's learning quiets it; the synapse rule's barely does. The rest hazard (h0) has almost no effect on the level. The synapse rule's per-output eligibility is blind to the output's own spikes. I call that part inferred below, not measured.
+
+**What I ran** (everything is in /tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/rest/)
+- `rest.py` builds each arm with `rs.grid_of` exactly as the sweeps do, then calls `fast.train` with a read-only probe every epoch. Homeostasis and un-sticking are 0 at this point, so at lr 0 nothing in the network moves.
+- Per epoch it records each output's spikes, read escapes and potential at the read, the label, the reward, class-right, the inputs' total spikes, and each output's summed eligibility. Every 250 epochs it records the outputs' rate memories and all weights.
+- The runner was `launch.sh`, taking `arms.txt`, at most 12 at a time, nice 19. Raw data is in `<arm>.npz` and `<arm>.log`.
+- Analysis scripts: `analyse.py`, `elig.py`, `summary.py`. Their outputs are `table-a.txt`, `table-b.txt` and `table-c.txt` (500-epoch windows), `summary.txt` and `elig.txt`.
+- Arms:
+  - Synapse rule, rate drive, h0 0.001 / 0.003 / 0.01 / 0.03 at lr 0.002, seeds 1–2.
+  - Synapse rule at lr 0, rate drive: h0 0.01 with seeds 1–2; h0 0.001, 0.003 and 0.03 with seed 1 only.
+  - Charged drive: h0 0.003 and 0.01 at lr 0.002, seeds 1–2; h0 0.01 at lr 0, seed 1.
+  - Neuron rule (width 0.3125) at lr 0.002 and lr 0, seeds 1–2.
+- Check: my traces at epochs 1,000–5,000 are identical to all digits to the 25k sweep's csv for synapse h0 0.01 lr 0.002 (seeds 1 and 2) and neuron lr 0.002 (seeds 1 and 2). These are the same runs, and the probe changes nothing.
+
+**Numbers** (per output per epoch, first 500 epochs → last 1,000; "rate>0.99" is at epoch 500 → 5,000)
+
+| Arm | Count (spikes + read) | Rate>0.99 of 60 | Weight mean, 0 → 5,000 |
+|---|---|---|---|
+| neuron lr 0, s1 / s2 | 6.77 → 6.76 / 6.53 → 6.54 (spikes only) | 42→46 / 39→40 | unchanged |
+| neuron lr 0.002, s1 / s2 | 6.47 → 3.35 / 5.94 → 4.01 | 36→11 / 28→17 | −0.015→−0.138 / −0.019→−0.099 |
+| synapse h0 0.01 lr 0, s1 / s2 | 8.97 → 8.95 / 8.59 → 8.58 | 44→45 / 36→37 | unchanged |
+| synapse h0 0.01 lr 0.002, s1 / s2 | 9.10 → 9.17 / 8.57 → 8.36 | 46→47 / 40→40 | −0.015→−0.017 / −0.019→−0.035 |
+| synapse h0 0.001 / 0.003 / 0.03, lr 0.002 | 8.3–8.8 / 8.45–8.7 / 9.1–9.7 | 36–45 / 38–45 / 41–48 | moved −0.001 to −0.020 |
+| charged h0 0.01, lr 0 and 0.002 | 9.0–9.3 | 46–51 | small |
+
+- **h0 at lr 0 (seed 1):** from h0 0.001 to 0.03, spikes go 8.08 → 8.49 per output per epoch and read escapes go 0.43 → 1.14. Rate>0.99 stays at 45–48 for every h0.
+- **Label dependence:** the share of each output's count variance explained by the label is 0.057–0.074 in every synapse arm (shuffled-label value about 0.01). It is slightly higher at low h0: 0.071–0.074 at h0 0.001, 0.057–0.059 at h0 0.03.
+- **Outputs that are on in some epochs and off in others** (count > 0 in 5–95% of epochs):
+  - Synapse arms: 10–12 at h0 0.001, 4–11 at h0 0.03, 4–7 charged at h0 0.01.
+  - Neuron rule at lr 0.002: 36–45. Its label share still drops to 0.039–0.041.
+- **Fraction right:** 0.064–0.119 everywhere, which is chance.
+- **Score:** synapse arms at lr 0.002 do improve their score without quieting (for example −7.6 → −5.2 on seed 2 at h0 0.001, 0.003 and 0.03). The lr 0 arms stay flat (−8.0 → −8.0).
+
+**What the synapse rule's eligibility responds to** (from `elig.py`, all 5,000 epochs, per output)
+- Its correlation with the output's own spike count is between −0.004 and +0.003 in all 18 synapse arms.
+- Its correlation with the output's read escapes is +0.63 to +0.78.
+- Under the neuron rule, the correlation with the output's spikes is +0.18 to +0.25.
+- Mean size of the eligibility summed over an output's fan-in: 0.8–1.8 under the synapse rule against 5.7–8.5 under the neuron rule, so about 5–8 times smaller.
+- The recorded eligibility times the advantage predicts each output's actual weight change with correlation 0.998 under the synapse rule.
+- Under the neuron rule that correlation is 0.96–0.99, but the real mean change is more negative than predicted by about 0.1 per 250 epochs; I have not traced why (clamping at ±1 is my guess). So I quote weight drift from the weight snapshots, not from that product.
+
+**Answers**
+
+1. **Does activity rise with training without learning (lr 0)?** No. It is flat from the first 50 epochs to epoch 5,000 (for example 9.00 → 8.97 at h0 0.01, seed 1). The apparent climb in rate memories over the first few hundred epochs is the memory warming up from its starting value of 0.5, not a change in firing. With learning it does not rise either. The untrained net already has 36–51 of 60 outputs firing every epoch under both rules. So the 25k gap (42 against about 10) is not the synapse rule exciting the outputs; it is the neuron rule quieting them and the synapse rule not. The 25k checkpoints agree: final weight mean is −0.034 to −0.054 under the synapse rule at lr 0.002, against −0.164 to −0.184 under the neuron rule. Supported by all 22 arms; I am confident.
+
+2. **Does h0 set the level?** No, only a little, and mostly through the read escapes. A 30-times change in h0 moves the count by about 13% at lr 0; spikes move about 5%. The spikes come from the forced input spikes (about 1,595 per epoch, so roughly 96 relayed arrivals per output per epoch) passing through uniform ±1 starting weights. The outputs have no leak, a floor at −0.22 and a threshold of 0.667, and about 2 incoming weights per output are already at or above threshold. Two figures here are my estimates, not measurements: whispers from the inputs add only about 0.3–10 arrivals per output per epoch across h0 0.001–0.03, and starting weights explain only part of which outputs fire. The correlation between an output's strong synapses and its count is 0.30–0.60, and 14 of the 17 outputs with no strong synapse still fire every epoch (seed 1).
+
+3. **Which h0 keeps outputs selective?** None in 0.001–0.03, at 5,000 epochs. Every h0 leaves 36–51 outputs on every epoch, with the same label share. Lower h0 is marginally better (label share about +0.015, a few more intermittent outputs), but with 2 seeds per arm and 1 for most lr 0 arms, that is weak evidence.
+
+4. **Why the synapse rule does not quiet the outputs.** The measured part is the zero correlation between an output's eligibility and its own spikes, and the 5–8 times smaller eligibility. The rest is inference, which I am fairly sure of:
+   - With no hidden layer, an output's only decisions under the synapse rule are its read synapse's draws.
+   - Its spikes are deterministic threshold crossings. Their randomness comes from the inputs' whispers, whose odds no weight sets because the inputs have no incoming synapses.
+   - The rule therefore credits the fan-in only with the reward effects of the read escapes, which are 4–11% of the count. The route from weights to potential to spikes, about 90% of the count, is invisible to it.
+   - So it cannot learn "fire less" except through that small read-escape share, and with a step 5–8 times smaller.
+
+A test would separate this cleanly: if outputs had synapses to other neurons, or no deterministic spike, the synapse rule should be able to quiet them. I have not run that.

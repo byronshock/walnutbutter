@@ -23,15 +23,53 @@ from .constants import (
     MINIMUM_POTENTIAL, PROBLEM, REFRACTORY, HOP, LAG, RULE, TARGET, TARGET_RATE,
     THRESHOLD_FAN_IN,
     THRESHOLD, UNSTICK, UNSTICK_TARGET, WEIGHT_EPSILON, WEIGHT_RANGE,
+    DRIVE_STEPS, EXPLORATION, SYNAPSE_HAZARD_FAMILY, SYNAPSE_HAZARD_REST, SYNAPSE_HAZARD_SCALING, TRACE,
     cv_for_rate, rate_for_cv,
 )
 from .learning import CRITICS, ELIGIBILITIES, RULES, TARGETS, Teacher
 from .problems import dataset_stream
 from .monitor import main, run_epoch
-from .network import input_stream
+from .network import (DRIVES, EXPLORATIONS, SYNAPSE_HAZARD_FAMILIES, SYNAPSE_HAZARD_SCALINGS, TRACE_VENTURED_BIAS, TRACES,
+                      input_stream, refuse_synapse_settings, refuse_width)
 from .neuron import Neuron
-from .persistence import across_of, checkpoint, restore, resume_teacher
+from .persistence import CLOCK, across_of, checkpoint, clock_of, restore, resume_stream, resume_teacher
 from .problems import PROBLEMS
+
+# the settings of exploration at the synapse a run names on the command line (§7.6, §7.7, §8.17): each option's
+# destination, its flag, the checkpoint's key and the register's value, which a run that names none takes -- or, loading
+# a checkpoint saved under exploration at the synapse, the checkpoint's own (§12.9)
+SYNAPSE_SETTINGS = (
+    ("synapse_hazard", "--synapse-hazard", "synapse_hazard_rest", SYNAPSE_HAZARD_REST),
+    ("hazard_family", "--hazard-family", "synapse_hazard_family", SYNAPSE_HAZARD_FAMILY),
+    ("synapse_scaling", "--synapse-scaling", "synapse_hazard_scaling", SYNAPSE_HAZARD_SCALING),
+    ("trace_counts", "--trace-counts", "trace_mode", TRACE),
+)
+# what the command line leaves as None until a run names it, so that a run which names none can be told from one that
+# names the default (§12.9: a network saved under a setting resumes under it unless the run overrides it explicitly)
+NAMED = ("exploration", "delta", "drive", "drive_steps") + tuple(dest for dest, *_ in SYNAPSE_SETTINGS)
+
+
+class _Named(argparse.Action):
+    """An option stored as `store` stores it, its default the constant, and the run's naming it recorded: the clock's
+    settings (persistence.CLOCK), whose parsed defaults stay the register's, so that a run which names one -- even at
+    the constant's value -- can be told from one that does not, as the sentinels of NAMED are told (§12.9)."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        namespace.named_flags = frozenset(getattr(namespace, "named_flags", ())) | {self.dest}
+
+
+def _drive_steps(text: str) -> int:
+    """--drive-steps: DRIVE_STEPS is a count of deliveries, a whole number of at least 1, and any other value is refused
+    with the clause that says so (5.4b), rather than taken for the nearest count."""
+    try:
+        steps = int(text)  # "3.0" and "2.5" are refused here, as a float is by Network._drive_steps
+    except ValueError:
+        steps = 0
+    if steps < 1:
+        raise argparse.ArgumentTypeError(f"DRIVE_STEPS is a count of deliveries, a whole number of at least 1; got "
+                                         f"{text!r} (5.4b)")
+    return steps
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -267,9 +305,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--rate-tau",
         type=float,
+        action=_Named,
         default=RATE_TAU,
         metavar="MS",
-        help=f"the exponential window the rate read estimates over (default: {RATE_TAU:g} ms)",
+        help=f"the exponential window the rate read estimates over (default: {RATE_TAU:g} ms, or a loaded checkpoint's)",
     )
     parser.add_argument(
         "--rate-on",
@@ -297,11 +336,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--drive",
-        choices=("forced", "rate"),
+        choices=DRIVES,
         default=None,
-        help=f"how a bit becomes spikes (AUTHORITY.md §4.3): forced, one spike at the epoch's moment, or rate, an "
+        help=f"how a bit becomes spikes (AUTHORITY.md §4.3): forced, one spike at the epoch's moment; rate, an "
         f"independent Poisson process across the epoch so a bit is a firing rate and a bit-1 neuron may produce no "
-        f"spike at all (default: the problem's, else {INPUT_DRIVE})",
+        f"spike at all; or charged (5.4b, under --exploration synapse only), the rate's arrivals at --drive-steps times "
+        f"the rate, each delivering theta / --drive-steps to the input's potential in place of forcing a spike "
+        f"(default: the problem's, else {INPUT_DRIVE}; a loaded checkpoint keeps its own unless this is given)",
+    )
+    parser.add_argument(
+        "--drive-steps",
+        type=_drive_steps,
+        default=None,
+        metavar="N",
+        help=f"under --drive charged, DRIVE_STEPS (AUTHORITY.md 5.4b): the deliveries that take an input from rest to its "
+        f"threshold, a whole number of at least 1 (default: {DRIVE_STEPS}, or a loaded checkpoint's)",
     )
     parser.add_argument(
         "--cv",
@@ -372,11 +421,56 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--delta",
         type=float,
-        default=ESCAPE_DELTA,
+        default=None,
         metavar="D",
         help=f"escape noise (AUTHORITY.md §5.2): the firing decision is a draw, D times the neuron's starting threshold "
         f"wide -- one expected spike per hop at threshold, e times more per D of margin above it, so a neuron nobody talks "
-        f"to fires on its own at a rate its margin sets (default: {ESCAPE_DELTA:g}; 0 = the deterministic threshold)",
+        f"to fires on its own at a rate its margin sets (default: {ESCAPE_DELTA:g} under the neuron rule, and none under "
+        f"--exploration synapse, where every width is 0 and a positive one is refused, §6.13; 0 = the deterministic "
+        f"threshold). A checkpoint loaded keeps its own unless this is given",
+    )
+    parser.add_argument(
+        "--exploration",
+        choices=EXPLORATIONS,
+        default=None,
+        help=f"what explores (AUTHORITY.md §7.1): the neuron's own escape noise at --delta (neuron), or its synapses' "
+        f"(synapse, §7.5): every neuron then fires by the comparison, every width 0 (§6.13), and every synapse decides at "
+        f"every wave on its source's potential, an output's read synapse among them (§7.9). A checkpoint loaded keeps its "
+        f"own, and one named with the other is refused (§12.9) (default: {EXPLORATION})",
+    )
+    parser.add_argument(
+        "--synapse-hazard",
+        type=float,
+        default=None,
+        metavar="H0",
+        help=f"under --exploration synapse, the rest hazard h0 (AUTHORITY.md §7.6): what a synapse of a source at zero "
+        f"potential speculates at per hop before the scaling, in [0, 1) (default: {SYNAPSE_HAZARD_REST:g}, or a loaded "
+        f"checkpoint's)",
+    )
+    parser.add_argument(
+        "--hazard-family",
+        choices=SYNAPSE_HAZARD_FAMILIES,
+        default=None,
+        help=f"under --exploration synapse, the synapse hazard's family (AUTHORITY.md §7.6): loglinear, h0 ** (1 - u), or "
+        f"linear, h0 + (1 - h0) u, u the source's potential clipped to [0, theta] over theta (default: "
+        f"{SYNAPSE_HAZARD_FAMILY}, or a loaded checkpoint's)",
+    )
+    parser.add_argument(
+        "--synapse-scaling",
+        choices=SYNAPSE_HAZARD_SCALINGS,
+        default=None,
+        help=f"under --exploration synapse, what scales every synapse's hazard (AUTHORITY.md §7.7): the count's "
+        f"sqrt(60 / N), or that over the source's fan-out, the read synapse counted (default: {SYNAPSE_HAZARD_SCALING}, "
+        f"or a loaded checkpoint's)",
+    )
+    parser.add_argument(
+        "--trace-counts",
+        choices=TRACES,
+        default=None,
+        help=f"under --exploration synapse, what a synapse's trace counts (AUTHORITY.md §8.17): every arrival its target "
+        f"integrated (all), or the ventured ones alone (ventured), under which the estimator is biased toward what was "
+        f"ventured and the run's record says so. Not --trace, which names the per-epoch CSV (default: {TRACE}, or a "
+        f"loaded checkpoint's)",
     )
     parser.add_argument(
         "--eligibility",
@@ -456,34 +550,40 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tau",
         type=float,
+        action=_Named,
         default=TAU,
         metavar="MS",
         help=f"leak time constant of every neuron, nominal milliseconds (default: {TAU:g} -- the potential does not "
         f"leak, which is the evidence accumulator of AUTHORITY.md §2; {LEAK_TAU:g} is the leak as it was swept). "
-        "The leak is computed only when a signal reaches a neuron",
+        "The leak is computed only when a signal reaches a neuron. A checkpoint loaded keeps its own unless this is given",
     )
     parser.add_argument(
         "--refractory",
         type=float,
+        action=_Named,
         default=REFRACTORY,
         metavar="MS",
-        help=f"absolute refractory period of every neuron, nominal milliseconds (default: {REFRACTORY:g})",
+        help=f"absolute refractory period of every neuron, nominal milliseconds (default: {REFRACTORY:g}, or a loaded "
+        f"checkpoint's)",
     )
     parser.add_argument(
         "--bored-after",
         type=float,
+        action=_Named,
         default=BORED_AFTER,
         metavar="MS",
         help=f"threshold homeostasis: a neuron's threshold falls with its silence, reaching zero after this many ms "
-        f"without a spike, so a bored neuron fires on its own (default: {BORED_AFTER:g}; 0 = off)",
+        f"without a spike, so a bored neuron fires on its own (default: {BORED_AFTER:g}, or a loaded checkpoint's; 0 = off)",
     )
     parser.add_argument(
         "--hop",
         type=float,
+        action=_Named,
         default=HOP,
         metavar="MS",
         help=f"the time a signal takes to travel one connection, nominal milliseconds (default: {HOP:g}, which is "
-        f"(REFRACTORY + LAG) / 2 at LAG {LAG:g}, so two hops clear the refractory period by the LAG)",
+        f"(REFRACTORY + LAG) / 2 at LAG {LAG:g}, so two hops clear the refractory period by the LAG; or a loaded "
+        f"checkpoint's)",
     )
     parser.add_argument(
         "--epochs",
@@ -549,6 +649,8 @@ def cli_main(argv: list[str] | None = None) -> int:
     args.show = args.fast = False
     try:
         apply_problem(args)
+        if not args.load_weights or args.seeds is not None:  # a checkpoint loaded settles it against its own (_run)
+            apply_exploration(args)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -582,12 +684,13 @@ def READ_MEANS(args) -> str:
 
 def apply_problem(args: argparse.Namespace) -> None:
     """Settle what the problem decides: whether a Teacher scores or trains, the epoch's length, the target, the readout."""
+    if getattr(args, "named", None) is None:  # what the run named, recorded before any default fills a sentinel in
+        args.named = frozenset(name for name in NAMED if getattr(args, name, None) is not None) | frozenset(
+            getattr(args, "named_flags", ()))  # and the clock's settings the run gave (_Named)
     problem = PROBLEMS[args.problem]
-    if args.input_rate is None:  # the drive is given as a CV; lambda is the coordinate the schedule wants (§4.3)
-        # With no refractory period there is no dead time, so the train is Poisson and its CV is 1 whatever the rate:
-        # the CV coordinate does not reach it. Such a run is rejected further down; leave the default and let it be.
-        args.input_rate = rate_for_cv(args.cv, args.refractory) if args.refractory > 0 else INPUT_RATE
-    args.cv = cv_for_rate(args.input_rate, args.refractory)  # and --input-rate, if given, sets the CV it implies
+    if getattr(args, "drive_given", None) is None:  # the drive as the run gave it, a rate or else a CV, kept so that the
+        args.drive_given = (args.input_rate, args.cv)  # rate is derived again at a loaded checkpoint's refractory (apply_clock)
+    args.input_rate, args.cv = derive_rate(args.drive_given, args.refractory)
     if args.across is None:
         args.across = problem.across
     args.learn = not args.no_learn  # a Teacher scores every problem; whether it may train is the problem's
@@ -646,6 +749,133 @@ def apply_container(args: argparse.Namespace) -> None:
         args.minimum_potential = GOO_MINIMUM_POTENTIAL
 
 
+def derive_rate(given: tuple, refractory: float) -> tuple[float, float]:
+    """The drive's rate and its CV from the drive as a run gave it, (rate or None, CV), at a refractory period (§4.3).
+
+    The drive is given as a CV; lambda is the coordinate the schedule wants, and
+    a rate given sets the CV it implies. With no refractory period there is no
+    dead time, so the train is Poisson and its CV is 1 whatever the rate: the CV
+    coordinate does not reach it. Such a run is rejected further down; the
+    default rate stands and is let be.
+    """
+    rate, cv = given
+    if rate is None:
+        rate = rate_for_cv(cv, refractory) if refractory > 0 else INPUT_RATE
+    return rate, cv_for_rate(rate, refractory)
+
+
+def apply_clock(args: argparse.Namespace, saved: dict) -> None:
+    """The clock a loaded checkpoint ran on (§12.9): TAU, the refractory period, the hop, bored-after and the rate read's
+    window are the checkpoint's where the run does not name them (`args.named`), and the drive's rate is then derived
+    from the CV or the rate the run gave at the refractory period the network runs on (§4.3), as a fresh run at that
+    period derives it. Until September 25, 2026 every load ran on the constants' clock, a TAU 2 run resumed as TAU inf
+    unless --tau was given again."""
+    kept = clock_of(saved)
+    for name in CLOCK:
+        if name not in args.named and name in kept:
+            setattr(args, name, kept[name])
+    args.input_rate, args.cv = derive_rate(args.drive_given, args.refractory)
+
+
+def apply_exploration(args: argparse.Namespace, saved: dict | None = None) -> None:
+    """Settle what explores and with what (AUTHORITY.md §7.1): the exploration, the width, the settings of §7.6, §7.7
+    and §8.17, the drive and DRIVE_STEPS. Call it after apply_problem, which settles the problem's drive.
+
+    What the run named (`args.named`, the flags given) stands. What it did not
+    name is the register's for a fresh network and, with `saved` -- the data of
+    the checkpoint the run loads -- the checkpoint's own, since a network saved
+    under a setting resumes under it unless the run overrides it explicitly
+    (§12.9). Under the neuron rule a width not given is ESCAPE_DELTA, as it
+    always was, or a loaded checkpoint's; under exploration at the synapse there
+    is none, every width being 0 and ESCAPE_DELTA not consulted (§6.13).
+
+    Refused (§12.2): a width that is negative or not a number, under either
+    rule (set_delta's refusal, made here too since under exploration at the
+    synapse no width reaches set_delta); a positive width named with
+    exploration at the synapse (§6.13); an exploration named against the one a
+    loaded checkpoint was saved under (§12.9); a setting of exploration at the
+    synapse named under the neuron rule, where it would do nothing; a rest
+    hazard outside [0, 1) (§7.6); the charged drive under the neuron rule, and
+    DRIVE_STEPS named under a drive that is not charged (5.4b); and under
+    exploration at the synapse the hebb eligibility (§8.3), the code's forced
+    drive (§5.7) and a read that is not the count (§5.10) -- each refused by
+    the network and the engines too, and here so that the command line refuses
+    before it builds anything and a sweep's arm says so in its line rather
+    than dying in its worker.
+    """
+    named = args.named
+    if saved is None:
+        default = EXPLORATION
+    else:
+        from .persistence import exploration_of
+        default = exploration_of(saved)  # the neuron rule where the checkpoint carries none (§8.14)
+        if "exploration" in named and args.exploration != default:
+            under = "exploration at the synapse" if default == "synapse" else "the neuron rule"
+            raise ValueError(f"the checkpoint was saved under {under} and the run names --exploration {args.exploration}: "
+                             "a run is not resumed under the other exploration, nothing mapping the neuron rule's "
+                             "per-decision bookkeeping onto the gain or back (§12.9)")
+    if "exploration" not in named:
+        args.exploration = default
+    synaptic = args.exploration == "synapse"
+    kept = saved if saved is not None and synaptic else {}  # a checkpoint of the neuron rule carries no such settings
+    for dest, flag, key, constant in SYNAPSE_SETTINGS:
+        if dest not in named:
+            setattr(args, dest, kept.get(key, constant))
+    if not synaptic:
+        stray = [flag for dest, flag, _, _ in SYNAPSE_SETTINGS if dest in named]
+        if stray:
+            raise ValueError(f"{', '.join(stray)} {'names a setting' if len(stray) == 1 else 'name settings'} of "
+                             "exploration at the synapse (§7.6, §7.7, §8.17), and this run explores by the neuron rule "
+                             "(§7.1): give --exploration synapse too")
+    refuse_synapse_settings(args.synapse_hazard, args.hazard_family, args.synapse_scaling, args.trace_counts)
+    if "delta" in named:
+        refuse_width(args.delta)  # -1 and nan, which the synapse's branch below would otherwise settle to 0
+    if synaptic:
+        if "delta" in named and args.delta > 0.0:
+            raise ValueError(f"--delta {args.delta:g} and --exploration synapse together are refused: the system explores "
+                             "by one thing, and under exploration at the synapse every width is 0 (§6.13, §7.1)")
+        args.delta = 0.0  # §6.13: the width every neuron has there, ESCAPE_DELTA not consulted
+    elif "delta" not in named:
+        args.delta = ESCAPE_DELTA if saved is None else saved.get("escape_delta", 0.0)  # a checkpoint keeps its own
+    if "drive" not in named and saved is not None:
+        args.drive = saved.get("drive", args.drive)  # §12.9: the drive it was saved under, not the problem's
+    if "drive_steps" not in named:
+        args.drive_steps = saved.get("drive_steps", DRIVE_STEPS) if saved is not None else DRIVE_STEPS
+    if args.drive == "charged" and not synaptic:
+        raise ValueError("the charged drive runs under exploration at the synapse only: under the neuron rule a charged "
+                         "input would fire by its own hazard, not by the comparison its arithmetic is written on (5.4b); "
+                         "give --exploration synapse")
+    if "drive_steps" in named and args.drive != "charged":
+        raise ValueError(f"--drive-steps names the deliveries of the charged drive (5.4b), and this run's drive is "
+                         f"{args.drive}: give --drive charged, or drop --drive-steps")
+    if synaptic and getattr(args, "eligibility", None) == "hebb":
+        raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and it has no "
+                         "neuron decision to centre (§8.3)")
+    if synaptic and args.drive == "forced":
+        raise ValueError("the code's forced drive makes every bit-1 input spike at the epoch's moment, which §5.7 rules "
+                         "out; it is kept for the neuron rule's plumbing tests and refused under exploration at the "
+                         "synapse (§5.7, §12.2): drive it by the rate or the charged drive")
+    if synaptic and args.read != "count":
+        raise ValueError(f"the {args.read!r} read is refused under exploration at the synapse until a clause says what it "
+                         f"reads there; the count read is the output's spikes plus its read synapse's escapes (§5.10): "
+                         f"give --read count, or a problem that reads the count")
+
+
+def exploration_words(args: argparse.Namespace) -> str:
+    """How a banner and a --seeds header name what explores (§7.1): the width under the neuron rule, as they always
+    have, or exploration at the synapse with its settings and, under TRACE ventured, that the estimator is biased, as
+    §8.17 asks a run that names it to say in its record."""
+    if args.exploration != "synapse":
+        return f"escape delta {args.delta:g}"
+    words = (f"exploration at the synapse, h0 {args.synapse_hazard:g}, the {args.hazard_family} family, "
+             f"{args.synapse_scaling} scaling, trace {args.trace_counts}")
+    if args.drive == "charged":
+        words += f", the charged drive in {args.drive_steps} deliveries"
+    if args.trace_counts == "ventured":
+        words += f" -- {TRACE_VENTURED_BIAS}"
+    return words
+
+
 def _run(args: argparse.Namespace) -> int:
     try:
         if args.seeds is not None:
@@ -666,6 +896,13 @@ def _run(args: argparse.Namespace) -> int:
                 args.rule = args.given_rule  # --rule if it was given, else the problem's
                 apply_problem(args)
                 print(f"problem: {args.problem} (from the checkpoint)", file=sys.stderr)
+            try:  # §12.9: the network resumes under the settings it was saved under, unless the run names others
+                apply_exploration(args, data)
+                apply_clock(args, data)  # and on the clock it ran on
+            except ValueError as exc:
+                print(f"error: cannot resume {args.load_weights}: {exc}", file=sys.stderr)
+                return 2
+            Neuron.refractory, Neuron.hop, Neuron.bored_after, Neuron.tau = args.refractory, args.hop, args.bored_after, args.tau
             args.threshold = data["threshold"]
             args.minimum_potential = data.get("minimum_potential", -1.0)
             args.weight = None if data["random_weights"] else data["weight"]
@@ -754,8 +991,11 @@ def _run(args: argparse.Namespace) -> int:
             grid.interval = args.interval
             grid.presentation = args.presentation_time  # §5.4a; None is the whole epoch
             grid.presentation_time  # refuse a window past the horizon now, not at the first draw
-            if not loaded or args.delta != ESCAPE_DELTA:
-                grid.set_delta(args.delta)  # escape noise (§5.2), from the thresholds the container gave; a checkpoint keeps its own
+            # escape noise (§5.2), from the thresholds the container gave, under the neuron rule; a checkpoint keeps its
+            # own widths unless the run names another (§12.9), and under exploration at the synapse there is none (§6.13)
+            if (not loaded and args.exploration == "neuron") or (
+                    loaded and "delta" in args.named and args.delta != data.get("escape_delta", 0.0)):
+                grid.set_delta(args.delta)
             if args.eligibility is None:  # the eligibility follows the neuron (§1.3)
                 args.eligibility = "hazard" if grid.hazard else ELIGIBILITY
             grid.problem = args.problem
@@ -765,12 +1005,22 @@ def _run(args: argparse.Namespace) -> int:
                 print(f"clock neurons: the first {args.clock} input neurons are driven every epoch whatever the pattern "
                       f"(§4.3), and take no raw bits", file=sys.stderr)
             grid.quash_rate, grid.quash_k = args.quash, args.quash_k
+            # the drive: the one named, else the checkpoint's (§12.9, apply_exploration), else the problem's
             grid.drive, grid.input_rate, grid.input_rate_off = args.drive, args.input_rate, args.input_rate_off
+            grid.drive_steps = args.drive_steps  # 5.4b's DRIVE_STEPS, the same way
             grid.rate_on = args.rate_on
             grid.pickiness = args.pickiness
             grid.population = args.population
             grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
+            # §7.5: exploration at the synapse, once the thresholds are the container's and the readout is set -- or, for a
+            # checkpoint, the one restore set under the settings it was saved with, reset only where the run names others
+            if args.exploration == "synapse" and (not loaded or args.named & {dest for dest, *_ in SYNAPSE_SETTINGS}):
+                grid.set_exploration("synapse", h0=args.synapse_hazard, family=args.hazard_family,
+                                     scaling=args.synapse_scaling, trace=args.trace_counts)
+            if args.exploration == "synapse":
+                print(f"{exploration_words(args)} (AUTHORITY.md §7.5-§7.9); every neuron fires by the comparison, "
+                      f"every width 0 (§6.13)", file=sys.stderr)
             if args.data is not None:
                 patterns, labels = dataset_stream(args.data, args.input_seed if args.input_seed is not None else seed)
                 grid.use_input_stream(patterns, labels)
@@ -804,9 +1054,13 @@ def _run(args: argparse.Namespace) -> int:
                       f"; hop {Neuron.hop:g} ms, tau {Neuron.tau:g} ms", file=sys.stderr)
             else:
                 # the Teacher zeroes sigma for the Hebbian eligibilities, so the network is deterministic: report what runs
+                explored = (f"escape delta {args.delta:g}"
+                            f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}"
+                            if args.exploration == "neuron" else
+                            f"exploration at the synapse (every hazard times {grid.escape_scale:.3g} at "
+                            f"{len(grid.all_neurons())} neurons{', over the fan-out' if args.synapse_scaling == 'fan-out' else ''})")
                 print(f"rule: reinforce ({args.eligibility} eligibility), lr {args.lr:g}, "
-                      f"escape delta {args.delta:g}"
-                      f"{f' (every hazard times {grid.escape_scale:.3g} at {len(grid.all_neurons())} neurons)' if args.delta else ''}"
+                      f"{explored}"
                       f"; hop {Neuron.hop:g} ms, tau {Neuron.tau:g} ms, "
                       f"bored after {Neuron.bored_after:g} ms, "
                       f"{f'quash {args.quash:g} falling off at {args.quash_k:g}/ms' if args.quash else 'no quash'}",
@@ -837,7 +1091,7 @@ def _run(args: argparse.Namespace) -> int:
                     rule=args.rule,
                 )
                 if loaded:
-                    resume_teacher(teacher, data)
+                    resume_teacher(teacher, data)  # the statistics, the baseline and the exploration stream (§9.3, §12.11)
                 if args.trace is None and args.save_weights and not args.no_trace:
                     args.trace = str(Path(args.save_weights).with_suffix(".csv"))
                 if args.trace and not args.no_trace:
@@ -847,6 +1101,8 @@ def _run(args: argparse.Namespace) -> int:
                 teacher.epoch(input_bits, verbose=Neuron.verbose)  # the first epoch, with exploration, like every other
             else:
                 explore = random.Random(seed)  # the exploration noise of an untrained run
+                if loaded:
+                    resume_stream(explore, data)  # §12.11: where the checkpoint left it, not reseeded
                 run_epoch(grid, input_bits, verbose=Neuron.verbose, rng=explore, discharge=args.discharge)
 
             def save_checkpoint():
@@ -936,7 +1192,8 @@ def _seed_worker(job: dict) -> dict:
     Neuron.tau = job.get("tau", Neuron.tau)
     grid.interval = job.get("interval", grid.interval)
     grid.presentation = job.get("presentation_time", grid.presentation)  # §5.4a, in each worker
-    grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's
+    grid.set_delta(job.get("delta", ESCAPE_DELTA))  # escape noise (§5.2), once the thresholds are the container's; 0
+    # under exploration at the synapse (§6.13), which apply_exploration settled before the job was made
     grid.problem = job.get("problem")
     grid.readout, grid.read, grid.read_window = job.get("readout", "top"), job.get("read", "fired"), job.get("read_window")
     grid.rule = job["teacher"].get("rule", RULE)
@@ -948,7 +1205,11 @@ def _seed_worker(job: dict) -> dict:
     grid.pickiness = job.get("pickiness", ROW_CRITIC_PICKINESS_IN_SPIKES)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
     grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
+    grid.drive_steps = job.get("drive_steps", DRIVE_STEPS)  # 5.4b
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
+    if job.get("exploration", "neuron") == "synapse":  # §7.5, once the thresholds are the container's and the readout set
+        grid.set_exploration("synapse", h0=job["synapse_hazard"], family=job["hazard_family"],
+                             scaling=job["synapse_scaling"], trace=job["trace_counts"])
     if job.get("data") is not None:
         grid.use_input_stream(*dataset_stream(job["data"], job["input_seed"] if job.get("input_seed") is not None else seed))
     elif job.get("input_seed") is not None:
@@ -995,8 +1256,9 @@ def _run_seeds(args: argparse.Namespace) -> int:
         weight_range=(args.epsilon, 1.0) if args.positive_weights else WEIGHT_RANGE,
         minimum_potential=args.minimum_potential,
     )
-    if args.eligibility is None:  # the eligibility follows the neuron (§1.3): every seed's network gets args.delta
-        args.eligibility = "hazard" if args.delta > 0 else ELIGIBILITY
+    if args.eligibility is None:  # the eligibility follows the neuron (§1.3): every seed's network gets args.delta, which
+        # apply_exploration has settled -- ESCAPE_DELTA unless named, or 0 under exploration at the synapse (§6.13)
+        args.eligibility = "hazard" if args.delta > 0 or args.exploration == "synapse" else ELIGIBILITY
     teacher_kwargs = dict(
         target=args.target,
         lr=args.lr,
@@ -1033,6 +1295,9 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "drive": args.drive, "input_rate": args.input_rate, "input_rate_off": args.input_rate_off,
                      "rate_on": args.rate_on, "rate_tau": args.rate_tau,
                      "pickiness": args.pickiness, "delta": args.delta,
+                     "exploration": args.exploration, "synapse_hazard": args.synapse_hazard,  # §7.1, §7.6
+                     "hazard_family": args.hazard_family, "synapse_scaling": args.synapse_scaling,  # §7.6, §7.7
+                     "trace_counts": args.trace_counts, "drive_steps": args.drive_steps,  # §8.17, 5.4b
                      "population": args.population, "temperature": args.temperature,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
@@ -1051,7 +1316,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
     scaled = args.scale_with_fan_in is not False
     shape += ", fan-in scaled" if scaled else ", flat threshold and floor"
     shape += f", {args.rule} rule" + (f" with the {args.eligibility} eligibility" if args.rule == "reinforce" else "")
-    shape += f", escape delta {args.delta:g}" if args.delta else ""
+    if args.exploration == "synapse" or args.delta:  # what explores, and under TRACE ventured the estimator's bias (§8.17)
+        shape += f", {exploration_words(args)}"
     print(
         f"{args.seeds} seeds from {base} on {workers} cores, {args.epochs:,} epochs each, {shape}",
         file=sys.stderr,

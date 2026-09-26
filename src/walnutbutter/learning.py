@@ -333,8 +333,18 @@ def reward(network: Network, target: str = "reversed", critic: str = "row") -> f
 
 
 def forced(neuron: Neuron) -> bool:
-    """True if the neuron was forced to fire by the stimulus this epoch."""
+    """True if the neuron carries 5.8's driven mark this epoch: forced to fire by the stimulus, or delivered to by the
+    charged drive (5.4b) -- a delivery dropped at a refractory input included. Every reader of the mark reads it here or
+    as `neuron.forced`: the pay (§8.1), the rate memory (§2.6), homeostasis and un-sticking (§9.2)."""
     return neuron.forced
+
+
+def _refuse_thresholds_at_or_below_zero(network: Network, moved) -> None:
+    """§7.5: under exploration at the synapse a threshold at or below zero leaves u undefined, and is refused at the
+    moment homeostasis or un-sticking takes it there."""
+    if getattr(network, "exploration", "neuron") == "synapse" and any(neuron.threshold <= 0.0 for neuron in moved):
+        raise ValueError("a threshold moved to or below zero leaves u = clip(V, 0, theta) / theta undefined, and under "
+                         "exploration at the synapse it is refused (§7.5)")
 
 
 def update_rates(network: Network) -> None:
@@ -370,13 +380,14 @@ def homeostasis(
         return network.homeostasis(rate, target)
     if rate <= 0:
         return 0
-    moved = 0
+    moved = []
     for neuron in network.all_neurons():
         if forced(neuron):
             continue
         neuron.threshold = neuron.threshold + rate * (neuron.rate - target)  # nothing clips it
-        moved += 1
-    return moved
+        moved.append(neuron)
+    _refuse_thresholds_at_or_below_zero(network, moved)
+    return len(moved)
 
 
 def unstick(
@@ -410,6 +421,7 @@ def unstick(
         if neuron.rate > STUCK_ABOVE or neuron.rate < STUCK_BELOW:
             neuron.threshold = neuron.threshold + rate * (neuron.rate - target)
             nudged.append(neuron)
+    _refuse_thresholds_at_or_below_zero(network, nudged)
     return nudged
 
 
@@ -450,11 +462,16 @@ def reinforce(
     Two eligibilities survive (§8.3), hazard and hebb. Both are the same rule
     and differ only in what a decision's credit and expectation are, so both
     carry their own trace: neither takes a late-signal rule or an eligibility
-    trace of its own (§8.13).
+    trace of its own (§8.13). Under exploration at the synapse the decisions are
+    the synapses', the hazard's row is posted for them (§8.16) and the read
+    settles it into the score the same way; hebb is refused there (§8.3).
     """
     if eligibility not in ELIGIBILITIES:
         raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
-    if not getattr(network, "hazard", False):  # §8.3: no eligibility runs where the threshold decides
+    if eligibility == "hebb" and getattr(network, "exploration", "neuron") == "synapse":
+        raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and it has no "
+                         "neuron decision to centre (§8.3)")
+    if not getattr(network, "explores", False):  # §8.3: no eligibility runs where the threshold decides
         raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3)")
     if arrays(network):
         return network.reinforce(advantage, lr, eligibility)
@@ -523,7 +540,10 @@ class Teacher:
             eligibility = ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
             raise ValueError(f"unknown eligibility {eligibility!r}; choose from {', '.join(ELIGIBILITIES)}")
-        if rule == "reinforce" and not getattr(network, "hazard", False):  # §8.3
+        if eligibility == "hebb" and getattr(network, "exploration", "neuron") == "synapse":
+            raise ValueError("hebb is refused under exploration at the synapse: the decisions are the synapses', and it "
+                             "has no neuron decision to centre (§8.3)")
+        if rule == "reinforce" and not getattr(network, "explores", False):  # §8.3
             raise ValueError("the reinforce rule refuses to learn where the threshold decides: REINFORCE estimates a gradient from the randomness of the decision, and with no width there is no randomness to estimate from. Give the network a positive ESCAPE_DELTA (--delta) (§8.3) before the Teacher")
         if lr < 0 or homeostasis < 0 or unstick < 0:
             raise ValueError("learning rate, homeostasis and unstick rates must not be negative")

@@ -219,7 +219,7 @@ Touchpoints:
   - The two readings are equal in exact arithmetic but not in floating point. The leak walk also multiplies x·exp(−(t − trace_at)/τ) (lib.rs:919, arrays.py:323).
   - Under the accumulator `trace_at` is moved too (propagation.py:175, lib.rs:571) and checkpointed ("traces"), though no arithmetic reads it. Pin it in both TAU.
 - A run under ventured says in its record that the estimator is biased.
-- **Touchpoints:** O propagation.py:169-175; R lib.rs:559-572; A arrays.py:261-267. The record: the checkpoint, the arm json (docs/rust-sweep.py:347-370), the banner (cli.py:807-813) and the seeds header (cli.py:1054).
+- **Touchpoints:** O propagation.py:169-175; R lib.rs:559-572; A arrays.py:261-267. The record: the checkpoint, the arm json (docs/rust-sweep.py:347-370), the banner (cli.py:807-813) and the seeds header (cli.py:1054); and, from September 25, 2026, the sweep's docs/<name>.md header and docs/mnist-watch.py's banner. The command line's per-epoch trace CSV (`epoch,time_ms,baseline,score`, learning.py's `trace_to`) is not part of it: it is the checkpoint's companion, and the checkpoint beside it carries `estimator_bias`.
 
 ### 1.10 Eligibility and refusals (§8.3, §6.13, §7.3, §12.2)
 

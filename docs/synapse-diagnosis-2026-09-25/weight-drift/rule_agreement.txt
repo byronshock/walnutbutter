@@ -1,0 +1,9 @@
+correlation of the change start -> 25k between two arms of the same seed (seeds 1, 2, 3)
+  synapse rate lr 0.002  vs  neuron rate lr 0.002: +0.15, +0.18, +0.12
+  synapse rate lr 0.002  vs  neuron rate lr 0.0005: +0.15, +0.14, +0.06
+  synapse rate lr 0.01  vs  neuron rate lr 0.002: +0.31, +0.28, +0.25
+  synapse charged lr 0.002  vs  neuron rate lr 0.002: +0.18, +0.18, +0.14
+  synapse rate lr 0.002  vs  synapse charged lr 0.002: +0.14, +0.11, +0.05
+  synapse rate lr 0.002  vs  synapse rate lr 0.01: +0.18, +0.24, +0.18
+  neuron rate lr 0.0005  vs  neuron rate lr 0.002: +0.24, +0.25, +0.23
+  synapse rate lr 0.0005  vs  synapse rate lr 0.002: +0.36, +0.27, +0.33

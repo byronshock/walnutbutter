@@ -1,0 +1,73 @@
+**Verdict: (c).** The +0.35 is noise. There is no engine error against §8.16 (a), and the clause itself forces a mean of exactly zero at the read (b). The four records sit in the upper tail of a skewed statistic whose mean is zero. My twelve new Rust records give −0.009 ± 0.081 over n = 40,000 epochs.
+
+**1. What the critic summed.** In probe_arm.py, fast.train (the Rust loop) calls the probe after each epoch's update. The probe reads engine.scores() and sums it over the input→output synapses, which are all the synapses on mnist with no hidden neurons (1425 for seed 1). Those scores are the epoch's settled scores: every spike or floor settle during the epoch plus the read's x·G − B, cleared at the next reset.
+- analyse.py takes that per-epoch sum, mean ± sd/√n. The four records:
+  - seed 1 fresh: +0.545 ± 0.273
+  - seed 1 continued from 25k: +0.387 ± 0.251
+  - seed 2 fresh: +0.171 ± 0.229
+  - seed 2 continued from 25k: +0.348 ± 0.206
+  - pooled: +0.362 ± 0.123, n 14,000, z 2.94
+- The standard error itself is right. Lag-1/2/5 autocorrelations are all within ±0.04, and block-of-50 standard errors agree.
+- The statistic is right-skewed:
+  - Shape: sd 11–17, skew +0.35, median −0.57, 48% of epochs positive.
+  - Most of the mean comes from the top 1% of epochs: dropping them turns +0.36 into −0.11.
+- My repeat of seed 1 on Rust matches the critic's record epoch by epoch to 2.1e-14.
+
+**2. The per-wave direct posting (object engine, `_decide_synapses` wrapped read-only).**
+
+Checked at every wave, bit for bit, with zero violations over about 7M waves:
+- The engine's escapes are exactly the synapses whose draw is below P = −expm1(−m), with the same m the credit uses.
+- Each output's read count moves by exactly its read synapse's escape.
+- Every source with V > 0 and m > 0 has its gain moved by exactly a·c − (F−a)·m; every other gain stays put.
+
+Mean of the per-wave direct sum D = Σ_i entry_i·X_i, where X_i is the total trace into source i:
+
+| | goo 60 (copy; seeds 1–4, seeded weights and 0.02; lr 0.05) | mnist's point (seed 1, 150 epochs; seeds 11 and 12, 400 each) |
+|---|---|---|
+| epochs | 40,000 | 950 |
+| waves | 2,863,069 | 4,104,541 |
+| posting decisions | 156,160 | 51.4M |
+| D, all waves | −5.6e-5 ± 1.6e-4 (z −0.34) | −1.65e-4 ± 1.18e-4 (z −1.39) |
+| D, posting waves only | −1.8e-3 ± 5.3e-3 (z −0.34) | same as all waves (almost every wave posts) |
+| z from the exact conditional variance | −0.33 | −1.37 |
+| summed eligibility per epoch | −0.004 ± 0.019 | −0.71 ± 0.52 |
+| draw calibration Σ(a − F·P) | −153 ± 99 | +34 ± 176 |
+
+- **Escape half against silent half** (mnist seed 11): the escape half was 28,525 against an expected 28,835. The silent half was 28,835.5 against an expected 28,834.7. The two expectations are equal to the digit.
+- **By state:** binned by X_i or by m_i, no bin has |z| above 2.4, and no sign persists. The smallest-m bin went +3.70 (5-epoch smoke), +1.42 (150 epochs), then +0.15 and −2.36 (the two 400-epoch runs).
+
+**3. The bookkeeping identity holds.**
+- Settled score against direct posting, per synapse: the worst difference is 8.5e-14 on goo and 2.0e-14 on mnist.
+- The object run on seed 1 is the critic's run. Its settled per-epoch sums equal the critic's Rust record for epochs 1–150 to 1.4e-14. Its per-wave direct posting, summed over each epoch, equals that record to 3.2e-14.
+
+**4. Objects against Rust (fast.compare, == every epoch).** Parted = [] on all 11 object runs: goo 8 × 5000 epochs, mnist 150 + 400 + 400. The comparison covers scores, notes, gains, weights, traces and stream state.
+
+**5. Replication on Rust, same measurement.**
+- Fresh seeds 3–10, 3000 epochs each: −0.050 ± 0.107 (n 24,000).
+- The critic's own networks 1 and 2 on four other exploration streams, 4000 epochs each: −0.217 ± 0.255, +0.191 ± 0.269, +0.287 ± 0.239, −0.050 ± 0.228. Pooled +0.053 ± 0.124, so nothing about those two networks is special.
+- All twelve new records: −0.009 ± 0.081 (n 40,000).
+- All sixteen with the critic's: +0.087 ± 0.068. Σz² is 14.66 on 16 degrees of freedom, so the records do not differ from each other. The critic's four exceed the new pool by +0.37 ± 0.15.
+
+**Why the clause gives zero at the read.**
+- The score on synapse k→i at a read is a sum over the epoch's waves: gate × entry × trace. The gate is V_i > 0 and m > 0; the entry is a·c − (F−a)·m; the trace is x_ki.
+- The notes, settles and re-bases are an exact rewrite of that sum. Each open arrival collects the gain now minus the gain when it arrived, which is every entry posted from its own wave on.
+- Everything multiplying the entry is fixed before the wave's fresh draws: the gate, the trace, m and F. Arrivals, the floor and spikes all come before the draws.
+- Given that, the number of escapes is Binomial(F, 1 − e^−m). The entry's mean is F(1 − e^−m)·c − F·e^−m·m = 0.
+- So each wave adds a zero-mean term, and the sum over an epoch has mean exactly zero. The V > 0 gate, the floor and discharge clears, the re-base at the read, and any link between x and later gates only choose which zero-mean terms enter.
+- At mnist's point it is stronger still. The outputs' only synapse is the read synapse, whose escapes deliver nothing, so the epoch runs the same whatever those draws are. The sum therefore has mean zero given the whole run, and its conditional variance is Σ X²·m²·e^−m/(1 − e^−m). The square root of its mean is 15.4–17.6, against observed sds of 15.5–17.3.
+
+**Why +0.36 turned up.** Each epoch is about 38 rare escape credits, each around X ≈ 1.45, against a steady small debit. The distribution leans right and its mean rides on the top 1% of epochs. A pooled z of 2.94 is roughly a 1-in-300 draw, and it was one loose end among many numbers in the critic's report. Compute used was about 2.8 CPU-hours, and nothing is still running.
+
+Everything is in /tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/elig/:
+- instrument.py
+- run_goo.py
+- run_mnist.py
+- rust_rep.py
+- launch.sh
+- analyse.py
+- pool_objects.py
+- pool_rust.py
+- reread_critic.py
+- critic_tail.py
+- tie_seed1.py
+- run data: goo60-seed*-5000.npz, mnist-seed{1-150,11-400,12-400}.npz, rust-seed*-*.npz, and the *.log files
