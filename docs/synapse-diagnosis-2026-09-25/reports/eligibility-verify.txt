@@ -1,0 +1,60 @@
+**Verdict: I agree, (c).** The +0.35 is noise. The engine follows §8.16, and under the clause the summed eligibility has mean exactly zero at every read. I checked this with my own scripts and 2.5 CPU-hours. Nothing is still running.
+
+**1. The expectation, re-derived from §8.16**
+- Given the state before the wave's draws, the number of escapes is Binomial(F, P), with P = 1 − e^−m and c = m e^−m / P.
+- The mean of a·c − (F − a)·m is F·P·c − F·e^−m·m = F·m·e^−m − F·m·e^−m = 0.
+- Computed exactly at 60 digits for m from 1e-9 to 50 and F of 1, 2, 5 and 24, the mean is at most 3e-60 of F·m. In the engine's float forms it is at most 1.9e-16 of F·m. The variance is F·m²·e^−m / P, confirmed to 40 digits.
+- A brute-force check of 1e8 draws at m of 0.001, 0.0036 and 0.02 gives z of +1.58, +2.05 and −1.63.
+- The gate (V > 0 and m > 0), the trace, m and F are all fixed before the wave's draws, so each wave adds a zero-mean term. At mnist's point the outputs' read escapes deliver nothing, so an epoch's sum has mean zero given the whole run.
+
+**2. My own per-wave check on the object engine, on the resumed networks**
+The first check never ran these. I used the 25k checkpoints for seeds 1 and 2, 250 epochs each, with the checkpoint's own stream and baseline, run under fast.compare.
+- I computed m myself from §7.5 as Δt/hop × √(60/455) × h0^(1−u). It equals the engine's synapse_expected bit for bit in all 964M comparisons.
+- Escapes were taken from what actually happened (the read-count moves and the escaped list), not from the draws.
+- Objects against Rust on a resumed network: no disagreement in either run.
+- My object runs reproduce the critic's continued records to 7e-15 and 1.1e-14.
+- The settled scores match my per-wave direct sum to 1.8e-13.
+
+| | seed 1 | seed 2 |
+|---|---|---|
+| waves | 1.09M | 1.08M |
+| posting decisions | 11.1M | 8.9M |
+| z of the per-wave sum against its exact conditional variance | +0.69 | +0.40 |
+| escapes, gated waves: seen against expected | 5455 against 5518.7 (z −0.86) | 4380 against 4377.5 (z +0.04) |
+| per-epoch z: mean, sd | +0.048, 1.03 | +0.021, 1.04 |
+| draw calibration z, all sources | +0.77 | +0.72 |
+| draw calibration z, inputs only | +1.10 | +0.73 |
+| observed sd | 13.7 | 11.8 |
+| square root of the mean conditional variance | 13.2 | 11.3 |
+
+**3. More data on Rust, measured as the critic measured**
+The measurement is the sum of the settled scores over the input→output synapses after each update. The runs are at mnist's pinned point: lr 0.002, rate drive, h0 0.01, loglinear, count scaling, trace all.
+- **The resume path the first check skipped.** 13 records continued from the 25k checkpoints of seeds 1, 2 and 3, on four new streams each for seeds 1 and 2, two for seed 3, and the checkpoint's own stream for all three: −0.005 ± 0.050 (n 58,000).
+- **The critic's own four runs, extended past their window.** The seed-1 and seed-2 continued runs went to 10,000 epochs; their first 3000 match the critic to 1.4e-14. The two fresh runs went to 10,000 epochs; their first 4000 match to 2.1e-14. The new epochs only give:
+  - fresh: −0.009 ± 0.199 and +0.122 ± 0.169
+  - continued: −0.051 ± 0.158 and +0.101 ± 0.132
+  - all four: +0.040 ± 0.082 (n 26,000)
+  
+  The same networks on the same streams return to zero once past the critic's window.
+- **Every new record of mine** (fifteen, n 70,000): +0.006 ± 0.047.
+- **All replications** (the first check's twelve plus my fifteen): +0.0004 ± 0.042 (n 110,000).
+- **Everything, with the critic's four:** +0.041 ± 0.040 (n 124,000). Σz² is 22.2 on 31 degrees of freedom (p 0.88).
+
+**4. What the first check missed or got wrong**
+- **The skew argument does not explain the +0.36.**
+  - At n = 14,000 the mean is effectively normal. A bootstrap of the critic's pool, centred on zero, gives a skew of the mean of +0.015 and P(mean ≥ +0.362) = 0.0019, where the normal curve gives 0.0017.
+  - Dropping the top 1% of epochs pulls down the mean of any right-skewed sample whose mean is zero; here it removes 0.47. That the top 1% carries the mean is therefore not evidence of anything.
+  - The +0.36 is simply about a 1-in-300 event (two-sided), met among the many numbers in the critic's report. The case for noise rests on the exact derivation, the per-wave checks and the replications, not on the skew.
+- **The resume path was never tested.** Two of the critic's four records were continued from checkpoints. All twelve of the first check's replications were fresh, and none of its objects-against-Rust comparisons ran on a resumed network. Sections 2 and 3 cover that path now, and it is clean.
+- **The positive total is spread across outputs, not carried by one.** Per output in the critic's four records, Σz² over the 60 outputs is 57.3, 75.4, 39.4 and 43.3 (p 0.58, 0.09, 0.98, 0.95), and the largest |z| is 2.5.
+- **The standard errors are, if anything, slightly conservative.** The 27 replication records agree with each other more closely than their standard errors predict: Σz² 12.4 on 27 degrees of freedom (p 0.99). Batch means over 1000 epochs have 0.95 of the predicted variance.
+- **Their record count is right.** Their file rust-seed1-4000.npz is the critic's seed-1 fresh record repeated. Their n of 40,000 correctly leaves it out.
+
+Everything is in `/tmp/claude-1000/-home-byron-Documents-code-walnutbutter/5e969395-0125-4ccd-9daf-efdcffa9eda4/scratchpad/diag/elig/verify/`:
+- derive.py
+- objwave.py
+- cont.py
+- launch.sh
+- pool.py
+- peek.py
+- the results: objwave-seed{1,2}-ckpt-250.npz, cont-seed*-*.npz, and the *.log files

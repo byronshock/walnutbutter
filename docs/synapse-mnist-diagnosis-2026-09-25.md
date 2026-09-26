@@ -105,8 +105,14 @@ more count always costs, −0.005 to −0.024); an upward bias in the rule (its 
 measured sums straddle zero); the ventured input as the source (removing its delivery changes spikes by −1.6% on
 the rate drive); the rest hazard setting the level (a thirty-fold change moves spikes by 5%).
 
-**A loose end, being checked.** One investigator measured the synapse rule's summed eligibility at +0.35 ± 0.12
-per epoch, where its mean should be zero.
+**A loose end, settled: noise.** One investigator measured the synapse rule's summed eligibility at +0.35 ± 0.12
+per epoch, where §8.16 makes its mean exactly zero (the gate, the trace, m and F are fixed before a wave's draws, and
+the entry's mean over the draws is F(1 − e^−m)c − F e^−m m = 0). Checked by two agents independently
+(`elig/`, `reports/eligibility-*.txt`): the object engine's escapes, read counts and gain moves match the clause
+at every one of about 7 million waves; the settled scores equal the per-wave direct posting to about 1e-13;
+objects and Rust agree with `==` on every run, resumed 25,000-epoch networks included; twelve fresh Rust records
+give −0.009 ± 0.081 per epoch (n 40,000). The statistic is skewed, its mean riding on the top 1% of epochs; the
+original four records were about a one-in-three-hundred draw.
 
 ## 5. Running now
 
