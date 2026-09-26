@@ -114,18 +114,43 @@ objects and Rust agree with `==` on every run, resumed 25,000-epoch networks inc
 give −0.009 ± 0.081 per epoch (n 40,000). The statistic is skewed, its mean riding on the top 1% of epochs; the
 original four records were about a one-in-three-hundred draw.
 
-## 5. Running now
+## 5. The synapse rule at 200,000 epochs, at two floors
 
-Byron's choice: the synapse rule at 200,000 epochs with the trap out of reach and at the pinned floor. Synapse,
-rate drive, lr 0.002 and 0.005, floor −0.2 and −1.2 (at −1.2 the line sits at 3θ, above the weight cap for every
-output), seeds 1–3; the neuron rule at floor −1.2, lr 0.0005, seeds 1–3 as the reference; a trace point every
-5,000 epochs, to be judged on accuracy against the neuron rule's own windows (0.15–0.18 over epochs 50,000–100,000,
-0.16–0.22 over 100,000–200,000 at floor −0.2). `floorsweep.sh`, launched 17:26 MDT.
+Byron's choice: synapse, rate drive, lr 0.002 and 0.005 (step-matched to the neuron rule's 0.0005 and 0.001),
+floor −0.2 and −1.2 (at −1.2 the trap's line sits at 3θ, above the weight cap for every output), seeds 1–3; the
+neuron rule at floor −1.2, lr 0.0005, seeds 1–3; a trace point every 5,000 epochs (`floorsweep.sh`, 17:26–20:37
+MDT). The neuron rule at the pinned floor is its own September 24 run (runs/mnist-1m-lowlr, lr 0.0005, seeds 1–3),
+the same rule to the bit on the engine as built then. Accuracy per 25,000-epoch block, mean of three seeds; chance
+0.100.
 
-What the diagnosis predicts: the deep floor removes the trap and lowers the starting activity (busy at lr 0:
-46 → 14), but it does not give the rule sight of its outputs' spikes, and at the higher rate it may silence outputs
-at the other end. If the arms at −1.2 still sit at chance by 200,000 epochs while the neuron rule leaves it, the
-blindness to deterministic spikes, not the trap, is what stands in the way.
+| arm | 0–25k | 25–50k | 50–75k | 75–100k | 100–125k | 125–150k | 150–175k | 175–200k |
+|---|---|---|---|---|---|---|---|---|
+| neuron, lr 0.0005, floor −0.2 | 0.098 | 0.122 | 0.141 | 0.163 | 0.174 | 0.173 | 0.180 | 0.195 |
+| synapse, lr 0.002, floor −0.2 | 0.098 | 0.107 | 0.119 | 0.138 | 0.150 | 0.157 | 0.166 | 0.175 |
+| synapse, lr 0.002, floor −1.2 | 0.099 | 0.113 | 0.116 | 0.131 | 0.137 | 0.136 | 0.129 | 0.138 |
+| neuron, lr 0.0005, floor −1.2 | 0.095 | 0.100 | 0.093 | 0.100 | 0.099 | 0.099 | 0.101 | 0.110 |
+| synapse, lr 0.005, floor −0.2 | 0.087 | 0.097 | 0.103 | 0.109 | 0.107 | 0.105 | 0.106 | 0.101 |
+| synapse, lr 0.005, floor −1.2 | 0.082 | 0.080 | 0.091 | 0.074 | 0.075 | 0.077 | 0.072 | 0.070 |
+
+Over the last tenth (epochs 180,000–200,000): synapse lr 0.002 at floor −0.2 reaches 0.176 (seeds 0.168, 0.180,
+0.180), score −3.21, 31 outputs stuck on, estimator correlation 0.20; at floor −1.2, 0.137 (0.158, 0.120, 0.134),
+score −2.56, 8 stuck on. The neuron rule at floor −1.2 reaches 0.110 (0.088, 0.133, 0.108). Speed alone on the
+machine: synapse 18 epochs/s, neuron 27.
+
+What it says:
+
+- **The synapse rule learns mnist.** At lr 0.002 and the pinned floor it leaves chance on every seed and climbs
+  every block, at about two-thirds of the neuron rule's pace early on and about nine-tenths of its accuracy by
+  200,000 epochs (0.175 against 0.195 in the last block).
+- **The step-size match holds:** synapse lr 0.002 learns as the neuron rule's 0.0005 does; synapse 0.005 is too
+  fast at either floor, and at −1.2 it falls below chance.
+- **The trap does not stop it at lr 0.002.** The pinned floor, trap and all, does better than the deep floor
+  without it (0.175 against 0.138). The deep floor costs both rules — the neuron rule barely leaves chance there —
+  so floor −1.2 is no floor to adopt; what the trap costs at the pinned floor is not measured by this sweep.
+- **Its outputs stay busier and its score stays worse than the uniform line** (−3.21, 31 stuck on), as the
+  diagnosis found: the evidence it gives is sharper and more often wrong, even while the fraction right climbs.
+- The diagnosis's prediction — that the arms at −1.2 would stay at chance while the neuron rule left it, if the
+  blindness to deterministic spikes were the obstacle — did not come true: both learned at the pinned floor.
 
 ## Open for Byron and Cedric
 
