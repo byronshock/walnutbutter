@@ -13,7 +13,6 @@ import json
 import math
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -707,114 +706,7 @@ def test_the_mnist_drivers_read_the_count_the_read_takes():
         assert "fast._counts(engine)" in source and "epoch_spike_counts" not in source, name
 
 
-# --- the live sweep checkpoints, on copies ---------------------------------------------------------------------------
-
-def _runs() -> Path | None:
-    """The repository's runs/, or where this is a git worktree without one, the main checkout's -- read only."""
-    if (ROOT / "runs").is_dir():
-        return ROOT / "runs"
-    try:
-        common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--git-common-dir"], capture_output=True, text=True,
-                                check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    runs = (ROOT / common).resolve().parent / "runs"
-    return runs if runs.is_dir() else None
-
-
-LIVE = ("mnist-1m-lowlr", "mnist-1m-hidden", "mnist-1m-leaky-10seed")
-BEFORE = "ca4fe3e"  # the code before this step: the merge of PR #21's branch under the synapse engines
-BEFORE_RUN = """
-import importlib.util, json, sys
-from pathlib import Path
-code, root, job = Path(sys.argv[1]), Path(sys.argv[2]), json.loads(sys.argv[3])
-import walnutbutter
-assert Path(walnutbutter.__file__).resolve().is_relative_to(code.resolve()), walnutbutter.__file__
-spec = importlib.util.spec_from_file_location("rs", code / "docs" / "rust-sweep.py")
-rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
-from walnutbutter.neuron import Neuron
-Neuron.verbose = False
-rs.ROOT = root
-print(json.dumps(rs.run_arm(tuple(job))))
-"""
-# what this step changed on purpose in what a resumed arm writes: the checkpoint names its exploration and the stimuli and
-# charges waiting in the queue, its signals in flight are the engine's queue and not the one the network was restored
-# with, and its notes are the engine's (§12.9); the arm's json names the exploration and the drive (§7.1, 5.4b)
-ADDED = {"exploration", "waiting", "pending", "notes"}
-ARM_ADDED = {"exploration", "synapse_hazard", "hazard_family", "synapse_scaling", "trace_counts", "estimator_bias", "drive",
-             "drive_steps"}
-WALL_CLOCK = {"seconds", "epochs_per_second"}
-
-
-@pytest.mark.parametrize("sweep", LIVE)
-def test_a_live_sweep_checkpoint_resumes_through_the_sweep_as_the_code_before_this_step_resumed_it(tmp_path, sweep):
-    """The format-2 checkpoints on disk still resume exactly: copies of an arm's three files, continued by `run_arm
-    --resume-from` -- the path a sweep takes, through grid_of, the arm's knobs from its name, what the arm names
-    and the checkpoint's own settings (§12.9) -- for six epochs with a checkpoint written mid-run, under this code and
-    under the code before this step (git archive of BEFORE, the same engine). The two land on the same weights, stream,
-    thresholds, queue in the engine's terms and record; they differ only in what the step added on purpose, and the
-    file the resume writes is still format 2, its queue unmarked. runs/ is read and nothing under it is written."""
-    runs = _runs()
-    if runs is None or not (runs / sweep).is_dir():
-        pytest.skip("runs/ is not on disk here")
-    if not fast.available():
-        pytest.skip("the Rust loop is not built")
-    source = next((p for p in sorted((runs / sweep).glob("*-network.json"))
-                   if json.loads(p.read_text()).get("engine_pending")), None)
-    if source is None:
-        pytest.skip(f"no checkpoint of {sweep} carries engine_pending")
-    name = source.name[:-len("-network.json")]
-    if not all((runs / sweep / f"{name}{suffix}").exists() for suffix in (".json", ".csv")):
-        pytest.skip(f"{name} has no record beside its checkpoint")
-    before_code = tmp_path / "before"
-    before_code.mkdir()
-    try:
-        archive = subprocess.run(["git", "-C", str(ROOT), "archive", BEFORE, "src", "docs/rust-sweep.py"], capture_output=True,
-                                 check=True).stdout
-        subprocess.run(["tar", "-x", "-C", str(before_code)], input=archive, check=True)
-    except (OSError, subprocess.CalledProcessError):
-        pytest.skip(f"the code before this step ({BEFORE}) is not in this repository's history")
-    from walnutbutter import mnist
-    (before_code / "mnist").symlink_to(mnist.FOLDER)  # the data beside its src/, where mnist.py looks for it
-    original = {suffix: (runs / sweep / f"{name}{suffix}").read_bytes() for suffix in ("-network.json", ".json", ".csv")}
-    r = rs()
-    arm = {knob: float(value) for knob, value in re.findall(r"([a-z_]+?)(-?[0-9.]+)(?:-|$)", name)}
-    assert r.arm_name(arm) == name
-    job = (arm, "mnist", 6, 2, "cont", "hazard", True, None, None, sweep, (), 4)
-
-    for side in ("now", "before"):
-        (tmp_path / side / "runs" / "cont").mkdir(parents=True)
-        (tmp_path / side / "runs" / sweep).mkdir()
-        for suffix, content in original.items():  # copies: the resume reads them and writes under runs/cont
-            (tmp_path / side / "runs" / sweep / f"{name}{suffix}").write_bytes(content)
-    import sys
-    was = {attr: getattr(Neuron, attr) for attr in persistence.CLOCK}
-    r.ROOT = tmp_path / "now"
-    try:
-        now = r.run_arm(job)
-    finally:
-        for attr, value in was.items():
-            setattr(Neuron, attr, value)
-    path = [str(before_code / "src")] + [p for p in sys.path if p and Path(p).resolve() != (ROOT / "src").resolve()]
-    ran = subprocess.run([sys.executable, "-c", BEFORE_RUN, str(before_code), str(tmp_path / "before"), json.dumps(job)],
-                         capture_output=True, text=True, env={"PYTHONPATH": ":".join(path), "PATH": "/usr/bin:/bin"})
-    assert ran.returncode == 0, ran.stderr[-2000:]
-    before = json.loads(ran.stdout.strip().splitlines()[-1])
-    assert now["epoch_offset"] == before["epoch_offset"] > 0 and now["epochs_run"] == before["epochs_run"] == 6
-
-    files = lambda side, suffix: (tmp_path / side / "runs" / "cont" / f"{name}{suffix}").read_text()
-    new, old = json.loads(files("now", "-network.json")), json.loads(files("before", "-network.json"))
-    assert set(new) - set(old) <= ADDED and set(old) <= set(new)
-    assert [key for key in old if key not in ADDED and old[key] != new[key]] == []
-    assert files("now", ".csv") == files("before", ".csv")
-    assert set(now) - set(before) == ARM_ADDED
-    assert [key for key in before if key not in WALL_CLOCK and before[key] != now[key]] == []
-    assert (now["exploration"], now["drive"]) == ("neuron", "rate")
-
-    assert (new["format"], new["exploration"]) == (2, "neuron")
-    assert all(len(e) == 3 for e in new["engine_pending"]) and all(len(e) == 2 for e in new["pending"])
-    from walnutbutter.propagation import SIGNAL
-    back, _ = restore(tmp_path / "now" / "runs" / "cont" / f"{name}-network.json")
-    ids = [c.id for n in back.all_neurons() for c in n.outgoing]  # the engine's edge order, as connection ids
-    assert sorted(map(tuple, new["pending"])) == sorted((t, ids[k]) for t, kind, k in new["engine_pending"] if kind == SIGNAL)
-    assert {suffix: (runs / sweep / f"{name}{suffix}").read_bytes() for suffix in original} == original, "runs/ untouched"
+# The live-sweep test that stood here resumed copies of the format-2 mnist checkpoints through run_arm and held the
+# result to the code before the synapse step (ca4fe3e), both paid by the evidence critic. That critic left on
+# September 26, 2026 for the matched filter (AUTHORITY.md §9.4), so no code now pays those checkpoints as that code
+# did, and the test left with it; it is in the history at the commit before the matched filter.

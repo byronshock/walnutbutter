@@ -16,7 +16,7 @@ from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
 from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
 from .inputs import parse_bits
 from .constants import (
-    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION, TEMPERATURE,
+    ACROSS, BORED_AFTER, CRITIC, ESCAPE_DELTA, FILTER_MEMORY, FLIP, INPUT_CV, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, POPULATION,
     RATE_ON, RATE_TAU, READ_WINDOW, ROW_CRITIC_PICKINESS_IN_SPIKES,
     QUASH_K, QUASH_RATE, TAU, LEAK_TAU, PRESENTATION_TIME,
     ELIGIBILITY, HOMEOSTASIS, INTERVAL, LR,
@@ -26,7 +26,7 @@ from .constants import (
     DRIVE_STEPS, EXPLORATION, SYNAPSE_HAZARD_FAMILY, SYNAPSE_HAZARD_REST, SYNAPSE_HAZARD_SCALING, TRACE,
     cv_for_rate, rate_for_cv,
 )
-from .learning import CRITICS, ELIGIBILITIES, RULES, TARGETS, Teacher
+from .learning import CRITICS, ELIGIBILITIES, FILTERS, RULES, TARGETS, Teacher
 from .problems import dataset_stream
 from .monitor import main, run_epoch
 from .network import (DRIVES, EXPLORATIONS, SYNAPSE_HAZARD_FAMILIES, SYNAPSE_HAZARD_SCALINGS, TRACE_VENTURED_BIAS, TRACES,
@@ -394,23 +394,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--critic",
-        choices=sorted(CRITICS),
+        choices=sorted(CRITICS) + list(FILTERS),
         default=None,
         help=f"how the reward is judged: row (fraction of output neurons matching the target), sustained (of the "
-        f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), decoded "
-        f"(read the row as a word, error-correct it, fraction of data bits right), or decoded-exact "
-        f"(all data bits right or nothing); class, graded and evidence score a dataset's label (§8): class pays 1 when the "
-        f"label's group of outputs out-spikes every other, graded the fraction of the other groups it out-spikes, and "
-        f"evidence reads the group sums as log-odds at --temperature and pays the softmax cross-entropy ln q_label, "
-        f"chance ln 0.1. Default: {CRITIC}, or the problem's",
+        f"neurons the target says should be on, the fraction on: did the forced neurons sustain?), population (raw bits "
+        f"right after a majority vote per group); class, graded, whitened and poisson score a dataset's label (§8): class "
+        f"pays 1 when the label's group of outputs out-spikes every other, graded the fraction of the other groups it "
+        f"out-spikes, and whitened and poisson are the matched filters of AUTHORITY.md §9.4, which learn each class's "
+        f"template and the noise from the run and pay the log score of their estimate at the label, chance ln 0.1 -- "
+        f"whitened with the noise shared across the outputs, poisson with each output its own Poisson source. "
+        f"Default: {CRITIC}, or the problem's (mnist: whitened)",
     )
     parser.add_argument(
-        "--temperature",
-        type=float,
-        default=TEMPERATURE,
-        metavar="T",
-        help=f"the evidence critic's temperature (AUTHORITY.md §8): a lead of T spikes makes a class e times as likely; "
-        f"T -> 0 is the class critic, T -> infinity pays every epoch ln 0.1 (default: {TEMPERATURE:g})",
+        "--filter-memory",
+        type=int,
+        default=FILTER_MEMORY,
+        metavar="EPOCHS",
+        help=f"how many epochs a matched filter's templates and noise estimate remember (AUTHORITY.md §9.4): a plain "
+        f"mean until then, forgetting after (default: {FILTER_MEMORY})",
     )
     parser.add_argument(
         "--lr",
@@ -1031,7 +1032,6 @@ def _run(args: argparse.Namespace) -> int:
             grid.rate_on = args.rate_on
             grid.pickiness = args.pickiness
             grid.population = args.population
-            grid.temperature = args.temperature  # the evidence critic's (§8)
             Neuron.rate_tau = args.rate_tau
             # §7.5: exploration at the synapse, once the thresholds are the container's and the readout is set -- or, for a
             # checkpoint, the one restore set under the settings it was saved with, reset only where the run names others
@@ -1109,6 +1109,7 @@ def _run(args: argparse.Namespace) -> int:
                     unstick_target=args.unstick_target,
                     critic=args.critic,
                     rule=args.rule,
+                    filter_memory=args.filter_memory,
                 )
                 if loaded:
                     resume_teacher(teacher, data)  # the statistics, the baseline and the exploration stream (§9.3, §12.11)
@@ -1224,7 +1225,6 @@ def _seed_worker(job: dict) -> dict:
     grid.rate_on = job.get("rate_on", RATE_ON)
     grid.pickiness = job.get("pickiness", ROW_CRITIC_PICKINESS_IN_SPIKES)
     grid.population = job.get("population", POPULATION)  # the seed worker left it at the constant until September 16, 2026
-    grid.temperature = job.get("temperature", TEMPERATURE)  # the evidence critic's (§8)
     grid.drive_steps = job.get("drive_steps", DRIVE_STEPS)  # 5.4b
     Neuron.rate_tau = job.get("rate_tau", RATE_TAU)
     if job.get("exploration", "neuron") == "synapse":  # §7.5, once the thresholds are the container's and the readout set
@@ -1295,6 +1295,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
         unstick_target=args.unstick_target,
         critic=args.critic,
         rule=args.rule,
+        filter_memory=args.filter_memory,
     )
     if args.no_learn:
         print("error: --seeds is for comparing learning runs; drop --no-learn", file=sys.stderr)
@@ -1323,7 +1324,7 @@ def _run_seeds(args: argparse.Namespace) -> int:
                      "exploration": args.exploration, "synapse_hazard": args.synapse_hazard,  # §7.1, §7.6
                      "hazard_family": args.hazard_family, "synapse_scaling": args.synapse_scaling,  # §7.6, §7.7
                      "trace_counts": args.trace_counts, "drive_steps": args.drive_steps,  # §8.17, 5.4b
-                     "population": args.population, "temperature": args.temperature,
+                     "population": args.population,
                      "outputs": args.outputs, "data": args.data, "clock": args.clock,
                      "input_seed": None if args.input_seed is None else args.input_seed + (seed - base)})
     if args.engine == "arrays":

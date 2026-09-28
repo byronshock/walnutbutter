@@ -18,7 +18,7 @@ from typing import Iterable
 
 from .constants import (
     DRIVE_STEPS, ESCAPE_REFERENCE_COUNT, INPUT_DRIVE, INPUT_RATE, INPUT_RATE_OFF, INTERVAL, POPULATION, PRESENTATION_TIME,
-    SYNAPSE_HAZARD_FAMILY, SYNAPSE_HAZARD_REST, SYNAPSE_HAZARD_SCALING, TEMPERATURE, TRACE,
+    SYNAPSE_HAZARD_FAMILY, SYNAPSE_HAZARD_REST, SYNAPSE_HAZARD_SCALING, TRACE,
     QUASH_K, QUASH_RATE, RATE_ON, ROW_CRITIC_PICKINESS_IN_SPIKES, THRESHOLD_FAN_IN,
 )
 
@@ -145,7 +145,6 @@ class Network:
         # order: repeated, then the whole run followed by its negation)
         self.population = POPULATION  # neurons per raw bit under population coding
         # -- fire-if-one populations then, in the same order, fire-if-zero ones (Byron, September 16, 2026; learning.OUTPUT_CODINGS)
-        self.temperature = TEMPERATURE  # the evidence critic's temperature: the class sums as log-odds at this scale (§8)
         self.clock = 0  # clock neurons (§4.3, Byron, September 15, 2026): this many input neurons at the front of the input
         # zone whose bit is always 1, so the drive fires them every epoch whatever the pattern; they take no raw bits
         self.drive = INPUT_DRIVE  # how a bit becomes spikes (§4.3): "forced", one spike at the epoch's moment, or "rate"

@@ -60,7 +60,7 @@ Read a number from the record only with the configuration it was taken at.
   - [9.1 At most one rule pays at the read](#91-at-most-one-rule-pays-at-the-read)
   - [9.2 The order at the read](#92-the-order-at-the-read)
   - [9.3 The baseline and the advantage](#93-the-baseline-and-the-advantage)
-  - [9.4 The evidence critic](#94-the-evidence-critic)
+  - [9.4 The matched-filter critics](#94-the-matched-filter-critics)
   - [9.5 The row critic](#95-the-row-critic)
   - [9.6 The graded critic](#96-the-graded-critic)
   - [9.7 The class critic, and the fraction right](#97-the-class-critic-and-the-fraction-right)
@@ -802,7 +802,7 @@ ordering the input zone uses for bits and their negations, so the two zones
 read alike. The problem names $C$ and $P$ (§11). The label code the **row critic**
 scores against (§9.5) is the label's fire-if-one population on and its
 fire-if-zero population off, and every other class the other way round;
-mnist's own critic reads the class evidence of 5.12 and no code.
+mnist's own critic reads the counts through a matched filter (§9.4) and no code.
 *Byron, September 16, 2026, about 11:40 MDT: "In the output, I'd like to
 force complement coding. How about we try ten classes x a population of six
 neurons: three fire-if-one and three fire-if-zero? We will need to change
@@ -1196,7 +1196,7 @@ September 17, 2026 [record §6.7].*
 **8.14 What a checkpoint carries of this rule.** The round-trip itself is
 §12.9's. Of this rule: the weights; per neuron $\hat p_j$, the decisions to
 date and $E_j$; per synapse the trace and the time it was brought up to, and
-the note $B_{ij}$; the teacher's baseline $b$, LR, critic and eligibility; under exploration at the synapse, each neuron's gain $G_j$, each output's read count this epoch, the ventured mark on every signal in flight, and the settings of §7.1, §7.6, §7.7, 8.17 and 5.4b — a checkpoint that carries no §7.1 setting was saved under the neuron rule, and §12.9's refusal of a resume under the other exploration reads it so;
+the note $B_{ij}$; the teacher's baseline $b$, LR, critic and eligibility, and under a matched-filter critic the filter's state (§9.4); under exploration at the synapse, each neuron's gain $G_j$, each output's read count this epoch, the ventured mark on every signal in flight, and the settings of §7.1, §7.6, §7.7, 8.17 and 5.4b — a checkpoint that carries no §7.1 setting was saved under the neuron rule, and §12.9's refusal of a resume under the other exploration reads it so;
 [record §6.7, §0.2]. The score since the last read is carried too
 (§1.5), so a checkpoint is not confined to a read. *Byron, September 17,
 2026: "a checkpoint should hold a synapse's score for analysis purposes."*
@@ -1259,10 +1259,12 @@ in this order:
 
 1. read the output zone and compute the epoch's reinforcement $R$ from the critic
    (§9.4–§9.7);
-2. pay the rule at the read with the advantage $A = R - b$ (§9.3);
+2. pay the rule at the read with the advantage $A = R - b$ (§9.3) — zero while a matched filter is still learning
+   (§9.4);
 3. move each neuron's firing-rate memory (§9.8);
 4. move thresholds by homeostasis (§9.9), and then by un-sticking (§9.10);
-5. move the baseline $b$ (§9.3).
+5. move the baseline $b$ (§9.3);
+6. under a matched-filter critic, fold the epoch's counts into the filter (§9.4).
 
 A neuron the stimulus forced to fire this epoch is skipped by (3) and (4), and so is one the charged drive delivered to (5.4b; Byron, September 25, 2026): each carries 5.8's driven mark, and the mark is what the skip reads.
 Step (2) passes over it as well, by the paying rule's own clause (§8.1); this
@@ -1277,41 +1279,97 @@ The reinforcement reaches a synapse as an advantage against a running baseline, 
 paying rule's own and is stated once, at §8.2: $A = R - b$ with $b$ as it
 stands, and $b$ moves only after the update has used it. The advantage is one
 scalar an epoch, the same number for every synapse the paying rule touches.
+$b$ starts at the first epoch's reinforcement — under a matched filter, the first
+epoch the filter pays on (§9.4), and it does not move before then.
 
 The baseline is part of what a checkpoint carries and a resume restores
 (§12.9, §12.11): a resumed run is the same run continued, so it is paid
 against the baseline the run had reached and not against a fresh one. [RECORD
 §6.7, §1.3, §8; REINFORCE, Williams 1992, [1] in `BIBLIOGRAPHY.md`]
 
-### 9.4 The evidence critic
+### 9.4 The matched-filter critics
 
-*Byron, September 16, 2026, on reading the class sums as a vote share:*
-"No, the spikes are EVIDENCE for now, not a proper maximum-likelihood
-estimator. We will have to sweep for temperature eventually."
+*Byron, September 26, 2026, on hearing that the critic mnist was paid by took the class with the highest net count
+through a softmax at T = 2: "Wait a minute, this may be FAR from optimal, and is a trap I've seen other similar
+research fall into. Always assume matched filtering at the outputs." And the same afternoon, on continuations of that
+day's synapse sweeps that read through a matched filter twice the fraction right the class sums gave
+(`docs/synapse-matched-filter.py`): "We are going to drop the critic as written and default to a noise-whitened
+matched filter, with Poisson matched filter also an option as I am not 100% sure how to matched-filter the outputs
+until we lock down how to train such a system. Noise-whitened is a HUGE improvement for now."*
 
-The read gives one number $n_k$ per class, the class's evidence this epoch
-(under complement coding, its fire-if-one sum minus its fire-if-zero sum;
-the read's section defines it). The evidence critic takes those as log-odds
-at a temperature $T$ = TEMPERATURE: the estimate over the $C$ classes is the
-Boltzmann distribution and the reinforcement is its log score at the label $y$,
+The critic reads the output zone as a detector reads a known signal in noise. It holds, for each class $k$ of the
+$C$ a dataset's labels name, a **template** $\mu_k$ — the count each output is expected to give when that class is
+shown — and one **noise estimate**, and it scores each class by how well the epoch's counts $x$ (the read's, §5.10)
+match that class's template given the noise. It comes in two forms:
 
-$$q_k = \frac{e^{n_k/T}}{\sum_j e^{n_j/T}}, \qquad
-R = \ln q_y = \frac{n_y}{T} - \ln \sum_j e^{n_j/T}.$$
+- **whitened**, the default for a label (11.9): the noise is taken as Gaussian and shared across the outputs, one
+  covariance $\Sigma$ for every class, and class $k$ scores
+  $$s_k = \mu_k^{\top} \Sigma^{-1} x \;-\; \tfrac12\, \mu_k^{\top} \Sigma^{-1} \mu_k .$$
+  The inverse is what whitens: an output carrying noise the others also carry is discounted, and an output whose
+  count does not move with the class carries no weight;
+- **poisson**, a run option: each output an independent Poisson source at the rate its template gives,
+  $$s_k = \sum_j x_j \ln \lambda_{kj} - \lambda_{kj}, \qquad \lambda_{kj} = \max(\mu_{kj},\ \text{FILTER\_POISSON\_FLOOR}),$$
+  the floor keeping a template that has never seen an output fire from scoring $-\infty$.
 
-A uniform estimate scores $\ln(1/C)$, which is $-2.30$ at ten classes; a
-perfect epoch scores 0; a class with no spikes at all is weak evidence and
-not $-\infty$. $T$ sets what one spike of lead is worth. It is mnist's
-critic. [RECORD §8, §1.3]
+The scores are log-likelihoods and the classes are taken as equally likely, so the estimate over the classes is
+$q_k = e^{s_k} / \sum_j e^{s_j}$ and the reinforcement is its log score at the label $y$, $R = \ln q_y$. There is no
+temperature: what a count is worth is set by the noise the filter has measured. A filter that tells the classes
+apart by nothing gives each the same score and pays $\ln(1/C)$, $-2.30$ at ten classes, and a perfect epoch pays 0.
 
-TEMPERATURE is 2 **FOR NOW** — *Byron, the same day: "We will have to sweep
-for temperature eventually"*. What is open is the value, which a sweep is to
-set. [RECORD §1.3, §8]
+*Where the templates and the noise come from.* The filter learns them from the run as the run goes, because the
+network never stops learning (Byron, September 26, 2026, choosing a running memory over a refit in blocks or a
+filter fitted once and frozen). An epoch is scored by the filter as it stood before the epoch; the epoch is then
+folded in, last at the read (§9.2, step 6). With $n_y$ the presentations of $y$ folded before this one:
 
-*What it requires of the engines.* Every engine computes this reinforcement through one
-function, which subtracts the largest class sum before exponentiating so
-that no temperature overflows. Its inputs are sums of integer spike counts,
-so the reinforcement is the same to the bit in all three engines and the tolerance
-of the one-authority rule is not needed here.
+1. unless $n_y = 0$, the noise estimate moves toward the epoch's deviation from its template as the template stands,
+   $d = x - \mu_y$: $S \leftarrow S + \big(\tfrac{n_y}{n_y + 1}\, d\, d^{\top} - S\big)/m$, where $m$ counts the
+   epochs folded into $S$, this one included, up to FILTER_MEMORY and no further. The factor $n_y/(n_y+1)$ makes the
+   deviation from a mean of $n_y$ an unbiased sample of the noise; a class's first presentation has no template to
+   deviate from and is not folded into $S$;
+2. the template moves toward the counts, $\mu_y \leftarrow \mu_y + (x - \mu_y)/m_y$, where $m_y = n_y + 1$ up to
+   FILTER_MEMORY$/C$ and no further.
+
+Each is a plain mean until its cap and forgets after it, so that at $C$ equally common classes the templates and the
+noise both remember about the last FILTER_MEMORY epochs. A template starts at zero, which is silence, and $S$ at zero.
+The covariance the whitened scores use is $S$ shrunk toward its own diagonal by FILTER_SHRINKAGE, held beside one
+epoch's worth of unit, independent variance,
+$$\Sigma = \frac{\bar m\,\big[(1-\alpha)\, S + \alpha \operatorname{diag} S\big] + I}{\bar m + 1}, \qquad
+\alpha = \text{FILTER\_SHRINKAGE},$$
+with $\bar m$ the epochs $S$ holds, capped as above. At the start $\Sigma = I$, and an output that has never fired
+still has a variance, so $\Sigma$ can always be inverted. FILTER_MEMORY is 5,000 epochs and a run option (Byron,
+September 26, 2026, "about 5,000"); FILTER_SHRINKAGE $= 0.1$ and FILTER_POISSON_FLOOR $= 0.01$ spikes are Claude's,
+the first the middle of what the continuations' fits chose (0 to 0.3 on the rate drive), and both are open.
+
+*The filter learns before it pays.* Until it has folded FILTER_MEMORY epochs — the presentations in its templates,
+summed over the classes — the rule is paid an advantage of zero (§9.2, step 2), which moves no weight and settles the
+scores as any read does, and the baseline neither starts nor moves (§9.3): it starts at the first epoch that is paid.
+The filter reads every epoch from the first, and what it reads is reported; it is only not paid on. A filter built
+from a handful of epochs has a noise estimate that is nearly flat in most directions, and is confident beyond anything
+its data warrant: on the first run under it from scratch (mnist's synapse point, lr 0.0005), its first 50 epochs paid
+a mean of $-871$ and as little as $-5{,}970$, and the weights, summed over the synapses, moved some 600 times as far in
+those 50 epochs as in any 50 after the filter had settled. At a million epochs the wait is half a percent of a run. *Byron, September 26, 2026, choosing to learn, then pay, over a
+warm-up of its own length or a sturdier starting estimate paid on from the first epoch.*
+
+*What the filter is.* It is the teacher's, and stands outside the network (§9): nothing of it reaches a neuron except
+through the reinforcement it pays. It learns from the label, which the critic reads already, and it asks nothing of
+the output zone's layout — which outputs are fire-if-one and which fire-if-zero (5.11) is not read by it, only what
+each output does. The zone keeps its complement coding for now, and the class evidence of 5.12 is reported beside the
+filter (§9.7) as a measure and not a reward (Byron, September 26, 2026: "Keep for now").
+
+*What it requires of the engines.* Every engine scores and folds through one object, in 64-bit floating point, fed
+the integer counts of the read, so the three agree on the reinforcement to the bit. Its state — the templates, $S$,
+each class's presentations and the epochs folded into $S$ — is the teacher's book, and a checkpoint carries it as it
+carries the baseline (§12.9), so that a resume is exact (§12.11).
+
+*What it replaced.* Until September 26, 2026, mnist was paid by the **evidence critic**: the class sums $n_k$ of 5.12
+read as log-odds at a temperature $T = 2$, $R = n_y/T - \ln \sum_j e^{n_j/T}$ (Byron, September 16, 2026: "the spikes
+are EVIDENCE for now, not a proper maximum-likelihood estimator. We will have to sweep for temperature
+eventually"). It is the poisson filter exactly when every output fires at one rate when the label code wants it on
+and at one other rate when it wants it off, at $T = 1/\ln(\text{on}/\text{off})$; the day's continuations measured
+outputs far from alike, and that $T$ at 8 to 38 rather than 2. It leaves the specification and the code, and
+TEMPERATURE with it. Every result before September 26, 2026 was paid by it; a checkpoint saved under it carries no
+filter, and resumed under a matched filter it starts with an empty one — the network continued under another
+critic, not the same run continued (§12.11).
 
 ### 9.5 The row critic
 
@@ -1338,34 +1396,39 @@ class critic"). [RECORD §6.7, §8]
 
 ### 9.6 The graded critic
 
-*Byron, September 15, 2026: "a graded critic it is."* On the same class
-evidence the evidence critic reads, the reinforcement is the fraction of the other
+*Byron, September 15, 2026: "a graded critic it is."* On the class
+evidence of 5.12, the reinforcement is the fraction of the other
 $C - 1$ classes the label's class strictly out-spikes: 1 when it out-spikes
 every one of them, 0 when it out-spikes none, and a near miss paid for what
 it beat. A tie is not beaten, so a silent output zone scores 0. [RECORD §8]
 
 ### 9.7 The class critic, and the fraction right
 
-On the same class evidence the evidence critic reads, the reinforcement is **1**
+On the class evidence of 5.12, the reinforcement is **1**
 when the label's class strictly out-spikes every other class and **0**
 otherwise. A tie is not a win, and a silent output zone is not a win.
 
-The fraction of epochs a run wins on that rule is the **fraction right**, and
-it is reported beside whatever reinforcement the run is paid, whether or not this
-critic is the one paying. The measure and the critic are one rule: the number
-reported is this critic's own.
+The fraction of epochs a run wins on that rule is the **fraction right by the
+sums**, and it is reported beside whatever reinforcement the run is paid, whether
+or not this critic is the one paying. Under this critic and the graded one it is
+also the **fraction right**. Under a matched-filter critic (§9.4) the fraction
+right is the filter's own — the fraction of epochs in which the filter scores the
+label strictly highest, scored as the reinforcement is, before the epoch is folded
+in — and the fraction right by the sums stands beside it: it is what every result
+before September 26, 2026 was read by, and what a new run is set against them by.
+*Byron, September 26, 2026, keeping it as a measure and not a reward.*
 
 *Byron, September 17, 2026, 15:12 MDT — "keep the class critic" — reversing
 the three-critic list he gave at 15:09 MDT.* [RECORD §8, §1.3;
 `docs/rewrite-answers.md` §4]
 
 *What it requires of the engines.* It is read through the same function as
-the critic's class evidence, so it costs an epoch one comparison and can
-never disagree with the critic about what the output zone said. Every run reports it beside the
-reinforcement it is paid, whichever critic pays: the class critic's number is
-what the project is read by, so a run that does not report it cannot be read.
-The lab notebook's Rust driver accumulated it over a run's last tenth and
-only under the evidence critic; that is the notebook's, not this rule's.
+the class evidence, so it costs an epoch one comparison and can
+never disagree with the other critics about what the output zone said. Every run
+reports the fraction right beside the reinforcement it is paid, and the fraction
+right by the sums beside that: a run that does not report them cannot be read.
+The Rust driver accumulates both over a run's last tenth and at every trace point,
+under a critic that reads a label.
 
 ### 9.8 The teacher's book: each neuron's firing-rate memory
 
@@ -1445,9 +1508,9 @@ fired (§9.11).
 - the epoch's reinforcement, the mean reinforcement to date, and an exponential moving
   average over about WINDOW = 200 epochs — $\alpha = 2/(\text{WINDOW} + 1)$,
   started at the first epoch's reinforcement;
-- the fraction right beside the reinforcement (§9.7) — as built, over a run's last
-  tenth and only under the evidence critic; that it is reported at every
-  reinforcement is Claude's reading (§9.7);
+- the fraction right beside the reinforcement, and the fraction right by the
+  sums beside that (§9.7) — as built, over a run's last tenth and at every trace
+  point, under a critic that reads a label;
 - how many neurons are stuck on and stuck off (§9.8), and how many
   un-stickings have fired (§9.10);
 - at the end of a run, the mean reinforcement over its last tenth.
@@ -1663,13 +1726,9 @@ off until a run asks for it. *The scope, Byron, September 17, 2026.* [RECORD
 *Byron, September 14, 2026, setting the read: "COUNT the number of times each neuron fired in the epoch. ESTIMATE the firing rate based on the count." [record §4.3]*
 *Engines: each engine snapshots its own spike counts at the epoch's reset, and the three are compared on them.*
 
-**11.9 The critic is evidence, at TEMPERATURE.** The class sums are read as evidence at a temperature T: the estimate over classes is the Boltzmann distribution of the sums, and the reinforcement is its log score, with y the label —
-
-> q_k = e^(n_k/T) / Σ_j e^(n_j/T),  r = ln q_y = n_y/T − ln Σ_j e^(n_j/T).
-
-T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will have to sweep for temperature eventually" — and 2 is the middle of the first sweep's {1, 2, 4}, held until the sweep sets it.
-*Byron, September 16, 2026: "No, the spikes are EVIDENCE for now, not a proper maximum-likelihood estimator. We will have to sweep for temperature eventually." [record §8, decision 4]*
-*Engines: one function pays every engine and the Rust driver alike.*
+**11.9 The critic is the noise-whitened matched filter.** mnist is paid by the whitened critic of §9.4 unless the run names poisson: each class's template and the noise shared across the outputs are learned from the run, over the last FILTER_MEMORY epochs, and the reinforcement is the log score at the label of the estimate the filter's log-likelihoods give, $R = \ln q_y$ — no temperature, the noise setting what a count is worth.
+*Byron, September 26, 2026: "We are going to drop the critic as written and default to a noise-whitened matched filter, with Poisson matched filter also an option as I am not 100% sure how to matched-filter the outputs until we lock down how to train such a system. Noise-whitened is a HUGE improvement for now." Until that day mnist was paid by the evidence critic, the class sums read as log-odds at TEMPERATURE 2 (Byron, September 16, 2026: "No, the spikes are EVIDENCE for now, not a proper maximum-likelihood estimator. We will have to sweep for temperature eventually" [record §8, decision 4]); what it was and why it left is §9.4's.*
+*Engines: one object scores and folds for every engine and the Rust driver alike.*
 
 **11.10 The target is the label's code.** For a critic that wants a pattern rather than the sums — the row critic — mnist's target is the label: the label's fire-if-one population on and every other off, the fire-if-zero populations the other way round.
 *[record §8; the code follows 11.6's layout.]*
@@ -1687,8 +1746,8 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 **11.14 What mnist does not fix.** The epoch's length, the container's starting threshold and floor, the wiring, the eligibility and the engine are not the problem's: they come from the constants of Appendix A or from the run that is asked for.
 *Claude's reading of what the problem sets, confirmed by Byron, September 17, 2026: the record's mnist runs gave the epoch length, the threshold and the floor on the command line rather than in the problem [record §8].*
 
-**11.15 The fraction right is reported beside the reinforcement.** mnist is paid on the evidence critic (11.9) and reports beside it the class critic's own number (§9.7): the fraction of epochs in which the label's class **strictly out-spikes every other class** on the evidence of 11.6 — a tie is not a win, and silence is not a win. As built that fraction is accumulated over a run's last tenth and only under the evidence critic; the WINDOW moving average a run reports is of the **reinforcement**, not of the fraction (§9.11).
-*Byron, September 17, 2026, 15:12 MDT: "keep the class critic", under which the measure and the critic are one rule and not two [`docs/rewrite-answers.md` §4].*
+**11.15 The fraction right is reported beside the reinforcement.** mnist reports the matched filter's fraction right — the fraction of epochs in which the filter scores the label strictly highest (§9.7) — and beside it the fraction right by the sums, the class critic's number: the label's class **strictly out-spikes every other class** on the evidence of 11.6, a tie is not a win and silence is not a win. The second is what every mnist result before September 26, 2026 was read by. As built both are accumulated over a run's last tenth and at every trace point; the WINDOW moving average a run reports is of the **reinforcement**, not of either fraction (§9.11).
+*Byron, September 17, 2026, 15:12 MDT: "keep the class critic" [`docs/rewrite-answers.md` §4]; and September 26, 2026, keeping it beside the matched filter as a measure and not a reward.*
 
 **11.16 The estimator's correlation is reported.** For a synapse from input i onto an output of class k, the supervised direction is d_ij = P(coded input i on | class k) − P(coded input i on), taken over the training split; for a fire-if-zero output the sign is reversed, since that neuron should fire when the label is not k. A run reports the correlation of each input-to-output synapse's weight change since the run's start with d. It is an instrument for reading a run and not a rule: nothing in the network consults it, and no weight moves because of it.
 *The instrument is Byron's instruction, September 16, 2026, 04:25 MDT: "Please modify the code so we can plot the correlation of the estimator over time after a run." The supervised direction it measures against is Claude's, from the earlier gradient check [record §0.1, §8].*
@@ -1723,7 +1782,7 @@ T = TEMPERATURE = 2. **T's value is open in Byron's own words** — "We will hav
 **12.8 Agreement is proven on the configuration, not carried over.** The engines are compared on the container, the wiring, the drive and the read a run will actually use, before that run is read as evidence about anything.
 *Claude's reading of two cases the record holds, confirmed by Byron, September 17, 2026 [record §5.2, §6.15, §7].*
 
-**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, and each synapse's open-arrival note; under exploration at the synapse, each neuron's gain, each output's read count this epoch, the ventured marks on the signals in flight, and the settings of §7.1, §7.6, §7.7, §8.17 and 5.4b — the exploration, the family and rest hazard, the scaling, the trace, the drive and DRIVE_STEPS (§8.14). It also carries the state of all three of the run's streams and the reinforcement baseline, which is what §12.11's exactness rests on. It round-trips in every engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly. The exploration is the exception: a checkpoint saved under one resumes under that one only, and a run that would resume it under the other is refused (§12.2), nothing mapping the neuron rule's per-decision bookkeeping onto the gain or back (Byron, September 25, 2026; `docs/synapse-build-map-2026-09-24.md` §5, Q17). *Of the engines:* an engine outside Python takes the exploration stream's state and hands it back (§12.6), so the state a checkpoint stores is the one the next draw comes from whichever engine ran the epoch before it.
+**12.9 Checkpoints round-trip.** A checkpoint rebuilds the network from its seed and its settings and reloads what the run reached: weights, thresholds and floors, potentials, the clock, spike times, each neuron's firing-rate memory and its decision width, synapse stamps, signals in flight, each neuron's per-decision expectation of its own spike and its expected spikes and decision count, and each synapse's open-arrival note; under exploration at the synapse, each neuron's gain, each output's read count this epoch, the ventured marks on the signals in flight, and the settings of §7.1, §7.6, §7.7, §8.17 and 5.4b — the exploration, the family and rest hazard, the scaling, the trace, the drive and DRIVE_STEPS (§8.14). It also carries the state of all three of the run's streams, the reinforcement baseline and, under a matched-filter critic, the filter's templates, noise estimate and counts (§9.4), which is what §12.11's exactness rests on. It round-trips in every engine, and a network saved under a setting resumes under it unless the resuming run overrides it explicitly. The exploration is the exception: a checkpoint saved under one resumes under that one only, and a run that would resume it under the other is refused (§12.2), nothing mapping the neuron rule's per-decision bookkeeping onto the gain or back (Byron, September 25, 2026; `docs/synapse-build-map-2026-09-24.md` §5, Q17). *Of the engines:* an engine outside Python takes the exploration stream's state and hands it back (§12.6), so the state a checkpoint stores is the one the next draw comes from whichever engine ran the epoch before it.
 *Byron and Cedric, standing; extended September 17, 2026 with the single-spike rule's state [record §7, §0.2].*
 
 **12.10 A rule is recomputed, a state is stored.** What a checkpoint can derive from the network's settings is derived — the escape scale is recomputed from the count, since it is a rule and not a state — and what the run moved is stored as the run left it, thresholds and floors included.
@@ -1793,8 +1852,10 @@ What that requires is §12.9's list, and the part of it a resume alone needs is 
 |---|---|---|---|
 | LR | 0.03 | the learning rate where the problem names none (mnist names 0.002, 11.11) | §8 [record §1.3] |
 | ELIGIBILITY | hazard | what the reinforcement acts on: hazard, the score of the escape decision, or hebb, the neuron's own expectation. The record's stored value was perturb, which leaves the specification, so the constant becomes hazard — what the neuron already chose under escape noise; where the threshold decides and nothing else draws, no eligibility runs and the rule refuses (§8.3); under exploration at the synapse the hazard is posted at the synapses' decisions (§8.16) | §8.3 [record §1.3; the hazard default is Claude's reading, to be corrected in a word] |
-| CRITIC | row | how the reinforcement is judged where the problem names none: row, class, graded or evidence (mnist names evidence, 11.9) | §9.4–§9.7 [record §1.3] |
-| TEMPERATURE | 2 | the evidence critic's T; open — "We will have to sweep for temperature eventually" | §9.4 [record §1.3, §8] |
+| CRITIC | row | how the reinforcement is judged where the problem names none: row, class, graded, whitened or poisson (mnist names whitened, 11.9) | §9.4–§9.7 [record §1.3] |
+| FILTER_MEMORY | 5,000 epochs | how far back a matched filter's templates and noise estimate remember; a run option | §9.4 [Byron, September 26, 2026] |
+| FILTER_SHRINKAGE | 0.1 | how far the whitened filter's noise estimate is shrunk toward its own diagonal; open | §9.4 [Claude, September 26, 2026] |
+| FILTER_POISSON_FLOOR | 0.01 spikes | the least rate the poisson filter takes a template to give; open | §9.4 [Claude, September 26, 2026] |
 | BASELINE_RATE | 0.05 | the per-epoch update of the running reinforcement baseline the advantage is taken against | §8 [record §1.3] |
 | DECISION_MEMORY | 10⁻⁴ | the per-decision update of a neuron's expectation of its own spike; a starting value, to be swept | §8.6 [record §1.3, §6.7] |
 | RATE_MEMORY | 0.01 | the per-epoch update of a neuron's own observed rate, which homeostasis, un-sticking and the stuck bands read | §2.6 [record §1.3] |

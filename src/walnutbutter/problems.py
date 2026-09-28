@@ -77,16 +77,19 @@ PROBLEMS: dict[str, Problem] = {
         "clock neurons always driven, the 196 on-off pixels and their 196 complements (395 in all), no permutation; ten "
         "classes on 60 output neurons, complement-coded -- three fire-if-one neurons a class and then three fire-if-zero "
         "(Byron, September 16, 'force complement coding'; five a class, uncoded, from the evening of September 15 until "
-        "then) -- read by count, and the evidence critic (Byron, September 16: 'the spikes are EVIDENCE'): each class's "
-        "evidence is its fire-if-one sum minus its fire-if-zero sum, as log-odds at --temperature, paid the softmax "
-        "cross-entropy ln q_label, chance ln 0.1. --critic graded is the night before's fraction of the other classes "
-        "out-spiked and --critic class the earlier 1-or-0, on the same evidence. And "
+        "then) -- read by count, through the noise-whitened matched filter (Byron, September 26: 'default to a "
+        "noise-whitened matched filter, with Poisson matched filter also an option'): each class's template and the "
+        "noise shared across the outputs learned from the run over --filter-memory epochs, paid the log score of the "
+        "filter's estimate at the label, chance ln 0.1; --critic poisson takes each output as its own Poisson source. "
+        "The evidence critic it replaced read each class's fire-if-one sum minus its fire-if-zero sum as log-odds at a "
+        "temperature; those sums are still reported beside the filter, and --critic graded and --critic class pay on "
+        "them. And "
         "no homeostasis or un-sticking: the hazard keeps nothing stuck and the un-sticking carried the network into "
         "silence. Posed on goo with 199 hidden neurons unless --hidden-neurons says otherwise (654 neurons; Byron, September "
         "16: 'How will we know if they are buying us anything if they are always part of the economy?'), by the reinforce rule "
         "at LR 0.002 (Byron, September 16, 'default LR to 0.002 for this task'); the train split in a seeded shuffle, "
         "cycling (mnist.stream)",
-        3 + 2 * 196, trained=True, target="label", critic="evidence", rule="reinforce", read="count", population=3, outputs=60, clock=3, hidden_neurons=199,
+        3 + 2 * 196, trained=True, target="label", critic="whitened", rule="reinforce", read="count", population=3, outputs=60, clock=3, hidden_neurons=199,
         data="mnist", homeostasis=0.0, unstick=0.0, lr=0.002,
     ),
 }

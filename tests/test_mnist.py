@@ -126,47 +126,127 @@ def test_the_network_carries_the_label_and_the_class_critic_scores_it():
         goo.use_input_stream(patterns, [1])
 
 
-def test_the_evidence_critic_reads_the_class_sums_as_log_odds_at_a_temperature():
-    """§8, decision 4 (Byron, September 16, 2026: "the spikes are EVIDENCE"): q_k = exp(n_k / T) / sum, reward ln q_label.
-
-    Byron's example counts, [7 0 0 0 1 5 3 4 0 0], at the temperatures the
-    answer tabulated; chance ln 0.1 for any uniform count, silence included;
-    and the same function pays the Rust driver.
-    """
+def test_a_matched_filter_knows_nothing_at_the_start_and_learns_the_templates_and_the_noise():
+    """§9.4 (Byron, September 26, 2026: "default to a noise-whitened matched filter"): an empty filter scores every
+    class alike and pays ln(1 / C); a class's first presentation sets its template and adds nothing to the noise; each
+    epoch is read before it is folded; and on outputs that tell the classes apart the filter comes to pay near 0 and
+    to pick the label, under both forms."""
     import math
-    from walnutbutter.learning import evidence_reward, evidence_score
+    pytest.importorskip("numpy")
+    from walnutbutter.learning import MatchedFilter
+    for form in ("whitened", "poisson"):
+        f = MatchedFilter(form, 3, 4, memory=30)
+        assert f.read([5, 0, 0, 1], 0) == (pytest.approx(math.log(1 / 3)), False)  # alike: a tie is not a win
+        f.fold([5, 0, 0, 1], 0)
+        assert (f.presented, f.folded, f.noise.sum()) == ([1, 0, 0], 0, 0.0)  # no template yet to deviate from
+        assert f.templates[0].tolist() == [5, 0, 0, 1]
+        f.fold([3, 0, 0, 1], 0)  # the second deviates by -2 from the first: n / (n + 1) of it, a mean of one epoch
+        assert (f.folded, f.noise[0, 0], f.templates[0, 0]) == (1, 0.5 * 4, 4.0)
+        rng = random.Random(1)
+        shapes = [[5, 0, 0, 1], [0, 5, 0, 1], [0, 0, 5, 1]]
+        for _ in range(300):
+            y = rng.randrange(3)
+            f.fold([max(0, round(v + rng.gauss(0, 1))) for v in shapes[y]], y)
+        assert f.presented[0] + f.presented[1] + f.presented[2] == 302 and f.folded == 299
+        for y, shape in enumerate(shapes):
+            reward, right = f.read(shape, y)
+            assert right and -0.01 < reward <= 0.0, (form, y, reward)
+    with pytest.raises(ValueError, match="unknown matched filter"):
+        MatchedFilter("evidence", 3, 4)
+    with pytest.raises(ValueError, match="at least one per class"):
+        MatchedFilter("whitened", 3, 4, memory=2)
+
+
+def test_a_matched_filter_goes_on_from_its_state_to_the_bit():
+    """§12.9, §12.11: the filter a checkpoint carries reads and folds on exactly as the one it was taken from."""
+    pytest.importorskip("numpy")
+    import json
+    from walnutbutter.learning import MatchedFilter
+    rng = random.Random(2)
+    for form in ("whitened", "poisson"):
+        f = MatchedFilter(form, 4, 6, memory=40)
+        epochs = [([rng.randrange(8) for _ in range(6)], rng.randrange(4)) for _ in range(200)]
+        for x, y in epochs[:120]:
+            f.fold(x, y)
+        g = MatchedFilter.from_state(json.loads(json.dumps(f.state())))  # through the file, as a checkpoint takes it
+        for x, y in epochs[120:]:
+            assert f.read(x, y) == g.read(x, y)
+            f.fold(x, y)
+            g.fold(x, y)
+        assert f.state() == g.state()
+
+
+def test_the_poisson_filter_on_alike_outputs_is_the_evidence_critic_it_replaced():
+    """§9.4, what it replaced: where every output fires at one rate when the label code wants it on and at another when
+    it wants it off, the poisson filter's estimate is the evidence critic's softmax of the class sums n_k = n_k+ - n_k-
+    at T = 1 / ln(on / off) -- the relationship the September 26 continuations were read by."""
+    import math
+    pytest.importorskip("numpy")
+    from walnutbutter.learning import MatchedFilter
+    on, off, classes, population = 9.0, 7.0, 3, 2
+    f = MatchedFilter("poisson", classes, 2 * classes * population)
+    for k in range(classes):  # class k's template: its fire-if-one population on, every other off; fire-if-zero reversed
+        ones = [on if c == k else off for c in range(classes) for _ in range(population)]
+        f.templates[k] = ones + [on + off - v for v in ones]
+    temperature = 1 / math.log(on / off)
+    rng = random.Random(3)
+    for _ in range(50):
+        counts = [rng.randrange(15) for _ in range(2 * classes * population)]
+        sums = [sum(counts[c * population:(c + 1) * population]) - sum(counts[(classes + c) * population:(classes + c + 1) * population])
+                for c in range(classes)]
+        label = rng.randrange(classes)
+        evidence = sums[label] / temperature - math.log(sum(math.exp(n / temperature) for n in sums))
+        assert f.read(counts, label)[0] == pytest.approx(evidence, abs=1e-9)
+
+
+@pytest.mark.parametrize("critic", ["whitened", "poisson"])
+def test_a_matched_filter_learns_before_it_pays(critic):
+    """§9.4 (Byron, September 26, 2026, "learn, then pay"): until the filter has folded FILTER_MEMORY epochs the
+    advantage is zero -- no weight moves and the baseline neither starts nor moves -- though every epoch is read; from
+    the first epoch it pays on, the baseline starts there and the rule learns."""
+    pytest.importorskip("numpy")
+    rng = random.Random(4)
+    patterns = [[rng.random() < 0.5 for _ in range(4)] for _ in range(30)]
+    labels = [rng.randrange(2) for _ in range(30)]
+    g = Goo(count=46, across=8, outputs=12, seed=3, weight=None)  # §5.11: 2 classes * 3 a half
+    g.population, g.read, g.rule, g.drive = 3, "count", "reinforce", "rate"
+    g.set_delta(0.455)
+    g.use_input_stream(patterns, labels)
+    teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, filter_memory=12, lr=0.5)
+    start = [c.weight for c in g.connections.values()]
+    for epoch in range(12):
+        assert not teacher.filter.paying
+        teacher.epoch(verbose=False)
+        assert teacher.baseline is None and [c.weight for c in g.connections.values()] == start, epoch
+    assert teacher.filter.paying and sum(teacher.filter.presented) == 12
+    first = teacher.epoch(verbose=False)
+    assert teacher.baseline == first  # §9.3: started at the first paid epoch's reward, which moves it nowhere
+    for _ in range(10):
+        teacher.epoch(verbose=False)
+    assert [c.weight for c in g.connections.values()] != start  # and from there the rule learns
+
+
+def test_the_teacher_pays_mnist_through_the_whitened_filter():
+    """11.9: mnist's critic is whitened; a matched filter scores a label, so it needs the label target and a stream
+    that carries labels, and the evidence critic is gone (§9.4)."""
+    pytest.importorskip("numpy")
+    from walnutbutter.learning import CRITICS, FILTERS, Teacher
+    from walnutbutter.problems import PROBLEMS
+    assert PROBLEMS["mnist"].critic == "whitened" and FILTERS == ("whitened", "poisson") and "evidence" not in CRITICS
     goo = Goo(count=34, across=4, outputs=20, seed=3, weight=None)  # §5.11: 2CP = 2 * 10 * 1
     goo.population, goo.read, goo.rule = 1, "count", "reinforce"
-    goo.use_input_stream([[True, False]], [0])  # §5.2: 4 places take 2 raw bits
-    run_epoch(goo, verbose=False, rng=random.Random(1))
-    counts = [7, 0, 0, 0, 1, 5, 3, 4, 0, 0]
-    for neuron, c in zip(goo.output_row(), counts + [0] * 10):  # the fire-if-zero half silent, so n_k = n_k^+
-        neuron.spikes_at_reset, neuron.spikes = 0, c
-    for temperature, label, want in ((1, 0, -0.19), (2, 0, -0.66), (3, 0, -1.02), (5, 0, -1.44), (3, 5, -1.68), (3, 1, -3.35),
-                                     (0.5, 4, -12.02), (20, 1, -2.41)):
-        goo.temperature, goo.input_label = temperature, label
-        assert evidence_score(goo) == pytest.approx(want, abs=0.005)
-    assert evidence_reward(counts, 0, 3.0) == pytest.approx(7 / 3 - math.log(sum(math.exp(c / 3) for c in counts)))
-    assert evidence_reward(counts, 0, 3.0) == evidence_score(goo) if goo.temperature == 3.0 else True
-    for neuron in goo.output_row():  # silence, or any even count, is the uniform estimate: chance, ln 0.1, at any temperature
-        neuron.spikes = 4
-    for temperature in (0.5, 2.0, 1e6):
-        goo.temperature = temperature
-        assert evidence_score(goo) == pytest.approx(math.log(0.1))
-    assert evidence_reward([1000, 0, 0] + [0] * 6, 0, 0.01) == pytest.approx(0.0, abs=1e-12)  # a huge lead: no overflow, and certainty
-    with pytest.raises(ValueError, match="positive temperature"):
-        evidence_reward(counts, 0, 0.0)
-    goo.input_label = None
-    with pytest.raises(ValueError, match="labels"):
-        evidence_score(goo)
-    from walnutbutter.learning import Teacher
+    goo.set_delta(0.455)
     with pytest.raises(ValueError, match="target is label"):
-        Teacher(goo, target="copy", critic="evidence", rule="reinforce")
-    from walnutbutter.problems import PROBLEMS
-    assert PROBLEMS["mnist"].critic == "evidence"
+        Teacher(goo, target="copy", critic="whitened", rule="reinforce")
+    with pytest.raises(ValueError, match="unknown critic"):
+        Teacher(goo, target="label", critic="evidence", rule="reinforce")
+    teacher = Teacher(goo, target="label", critic="whitened", rule="reinforce", seed=1)
+    assert (teacher.filter.classes, teacher.filter.outputs, teacher.filter.memory) == (10, 20, 5000)
+    with pytest.raises(ValueError, match="labels"):
+        teacher.epoch(verbose=False)  # a stream with no labels
 
 
-@pytest.mark.parametrize("critic", ["class", "graded", "evidence"])
+@pytest.mark.parametrize("critic", ["class", "graded", "whitened", "poisson"])
 def test_the_three_engines_agree_under_the_class_critic(critic):
     pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
@@ -183,33 +263,39 @@ def test_the_three_engines_agree_under_the_class_critic(critic):
 
     mesh, twin = make(), make()
     net = ArrayNetwork(twin)
-    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
-                for x in (mesh, net)]
+    memory = 10  # §9.4: a filter pays from its tenth epoch, so the forty below learn under it
+    teachers = [Teacher(x, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1,
+                        filter_memory=memory) for x in (mesh, net)]
     rewards = []
     for _ in range(40):
         rewards.append([t.epoch(verbose=False) for t in teachers])
         assert rewards[-1][0] == rewards[-1][1]
-        assert (rewards[-1][0] <= 0.0) if critic == "evidence" else (0.0 <= rewards[-1][0] <= 1.0)
+        filtered = critic in ("whitened", "poisson")
+        assert (rewards[-1][0] <= 0.0) if filtered else (0.0 <= rewards[-1][0] <= 1.0)
         assert [n.spikes for n in mesh.all_neurons()] == net.spikes.tolist()
         assert net.input_label == mesh.input_label
-    if critic == "evidence":  # the log score: never a clean 0 or 1, but on both sides of a uniform estimate over forty epochs
+    if filtered:  # the log score: never a clean 0 or 1, but on both sides of a uniform estimate over forty epochs
         import math
         uniform = math.log(1 / (6 // 3))  # two classes of three outputs on this goo
         assert any(r[0] > uniform for r in rewards) and any(r[0] < uniform for r in rewards)
+        assert teachers[0].filter.state() == teachers[1].filter.state()  # §9.4: one book, whichever engine fed it
     else:
         assert any(r[0] == 1.0 for r in rewards) and any(r[0] == 0.0 for r in rewards)
     if fast.available():
         g = make()
-        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1)
+        teacher = Teacher(g, seed=7, rule="reinforce", target="label", critic=critic, homeostasis=0.01, unstick=0.1,
+                          filter_memory=memory)
         assert fast.compare(g, epochs=40, teacher=teacher) == []
         g = make()
         mean, trace, engine, report = fast.train(g, 60, target="label", critic=critic, patterns=patterns, labels=labels,
-                                                 eligibility="hazard", seed=7, trace_every=0)
+                                                 eligibility="hazard", seed=7, trace_every=0, filter_memory=memory)
         assert g.input_at == 60  # the stream of 50 went round again
-        if critic == "evidence":  # the log score, with the class critic's fraction right logged beside it
-            assert mean <= 0.0 and 0.0 <= report["accuracy_last_tenth"] <= 1.0
-        else:
-            assert 0.0 <= mean <= 1.0 and report["accuracy_last_tenth"] is None
+        assert mean <= 0.0 if filtered else 0.0 <= mean <= 1.0
+        # §9.7: the fraction right, the filter's own under a filter, and by the class sums beside it
+        assert 0.0 <= report["accuracy_last_tenth"] <= 1.0 and 0.0 <= report["accuracy_last_tenth_sums"] <= 1.0
+        if critic == "class":
+            assert report["accuracy_last_tenth"] == report["accuracy_last_tenth_sums"]
+        assert (report["filter"] is not None) == filtered
 
 
 def test_the_mnist_problem_is_posed_on_goo_with_two_zone_widths():
@@ -300,7 +386,7 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     from walnutbutter.cli import apply_problem, build_parser
     args = build_parser().parse_args(["--problem", "mnist", "--hidden-neurons", "0"]); apply_problem(args)
     goo = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
-    goo.population, goo.clock, goo.read, goo.rule, goo.drive, goo.temperature = args.population, 3, "count", "reinforce", "rate", 2.0
+    goo.population, goo.clock, goo.read, goo.rule, goo.drive = args.population, 3, "count", "reinforce", "rate"
     goo.set_delta(0.455)
     direction = mnist.supervised_direction(goo)
     edges = [c for n in goo.all_neurons() for c in n.outgoing]
@@ -313,18 +399,18 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     assert np.allclose(on[3:199] + on[199:], 1.0)  # a bit and its complement
     patterns, labels = dataset_stream("mnist", 1)
     mean, trace, engine, report = fast.train(goo, 40, lr=0.001, target="label", trace_every=10, patterns=patterns, labels=labels,
-                                             eligibility="hazard", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence",
-                                             direction=direction)
+                                             eligibility="hazard", seed=1, homeostasis=0.0, unstick=0.0, critic="whitened",
+                                             direction=direction, filter_memory=10)  # §9.4: paying from epoch 11
     est = report["estimator"]
     assert [e["epoch"] for e in est] == [10, 20, 30, 40]
     assert all(e["corr_cum"] is None or -1.0 <= e["corr_cum"] <= 1.0 for e in est)
     assert all(0.0 <= e["sign_cum"] <= 1.0 for e in est) and est[-1]["corr_window"] is not None
     goo2 = Goo(count=args.goo, across=args.across, outputs=args.outputs, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
-    goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive, goo2.temperature = args.population, 3, "count", "reinforce", "rate", 2.0
+    goo2.population, goo2.clock, goo2.read, goo2.rule, goo2.drive = args.population, 3, "count", "reinforce", "rate"
     goo2.set_delta(0.455)
     _, _, _, plain = fast.train(goo2, 10, lr=0.001, target="label", trace_every=5, patterns=patterns, labels=labels,
-                                eligibility="hebb", seed=1, homeostasis=0.0, unstick=0.0, critic="evidence")
-    assert plain["estimator"] is None  # without a direction there is no trace, and hebb runs under the evidence critic too
+                                eligibility="hebb", seed=1, homeostasis=0.0, unstick=0.0, critic="whitened")
+    assert plain["estimator"] is None  # without a direction there is no trace, and hebb runs under the whitened critic too
 
 
 def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
@@ -332,8 +418,7 @@ def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
     the fire-if-one populations then the fire-if-zero ones in the same order, a class's evidence is n+ - n-, the label
     code is on/off for the label's groups and off/on for every other class's, and a zero neuron's supervised direction
     is its class's reversed."""
-    import math
-    from walnutbutter.learning import class_evidence, evidence_reward, evidence_score, label_code
+    from walnutbutter.learning import class_evidence, class_sums, label_code
     # two classes of two, complement-coded: ones [1 2 | 0 5], zeros [0 1 | 4 0] (§5.11)
     assert class_evidence([1, 2, 0, 5, 0, 1, 4, 0], 2) == [3 - 1, 5 - 4]
     assert class_evidence([1, 2, 0, 5, 0, 0], 3) == [3 - 5]
@@ -348,18 +433,15 @@ def test_complement_coding_of_the_output_zone_reads_one_sums_minus_zero_sums():
     counts = [3, 1, 0, 0, 2, 2] + [0, 0, 1, 0, 0, 0]  # ones 4, 0, 4; zeros 0, 1, 0 -> evidence 4, -1, 4
     for neuron, c in zip(outputs, counts):
         neuron.spikes_at_reset, neuron.spikes = 0, c
-    goo.temperature = 2.0
-    for label in (0, 1, 2):
-        goo.input_label = label
-        assert evidence_score(goo) == pytest.approx(evidence_reward([4, -1, 4], label, 2.0))
+    assert class_sums(goo) == [4, -1, 4]
     goo.input_label = 1
     assert class_accuracy(goo) == 0.0 and graded_accuracy(goo) == 0.0  # the label's class is out-evidenced by both others
     for neuron, c in zip(outputs, [0, 0, 0, 0, 0, 0] + [3, 3, 0, 0, 3, 3]):  # only fire-if-zero spikes: evidence -6, 0, -6
         neuron.spikes_at_reset, neuron.spikes = 0, c
     assert class_accuracy(goo) == 1.0 and graded_accuracy(goo) == 1.0  # the label is the one class not spoken against
-    for neuron in outputs:  # every neuron loud alike: every class at zero evidence, chance
+    for neuron in outputs:  # every neuron loud alike: every class at zero evidence, a tie, which is not a win
         neuron.spikes = 4
-    assert evidence_score(goo) == pytest.approx(math.log(1 / 3))
+    assert class_sums(goo) == [0, 0, 0] and class_accuracy(goo) == 0.0
     # the supervised direction: a fire-if-zero neuron of class k takes -(P(pixel | k) - P(pixel))
     ff = Goo(count=445, across=395, outputs=50, seed=1, weight=None, threshold=0.6, minimum_potential=-2.4)
     ff.population, ff.clock = 5, 3
@@ -412,8 +494,8 @@ def test_the_mnist_problem_is_complement_coded_on_the_outputs_and_the_engines_ag
             patterns, labels = dataset_stream("mnist", 1)
         except FileNotFoundError:
             pytest.skip("the MNIST files are not fetched")
-        grid, cli = rs.grid_of("mnist", {"hidden_neurons": 0.0, "seed": 1, "threshold": 0.6, "temperature": 2.0}, "hazard", True, -4.0)
+        grid, cli = rs.grid_of("mnist", {"hidden_neurons": 0.0, "seed": 1, "threshold": 0.6}, "hazard", True, -4.0)
         grid.use_input_stream(patterns, labels)
-        teacher = Teacher(grid, seed=1, rule="reinforce", eligibility="hazard", target="label", critic="evidence", lr=cli.lr,
+        teacher = Teacher(grid, seed=1, rule="reinforce", eligibility="hazard", target="label", critic=cli.critic, lr=cli.lr,
                           homeostasis=0.0, unstick=0.0)
         assert fast.compare(grid, epochs=4, teacher=teacher) == []

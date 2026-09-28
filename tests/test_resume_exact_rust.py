@@ -12,6 +12,50 @@ from walnutbutter.network import input_stream
 from walnutbutter.neuron import Neuron
 
 
+@pytest.mark.parametrize("critic", ["whitened", "poisson"])
+def test_a_rust_sweep_resume_carries_the_matched_filter(tmp_path, critic):
+    """§9.4, §12.9, §12.11 on the sweep's path: mnist's goo with no hidden neurons, labels drawn here, paid through a
+    matched filter -- twelve epochs straight through against six, `_save_network`, `resume_grid`, six more. The
+    checkpoint carries the filter's book beside the baseline, and the resumed arm's scores, weights and filter are the
+    uninterrupted arm's; resumed with an empty filter instead, it is another run."""
+    if not fast.available():
+        pytest.skip("the Rust loop is not built")
+    import random
+    spec = importlib.util.spec_from_file_location("rs", Path(__file__).resolve().parent.parent / "docs" / "rust-sweep.py")
+    rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
+    # §9.4: a memory of ten, so the filter starts paying at epoch eleven, on the far side of the resume
+    arm, fixed = {"hidden_neurons": 0.0, "seed": 3, "threshold": 0.6}, ("--critic", critic, "--filter-memory", "10")
+    rng = random.Random(5)
+    labels = [rng.randrange(3) for _ in range(12)]  # three of the ten, so that classes come round again within six
+    whole, cli = rs.grid_of("mnist", arm, "hazard", True, -4.0, None, fixed)
+    assert (cli.critic, cli.filter_memory) == (critic, 10)
+    patterns = input_stream(12, whole.raw_bit_count(), 3)
+    common = dict(target="label", trace_every=1, eligibility="hazard", homeostasis=0.0, unstick=0.0, critic=critic,
+                  filter_memory=cli.filter_memory)
+    _, straight, engine_w, whole_report = fast.train(whole, 12, lr=cli.lr, patterns=patterns, labels=labels, seed=3, **common)
+
+    part, _ = rs.grid_of("mnist", arm, "hazard", True, -4.0, None, fixed)
+    _, first_half, engine, report = fast.train(part, 6, lr=cli.lr, patterns=patterns, labels=labels, seed=3, **common)
+    assert first_half == straight[:6] and report["filter"]["folded"] > 0
+    rs._save_network(engine, part, report, tmp_path / "arm-network.json")
+
+    def resume(carry: bool):
+        again, _ = rs.grid_of("mnist", arm, "hazard", True, -4.0, None, fixed)
+        grid, offset, reference, baseline, explore_state = rs.resume_grid(again, tmp_path / "arm-network.json")
+        assert offset == 6 and grid.engine_filter == report["filter"]
+        grid.use_input_stream(patterns, labels)
+        grid.input_at = offset
+        return fast.train(grid, 6, lr=cli.lr, seed=3, explore_state=explore_state, pending_events=grid.engine_pending,
+                          epoch_offset=offset, baseline=baseline, filter_state=grid.engine_filter if carry else None,
+                          **common)
+
+    _, second_half, engine2, report2 = resume(True)
+    assert second_half == straight[6:], "the resumed run must be the same run, continued"
+    assert report2["filter"] == whole_report["filter"]
+    assert list(engine2.weights()) == list(engine_w.weights()) != list(engine.weights())  # it paid, after the resume
+    assert resume(False)[1] != straight[6:], "an empty filter pays another run"
+
+
 @pytest.mark.parametrize("tau, homeostasis, unstick", [
     ("inf", 0.0, 0.0),   # the accumulator (§2.2), the default
     ("2.0", 0.0, 0.0),   # the leak (§2.3): potentials and traces decay lazily, against times a resume has to carry

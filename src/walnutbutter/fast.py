@@ -175,18 +175,21 @@ def _outputs_on(engine, network, out) -> list[bool]:
     raise ValueError(f"the Rust loop reads 'fired' or 'count'; {network.read!r} is read in Python -- use the array engine")
 
 
+def _output_counts(engine, out) -> list[int]:
+    """The output zone's counts as the read takes them (§5.10), in the zone's order."""
+    counts = _counts(engine)
+    return [int(counts[i]) for i in out]
+
+
 def _reward(engine, network, out, critic, want_of) -> float:
-    """The epoch's reward from the engine's arrays: the row critic against the target, or a label critic (§8)."""
-    if critic in ("class", "graded", "evidence"):
+    """The epoch's reward from the engine's arrays: the row critic against the target, or the class or graded critic
+    on the class evidence (§9.5-§9.7). A matched filter keeps a book and is read through its own object (§9.4)."""
+    if critic in ("class", "graded"):
         from .learning import class_evidence  # the one function every engine reads the zone through (§8)
-        counts = _counts(engine)
-        groups = class_evidence([int(counts[i]) for i in out], network.population)
+        groups = class_evidence(_output_counts(engine, out), network.population)
         label = network.input_label
         if label is None:
             raise ValueError(f"the {critic} critic needs a stream that carries labels (a dataset, §8)")
-        if critic == "evidence":
-            from .learning import evidence_reward  # the one function every engine pays it through
-            return evidence_reward(groups, label, network.temperature)
         others = [g for c, g in enumerate(groups) if c != label]
         if critic == "class":
             return 1.0 if all(groups[label] > g for g in others) else 0.0
@@ -294,13 +297,14 @@ def compare(network, epochs=20, bits=None, *, teacher=None, rng=None):
     DRIVE_STEPS; and wherever something draws, the stream's state. A teacher's baseline is
     taken as it stands, so a teacher that has already paid is mirrored from where it is.
     """
-    from .learning import TARGETS
+    from .learning import FILTERS, TARGETS, MatchedFilter
     from .monitor import run_epoch
 
     _refuse(network)
     if teacher is not None:
-        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded", "evidence"):
-            raise ValueError("compare mirrors the reinforce rule with the row, class, graded or evidence critic only")
+        if teacher.rule != "reinforce" or teacher.critic not in ("row", "class", "graded") + FILTERS:
+            raise ValueError("compare mirrors the reinforce rule with the row, class, graded, whitened or poisson critic "
+                             "only")
         if teacher.network is not network:
             raise ValueError("the teacher must be teaching this network")
         if teacher.discharge:
@@ -331,6 +335,8 @@ def compare(network, epochs=20, bits=None, *, teacher=None, rng=None):
                            unstick=teacher.unstick, unstick_target=teacher.unstick_target)
     scored = synaptic or (teacher is not None and teacher.eligibility in ("hazard", "hebb"))
     baseline = None if teacher is None else teacher.baseline  # None until the teacher's first read (§9.3)
+    # §9.4: the Rust side's own filter, from the teacher's as it stands, folded alongside it on the engine's counts
+    mirror = None if teacher is None or teacher.filter is None else MatchedFilter.from_state(teacher.filter.state())
     never = float("-inf")  # the engine's "never"; the objects say None
     parted = []
 
@@ -361,14 +367,24 @@ def compare(network, epochs=20, bits=None, *, teacher=None, rng=None):
                                   f"waves, rust {len(theirs)}, first parting at wave {where}"))
 
         if teacher is not None:
-            mine = _reward(engine, network, out, teacher.critic, TARGETS[teacher.target])
+            if mirror is not None:
+                counts = _output_counts(engine, out)
+                mine = mirror.read(counts, network.input_label)[0]
+            else:
+                mine = _reward(engine, network, out, teacher.critic, TARGETS[teacher.target])
             if mine != reward:
                 parted.append((epoch, f"rewards differ: objects {reward:g}, rust {mine:g}"))
-            if baseline is None:
+            paying = mirror is None or mirror.paying  # §9.4: a filter learns before it pays
+            if baseline is None and paying:
                 baseline = reward
-            engine.reinforce_scores(reward - baseline, teacher.lr)  # §8.4, under either eligibility
+            engine.reinforce_scores(reward - baseline if paying else 0.0, teacher.lr)  # §8.4, under either eligibility
             book.step()
-            baseline += teacher.baseline_rate * (reward - baseline)
+            if paying:
+                baseline += teacher.baseline_rate * (reward - baseline)
+            if mirror is not None:
+                mirror.fold(counts, network.input_label)  # §9.2, step 6
+                if mirror.state() != teacher.filter.state():
+                    parted.append((epoch, "the matched filters differ after the fold"))
             if [n.rate for n in neurons] != book.rates:
                 parted.append((epoch, "firing-rate memories differ"))
             if [n.threshold for n in neurons] != book.thresholds:
@@ -473,7 +489,7 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
           eligibility=None, seed=None, explore_state=None, pending_events=None, homeostasis=0.0, target_rate=TARGET_RATE,
           unstick=0.0, unstick_target=UNSTICK_TARGET, critic="row", labels=None, probe=None, probe_every=0,
           checkpoint=None, checkpoint_every=0,
-          direction=None, reference_weights=None, epoch_offset=0, baseline=None):
+          direction=None, reference_weights=None, epoch_offset=0, baseline=None, filter_memory=None, filter_state=None):
     """Run `epochs` of the §8.4 rule, the whole wave loop in Rust.
 
     Python keeps what must stay reproducible — the input bits and the Poisson drive come
@@ -501,11 +517,17 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
 
     `critic` is row (the fraction of outputs matching the target), class (§8: the
     label's group of outputs out-spikes every other group, or nothing), graded (the
-    fraction of the other groups it out-spikes) or evidence (the group sums as
-    log-odds at `network.temperature`, paid the softmax cross-entropy); the label critics
-    need `labels` beside `patterns`, one per pattern, as `mnist.stream` gives them.
-    Under the evidence critic the report also carries the class critic's fraction
-    over the last tenth, `accuracy_last_tenth`, so a fraction right stays readable.
+    fraction of the other groups it out-spikes), or a matched filter, whitened or
+    poisson (§9.4: each class's template and the noise learned from the run over
+    `filter_memory` epochs, FILTER_MEMORY unless given, the reward the log score at
+    the label of the filter's estimate); the label critics need `labels` beside
+    `patterns`, one per pattern, as `mnist.stream` gives them. A resumed run passes
+    `filter_state`, the filter its checkpoint carried, and goes on from it (§12.11).
+    Under a label critic the report carries the fraction right over the last tenth,
+    `accuracy_last_tenth` -- the filter's own under a matched filter, the class
+    critic's otherwise -- and the fraction right by the sums beside it,
+    `accuracy_last_tenth_sums` (§9.7), and `right` and `right_sums` at every
+    `trace_every`; under a matched filter, `filter`, its state (§12.9).
 
     `probe(epoch, engine, network, out, book)` is called after every `probe_every`-th
     epoch's update, for a diagnostic to read the engine's counts and the rate
@@ -570,8 +592,10 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     if explore_state:  # §12.11: a resume continues that stream where the checkpoint left it, rather than seeding afresh
         explore_rng.setstate((3, tuple(int(x) for x in explore_state), None))
 
-    if critic not in ("row", "class", "graded", "evidence"):
-        raise ValueError(f"the Rust loop is paid by the row, class, graded or evidence critic, got {critic!r}")
+    from .constants import FILTER_MEMORY
+    from .learning import FILTERS, LABEL_CRITICS, filter_for
+    if critic not in ("row", "class", "graded") + FILTERS:
+        raise ValueError(f"the Rust loop is paid by the row, class, graded, whitened or poisson critic, got {critic!r}")
     if patterns is not None:
         network.use_input_stream(patterns, labels)  # a run longer than the stream goes round again (§4.5)
     network.centre(eligibility == "hebb")  # §8.6: under hebb every neuron charges its decisions against its own expectation
@@ -588,14 +612,18 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
     want_of = TARGETS[target]
     book = _Thresholds(engine, neurons, out, homeostasis=homeostasis, target_rate=target_rate, unstick=unstick,
                        unstick_target=unstick_target)
+    # §9.4: the matched filter the run is paid through -- the checkpoint's where it carried one, else a new, empty one
+    read_filter = filter_for(network, critic, FILTER_MEMORY if filter_memory is None else filter_memory,
+                             filter_state) if critic in FILTERS else None
+    labelled = critic in LABEL_CRITICS
 
     # §9.3: a resumed run is the same run continued, so it is paid against the baseline the run had reached
-    total = tail = hits = 0.0
+    total = tail = hits = hits_sums = 0.0
     tenth = max(1, epochs // 10)
-    # The fraction right over each trace interval, beside the score (§9.11). One epoch's
-    # class reward is 0 or 1, so a traced point is the mean over the interval and not a
-    # single epoch's: a curve rather than a coin sequence.
-    right, interval_hits = [], 0.0
+    # The fraction right over each trace interval, beside the score (§9.11), and the fraction right by the sums beside
+    # it (§9.7). One epoch's is 0 or 1, so a traced point is the mean over the interval and not a single epoch's: a
+    # curve rather than a coin sequence.
+    right, right_sums, interval_hits, interval_sums = [], [], 0.0, 0.0
     trace = []
     estimator = None
     if direction is not None:
@@ -628,25 +656,38 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
             deliver([at[place] for place, _ in events], [when for _, when in events])
         engine.run(network.horizon)
 
-        reward = _reward(engine, network, out, critic, want_of)
-        if baseline is None:
-            baseline = reward
-        engine.reinforce_scores(reward - baseline, lr)  # §8.4, under either eligibility
+        if read_filter is not None:  # §9.4: scored by the filter as it stands
+            counts = _output_counts(engine, out)
+            reward, filter_won = read_filter.read(counts, network.input_label)
+        else:
+            reward = _reward(engine, network, out, critic, want_of)
+        paying = read_filter is None or read_filter.paying  # §9.4: a filter learns before it pays
+        if baseline is None and paying:
+            baseline = reward  # §9.3: from the first epoch that is paid
+        engine.reinforce_scores(reward - baseline if paying else 0.0, lr)  # §8.4, under either eligibility
         book.step()
-        baseline += baseline_rate * (reward - baseline)
+        if paying:
+            baseline += baseline_rate * (reward - baseline)
+        if read_filter is not None:
+            read_filter.fold(counts, network.input_label)  # §9.2, step 6
         total += reward
-        won = _reward(engine, network, out, "class", want_of) if (
-            critic == "evidence" and (trace_every or epoch >= epochs - tenth)) else None
+        won = by_sums = None
+        if labelled and (trace_every or epoch >= epochs - tenth):  # §9.7: did the label win outright?
+            by_sums = _reward(engine, network, out, "class", want_of)  # on the class sums
+            won = float(filter_won) if read_filter is not None else by_sums  # and by the critic that pays
         if epoch >= epochs - tenth:
             tail += reward
-            if critic == "evidence":  # the fraction right beside the log score: did the label's class win outright?
+            if labelled:
                 hits += won
+                hits_sums += by_sums
         if won is not None:
             interval_hits += won
+            interval_sums += by_sums
         if trace_every and (epoch + 1) % trace_every == 0:
             trace.append(reward)
-            right.append(interval_hits / trace_every if critic == "evidence" else None)
-            interval_hits = 0.0
+            right.append(interval_hits / trace_every if labelled else None)
+            right_sums.append(interval_sums / trace_every if labelled else None)
+            interval_hits = interval_sums = 0.0
             if estimator is not None:
                 w = np.array(engine.weights())
                 cum, window = (w - w0)[mask], (w - w_prev)[mask]
@@ -663,8 +704,9 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
                 "expectations": [None if e != e else e for e in engine.expectations()],
                 "decisions": list(engine.decision_counts()),
                 "baseline": baseline,  # §9.3: b as it stands, so a resumed run is paid against it
-                "trace": list(trace), "right": list(right),
+                "trace": list(trace), "right": list(right), "right_sums": list(right_sums),
                 "estimator": None if estimator is None else list(estimator),
+                "filter": None if read_filter is None else read_filter.state(),  # §9.4, §12.9: the filter's book
                 **_mode_state(engine, network, synaptic),  # §8.14: the gains, read counts, marks and settings
             })
     on, off = book.stuck()
@@ -672,8 +714,11 @@ def train(network, epochs, *, lr=0.03, target="copy", baseline_rate=0.05, trace_
               # the single-spike rule's expectations and decisions to date (§6.7), so a continuation charges from where it was
               "expectations": [None if e != e else e for e in engine.expectations()], "decisions": list(engine.decision_counts()),
               "stuck_on": on, "stuck_off": off, "unstuck": book.unstuck,
-              "accuracy_last_tenth": hits / tenth if critic == "evidence" else None,
+              "accuracy_last_tenth": hits / tenth if labelled else None,
+              "accuracy_last_tenth_sums": hits_sums / tenth if labelled else None,  # §9.7, beside it
               "right": right,  # the fraction right at every trace_every, beside `trace`'s score
+              "right_sums": right_sums,  # and by the class sums (§9.7)
+              "filter": None if read_filter is None else read_filter.state(),  # §9.4, §12.9: the filter's book
               "baseline": baseline,  # §9.3: what b had reached, so a resume is paid against it and not a fresh one
               "estimator": estimator,  # the estimator's correlation over time (§8), when a direction was given
               **_mode_state(engine, network, synaptic)}  # §8.14, as the checkpoint callback's report holds it

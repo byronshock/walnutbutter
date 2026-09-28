@@ -91,7 +91,7 @@ import random
 from typing import Callable, Sequence
 
 from .constants import (
-    BASELINE_RATE, CRITIC, ELIGIBILITY, LR, RATE_MEMORY, RULE,
+    BASELINE_RATE, CRITIC, ELIGIBILITY, FILTER_MEMORY, FILTER_POISSON_FLOOR, FILTER_SHRINKAGE, LR, RATE_MEMORY, RULE,
     STUCK_ABOVE, STUCK_BELOW,
     TARGET, TARGET_RATE, UNSTICK_TARGET, WINDOW,
 )
@@ -204,34 +204,138 @@ def graded_accuracy(network: Network, target: str = "label") -> float:
     return sum(1 for g in others if mine > g) / len(others)
 
 
-def evidence_reward(groups: Sequence[int], label: int, temperature: float) -> float:
-    """The evidence critic's reward from the class sums (§8): ln q_y, with q_k = exp(n_k / T) / sum_j exp(n_j / T).
+FILTERS = ("whitened", "poisson")  # the matched-filter critics of AUTHORITY.md §9.4, which keep a book and so are not
+# plain functions of the network: the Teacher and the Rust driver each hold a MatchedFilter and fold every epoch into it
+LABEL_CRITICS = ("class", "graded") + FILTERS  # the critics that score a dataset's label (§9.4, §9.6, §9.7)
 
-    Computed from the largest sum, so the exponentials cannot overflow at
-    any temperature; every engine pays the reward through this one function,
-    so they agree to the bit.
+
+def label_classes(network: Network) -> int:
+    """The classes C a dataset's labels name, as the complement-coded output zone holds them (§5.11): 2CP outputs."""
+    return network.output_width() // (network.population * 2)
+
+
+class MatchedFilter:
+    """The matched-filter critic of AUTHORITY.md §9.4: the output zone read as a detector reads a known signal in noise.
+
+    Byron, September 26, 2026: "Always assume matched filtering at the outputs", and the same afternoon, "default to a
+    noise-whitened matched filter, with Poisson matched filter also an option".
+
+    For each of the C classes it holds a template -- each output's expected count when the class is shown -- and one
+    noise estimate S shared across the classes. Class k scores s_k = mu_k' Sigma^-1 x - mu_k' Sigma^-1 mu_k / 2 under
+    the whitened form, Sigma being S shrunk toward its own diagonal by FILTER_SHRINKAGE and held beside one epoch's
+    worth of unit variance; and s_k = sum_j x_j ln lambda_kj - lambda_kj under the poisson form, lambda the template
+    floored at FILTER_POISSON_FLOOR. The scores are log-likelihoods, the classes equally likely, so the estimate is
+    their softmax and the reward is its log at the label -- no temperature. Nothing is known at the start: every
+    template is silence, S is zero, and every class scores alike, paying ln(1 / C).
+
+    `read` scores an epoch as the filter stands; `fold` then moves it (§9.2, step 6): the noise toward the epoch's
+    deviation from its class's template, as a plain mean of up to `memory` epochs and forgetting after, and the
+    template toward the counts, the same way up to memory / C presentations. It learns before it pays: until it has
+    folded `memory` epochs it is not `paying`, and the rule is paid an advantage of zero, which moves no weight
+    (Byron, September 26, 2026, after its first few epochs paid rewards down to -5,970). Every engine reads and folds through
+    this object, in 64-bit floats, on the integer counts of the read, so the three agree to the bit; `state` and
+    `from_state` carry it through a checkpoint (§12.9) so that a resume is exact (§12.11).
     """
-    if temperature <= 0.0:
-        raise ValueError(f"the evidence critic needs a positive temperature, got {temperature}")
-    top = max(groups)
-    return (groups[label] - top) / temperature - math.log(sum(math.exp((g - top) / temperature) for g in groups))
+
+    def __init__(self, form: str, classes: int, outputs: int, memory: int = FILTER_MEMORY,
+                 shrinkage: float = FILTER_SHRINKAGE, floor: float = FILTER_POISSON_FLOOR):
+        try:
+            import numpy as np
+        except ImportError:  # the core package needs nothing; the filter needs numpy, as the array engine does (§12.2)
+            raise ValueError("the matched-filter critics need numpy: pip install -e '.[arrays]'") from None
+        if form not in FILTERS:
+            raise ValueError(f"unknown matched filter {form!r}; choose from {', '.join(FILTERS)} (§9.4)")
+        if classes < 2 or outputs < 1:
+            raise ValueError(f"a matched filter needs at least two classes and one output, got {classes} and {outputs}")
+        if int(memory) != memory or memory < classes:
+            raise ValueError(f"the filter's memory is a whole number of epochs, at least one per class ({classes}); "
+                             f"got {memory} (§9.4)")
+        if not 0.0 <= shrinkage <= 1.0 or floor <= 0.0:
+            raise ValueError(f"the shrinkage lies in [0, 1] and the floor above 0, got {shrinkage} and {floor} (§9.4)")
+        self._np = np
+        self.form, self.classes, self.outputs = form, classes, outputs
+        self.memory, self.shrinkage, self.floor = int(memory), float(shrinkage), float(floor)
+        self.templates = np.zeros((classes, outputs))  # mu_k: silence, until a class is shown
+        self.noise = np.zeros((outputs, outputs))  # S
+        self.presented = [0] * classes  # each class's presentations folded so far
+        self.folded = 0  # the epochs folded into S, uncapped
+        self._weights = None  # the scores' weights and offsets as the filter stands, until the next fold
+
+    @property
+    def paying(self) -> bool:
+        """Whether the filter has folded its memory's worth of epochs and pays the rule (§9.4): until then its reads
+        are reported and the advantage is zero."""
+        return sum(self.presented) >= self.memory
+
+    def _scoring(self):
+        """(W, b) with s = x W + b, as the filter stands: computed once between folds."""
+        if self._weights is None:
+            np = self._np
+            if self.form == "poisson":
+                rates = np.maximum(self.templates, self.floor)
+                self._weights = (np.log(rates).T, -rates.sum(axis=1))
+            else:
+                m = min(self.folded, self.memory)
+                shrunk = (1.0 - self.shrinkage) * self.noise + self.shrinkage * np.diag(np.diag(self.noise))
+                sigma = (m * shrunk + np.eye(self.outputs)) / (m + 1)
+                w = np.linalg.solve(sigma, self.templates.T)  # outputs x classes: Sigma^-1 mu_k
+                self._weights = (w, -0.5 * np.einsum("ko,ok->k", self.templates, w))
+        return self._weights
+
+    def scores(self, counts: Sequence[int]) -> list[float]:
+        """Each class's log-likelihood for the epoch's counts, as the filter stands."""
+        w, b = self._scoring()
+        x = self._np.asarray(counts, dtype=float)
+        if x.shape != (self.outputs,):
+            raise ValueError(f"the filter reads {self.outputs} outputs, got {x.shape[0] if x.ndim == 1 else x.shape}")
+        return (x @ w + b).tolist()
+
+    def read(self, counts: Sequence[int], label: int) -> tuple[float, bool]:
+        """(the reward ln q_label, whether the filter scores the label strictly highest) for one epoch's counts."""
+        s = self.scores(counts)
+        top = max(s)
+        reward = s[label] - top - math.log(sum(math.exp(v - top) for v in s))
+        return reward, all(s[label] > v for k, v in enumerate(s) if k != label)
+
+    def fold(self, counts: Sequence[int], label: int) -> None:
+        """Fold the epoch into the filter, after it has been scored (§9.4): the noise first, on the template as it stood."""
+        np = self._np
+        x = np.asarray(counts, dtype=float)
+        n = self.presented[label]
+        if n:  # a class's first presentation has no template to deviate from
+            d = x - self.templates[label]
+            self.folded += 1
+            self.noise += (n / (n + 1) * np.outer(d, d) - self.noise) / min(self.folded, self.memory)
+        self.templates[label] += (x - self.templates[label]) / min(n + 1, self.memory / self.classes)
+        self.presented[label] = n + 1
+        self._weights = None
+
+    def state(self) -> dict:
+        """What a checkpoint carries of the filter (§12.9): its settings and its book, floats as they stand."""
+        return {"form": self.form, "classes": self.classes, "outputs": self.outputs, "memory": self.memory,
+                "shrinkage": self.shrinkage, "floor": self.floor, "templates": self.templates.tolist(),
+                "noise": self.noise.tolist(), "presented": list(self.presented), "folded": self.folded}
+
+    @classmethod
+    def from_state(cls, state: dict) -> "MatchedFilter":
+        """The filter a checkpoint carried, to go on from where it was (§12.11)."""
+        f = cls(state["form"], state["classes"], state["outputs"], state["memory"], state["shrinkage"], state["floor"])
+        f.templates = f._np.array(state["templates"], dtype=float)
+        f.noise = f._np.array(state["noise"], dtype=float)
+        f.presented, f.folded = [int(n) for n in state["presented"]], int(state["folded"])
+        if f.templates.shape != (f.classes, f.outputs) or f.noise.shape != (f.outputs, f.outputs):
+            raise ValueError("the checkpoint's filter does not have the shape its own settings give it (§12.9)")
+        return f
 
 
-def evidence_score(network: Network, target: str = "label") -> float:
-    """The evidence critic (§8, mnist; Byron, September 16, 2026: "the spikes are EVIDENCE for now, not a proper
-    maximum-likelihood estimator. We will have to sweep for temperature eventually").
-
-    The class sums as the class critic takes them, read as log-odds at the
-    network's `temperature` (TEMPERATURE, §1.3): the estimate is the softmax
-    of the sums over T and the reward is the log of the estimate the label
-    was given -- the softmax cross-entropy of Bridle (1990) and Bishop (1995,
-    §6.9). Chance, a uniform estimate, is ln 0.1 = -2.30; a perfect epoch is
-    0; a silent label population is weak evidence, not -infinity. T -> 0 is
-    the class critic in log form, T -> infinity pays ln 0.1 whatever the counts.
-    """
-    if network.input_label is None:
-        raise ValueError("the evidence critic needs a stream that carries labels (a dataset, §8)")
-    return evidence_reward(class_sums(network), network.input_label, network.temperature)
+def filter_for(network: Network, critic: str, memory: int = FILTER_MEMORY, state: dict | None = None) -> MatchedFilter:
+    """The matched filter a run under `critic` pays through: the checkpoint's where there is one, else a new one."""
+    if state is not None:
+        if state.get("form") != critic:
+            raise ValueError(f"the checkpoint's filter is {state.get('form')!r} and the run names the {critic} critic: "
+                             "a filter is not carried across to the other form (§9.4, §12.9)")
+        return MatchedFilter.from_state(state)
+    return MatchedFilter(critic, label_classes(network), network.output_width(), memory)
 
 
 def output_fired(network: Network) -> list[bool]:
@@ -323,8 +427,7 @@ CRITICS = {
     "population": population_accuracy,  # the kinder teacher: raw bits right after a majority vote per group (§6.13)
     "class": class_accuracy,  # a dataset's label: 1 when the label's group of outputs out-spikes every other group (§8)
     "graded": graded_accuracy,  # the fraction of the other groups the label's group out-spikes (§8)
-    "evidence": evidence_score,  # the group sums as evidence at a temperature: the softmax cross-entropy ln q_label (§8)
-}
+}  # and the matched filters of FILTERS, which the Teacher holds rather than looks up here (§9.4)
 
 
 def reward(network: Network, target: str = "reversed", critic: str = "row") -> float:
@@ -522,6 +625,7 @@ class Teacher:
         unstick_target: float = UNSTICK_TARGET,
         critic: str = CRITIC,
         rule: str = RULE,
+        filter_memory: int = FILTER_MEMORY,
     ):
         if rule not in RULES:
             raise ValueError(f"unknown learning rule {rule!r}; choose from {', '.join(RULES)}")
@@ -529,13 +633,15 @@ class Teacher:
         network.rule = rule
         if target not in TARGETS:
             raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}")
-        if critic not in CRITICS:
-            raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(CRITICS)}")
-        if critic not in ("row", "population", "class", "graded", "evidence") and target not in ("reversed", "copy"):
+        if critic not in CRITICS and critic not in FILTERS:
+            raise ValueError(f"unknown critic {critic!r}; choose from {', '.join(list(CRITICS) + list(FILTERS))}")
+        if critic not in ("row", "population") + LABEL_CRITICS and target not in ("reversed", "copy"):
             raise ValueError(f"the {critic} critic reads the output as a word, which needs the reversed or copy target")
-        if critic in ("class", "graded", "evidence") and target != "label":
+        if critic in LABEL_CRITICS and target != "label":
             raise ValueError(f"the {critic} critic scores a dataset's label (§8): its target is label")
         self.critic = critic
+        # §9.4: a matched filter keeps a book, learned from the run; resume_teacher puts a checkpoint's in its place
+        self.filter = filter_for(network, critic, filter_memory) if critic in FILTERS else None
         if eligibility is None:  # §8.3: where a run names none and the decision is a draw, the eligibility is hazard
             eligibility = ELIGIBILITY
         if eligibility not in ELIGIBILITIES:
@@ -570,6 +676,7 @@ class Teacher:
         self.total_reward = 0.0  # sum of every epoch's reward, for accuracy to date
         self.baseline: float | None = None  # running average reward: what "usual" looks like
         self.last_reward: float | None = None
+        self.last_right: bool | None = None  # under a matched filter, whether it scored the label strictly highest (§9.7)
         self.average: float | None = None  # exponential moving average over about `window` epochs
         self._trace = None  # a text file the per-epoch trace is written to (see trace_to)
 
@@ -592,17 +699,27 @@ class Teacher:
         return self.step()
 
     def step(self) -> float:
-        """Score the epoch that has just run and reinforce. Returns its reward (accuracy)."""
-        reward = CRITICS[self.critic](self.network, self.target)
-        if self.baseline is None:
-            self.baseline = reward
-        advantage = reward - self.baseline
+        """Score the epoch that has just run and reinforce, in §9.2's order. Returns its reward."""
+        if self.filter is not None:  # §9.4: scored by the filter as it stands, and folded in last
+            if self.network.input_label is None:
+                raise ValueError(f"the {self.critic} critic needs a stream that carries labels (a dataset, §8)")
+            counts, label = self.network.output_counts(), self.network.input_label
+            reward, self.last_right = self.filter.read(counts, label)
+        else:
+            reward = CRITICS[self.critic](self.network, self.target)
+        paying = self.filter is None or self.filter.paying  # §9.4: a filter learns before it pays
+        if self.baseline is None and paying:
+            self.baseline = reward  # §9.3: from the first epoch that is paid
+        advantage = reward - self.baseline if paying else 0.0  # zero moves no weight and settles the scores as ever
         if self.rule == "reinforce":
             reinforce(self.network, advantage, self.lr, self.eligibility)
         update_rates(self.network)
         homeostasis(self.network, self.homeostasis, self.target_rate)
         self.unstuck_count += len(unstick(self.network, self.unstick, self.unstick_target))
-        self.baseline += self.baseline_rate * (reward - self.baseline)
+        if paying:
+            self.baseline += self.baseline_rate * (reward - self.baseline)
+        if self.filter is not None:
+            self.filter.fold(counts, label)  # §9.2, step 6
         self.epochs += 1
         if self._trace is not None:
             self._trace.write(f"{self.network.epoch},{self.network.time:g},{self.baseline:.6g},{reward:.6g}\n")

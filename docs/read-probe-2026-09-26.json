@@ -1,0 +1,18 @@
+[
+ {"label": "mnist-1m-lowlr", "sweep": "mnist-1m-lowlr", "epochs": 10000,
+  "args": ["--name", "mnist-1m-lowlr", "--problem", "mnist", "--interval", "100", "--lr", "0.0005", "0.00075", "0.001", "0.0015", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "0", "--eligibility", "hazard", "--seed", "1", "2", "3"]},
+ {"label": "mnist-1m-lowlr-lr0-fresh", "sweep": null, "epochs": 10000,
+  "args": ["--name", "mnist-1m-lowlr", "--problem", "mnist", "--interval", "100", "--lr", "0", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "0", "--eligibility", "hazard", "--seed", "1", "2", "3"]},
+ {"label": "mnist-1m-hidden", "sweep": "mnist-1m-hidden", "epochs": 10000,
+  "args": ["--name", "mnist-1m-hidden", "--problem", "mnist", "--interval", "100", "--lr", "0.002", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "60", "120", "240", "--eligibility", "hazard", "--seed", "1", "2", "3", "4", "5"]},
+ {"label": "mnist-1m-hidden-lr0-fresh", "sweep": null, "epochs": 10000,
+  "args": ["--name", "mnist-1m-hidden", "--problem", "mnist", "--interval", "100", "--lr", "0", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "60", "120", "240", "--eligibility", "hazard", "--seed", "1", "2", "3", "4", "5"]},
+ {"label": "mnist-1m-leaky-10seed", "sweep": "mnist-1m-leaky-10seed", "epochs": 10000,
+  "args": ["--name", "mnist-1m-leaky-10seed", "--problem", "mnist", "--interval", "100", "--lr", "0.0075", "--tau", "2", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-2.4", "--hidden-neurons", "0", "--eligibility", "hazard", "--seed", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]},
+ {"label": "mnist-1m-leaky-10seed-lr0-fresh", "sweep": null, "epochs": 10000,
+  "args": ["--name", "mnist-1m-leaky-10seed", "--problem", "mnist", "--interval", "100", "--lr", "0", "--tau", "2", "--delta", "0.3125", "--threshold", "0.6", "--minimum-potential", "-2.4", "--hidden-neurons", "0", "--eligibility", "hazard", "--seed", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]},
+ {"label": "synapse-1m-lr0-fresh", "sweep": null, "epochs": 10000,
+  "args": ["--name", "synapse-1m", "--problem", "mnist", "--interval", "100", "--lr", "0", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "0", "--temperature", "2", "--eligibility", "hazard", "--exploration", "synapse", "--synapse-hazard", "0.01", "--hazard-family", "loglinear", "--synapse-scaling", "count", "--trace-counts", "all", "--drive", "rate", "--seed", "1", "2", "3", "4", "5"]},
+ {"label": "synapse-charged-200k-lr0-fresh", "sweep": null, "epochs": 10000,
+  "args": ["--name", "synapse-charged-200k", "--problem", "mnist", "--interval", "100", "--lr", "0", "--threshold", "0.6", "--minimum-potential", "-0.2", "--hidden-neurons", "0", "--temperature", "2", "--eligibility", "hazard", "--exploration", "synapse", "--synapse-hazard", "0.01", "--hazard-family", "loglinear", "--synapse-scaling", "count", "--trace-counts", "all", "--drive", "charged", "--seed", "1", "2", "3", "4"]}
+]

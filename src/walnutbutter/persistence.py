@@ -66,7 +66,6 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
         "weight": getattr(network, "weight", None),
         "weight_range": list(network.weight_range),
         "population": network.population,  # neurons per raw bit under population coding
-        "temperature": network.temperature,  # the evidence critic's temperature (§8)
         "clock": network.clock,  # clock neurons at the front of the input zone, always driven (§4.3)
         "quash": [network.quash_rate, network.quash_k],  # the cycle quash (§6.11)
         "drive": network.drive,  # how a bit becomes spikes (§4.3)
@@ -158,6 +157,7 @@ def checkpoint(network: Network, path: str | Path, teacher=None) -> dict:
             "total_reward": teacher.total_reward,
             "baseline": teacher.baseline,
             "average": teacher.average,
+            "filter": None if teacher.filter is None else teacher.filter.state(),  # §9.4, §12.9: the filter's book
         }
     tmp = Path(path).with_suffix(Path(path).suffix + ".tmp")
     tmp.write_text(json.dumps(data))
@@ -388,9 +388,17 @@ def resume_teacher(teacher, data: dict) -> None:
     wrote (docs/rust-sweep.py) -- the one it keeps beside its own fields (§9.3).
     Until September 25, 2026 the command line's resume reseeded the stream and
     dropped the driver's baseline, and was a new run rather than the same one.
+    A matched filter (§9.4) comes back the same way, from the learning record or
+    from beside the driver's fields; a checkpoint that carries none -- one saved
+    under another critic, the evidence critic before September 26, 2026 among
+    them -- leaves the teacher's new filter as it is, empty.
     """
+    from .learning import filter_for
     resume_stream(teacher.rng, data)
     record = data.get("learning")
+    state = (record or {}).get("filter") or data.get("filter")
+    if teacher.filter is not None and state is not None:
+        teacher.filter = filter_for(teacher.network, teacher.critic, state=state)
     if not record:
         if data.get("baseline") is not None:
             teacher.baseline = data["baseline"]
@@ -499,7 +507,6 @@ def _restore_clock(network, data: dict) -> None:
                              "external")
     network.rule = data.get("rule", "local")  # a file written under a rule the specification dropped reads as local (§9.1)
     network.population = data.get("population", network.population)
-    network.temperature = data.get("temperature", network.temperature)
     network.clock = data.get("clock", 0)
     network.pickiness = data.get("pickiness", network.pickiness)
     if data.get("quash"):
