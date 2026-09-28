@@ -69,15 +69,18 @@ def driver():
 
 
 def run(job):
-    sweep, epochs, arm, fixed, scale, floor_ratio, wiring, eligibility = job
+    label, sweep, epochs, arm, fixed, scale, floor_ratio, wiring, eligibility = job
     rs = driver()
     from walnutbutter import fast
     from walnutbutter.problems import dataset_stream
 
     name = rs.arm_name(arm)
     grid, args = rs.grid_of("mnist", arm, eligibility, scale, floor_ratio, wiring, tuple(fixed))
-    source = MAIN / "runs" / sweep / f"{name}-network.json"
-    grid, offset, _reference, baseline, explore_state = rs.resume_grid(grid, source)
+    fresh = sweep is None  # a control: the arm's network as its seed builds it, never learning (lr 0)
+    offset, baseline, explore_state = 0, None, None
+    if not fresh:
+        source = MAIN / "runs" / sweep / f"{name}-network.json"
+        grid, offset, _reference, baseline, explore_state = rs.resume_grid(grid, source)
     patterns, labels = dataset_stream("mnist", int(arm["seed"]))
     grid.use_input_stream(patterns, labels)  # §12.11: the stream continues where the checkpoint left it
     grid.input_at = offset
@@ -148,7 +151,8 @@ def run(job):
             evidence[cls // population] += (spikes[i] + reads[i]) * (1 if half == 0 else -1)
         right += all(evidence[label] > e for c, e in enumerate(evidence) if c != label)
 
-    fast.train(grid, epochs, lr=args.lr, target=args.target, trace_every=0, patterns=None, labels=None,
+    lr = 0.0 if fresh else args.lr
+    fast.train(grid, epochs, lr=lr, target=args.target, trace_every=0, patterns=None, labels=None,
                eligibility=args.eligibility, seed=int(arm["seed"]), explore_state=explore_state,
                pending_events=getattr(grid, "engine_pending", None), homeostasis=args.homeostasis,
                target_rate=args.target_rate, unstick=args.unstick, unstick_target=args.unstick_target,
@@ -156,15 +160,15 @@ def run(job):
 
     per = sorted(per_epoch_input_spikes)
     result = {
-        "arm": name, "sweep": sweep, "from_epoch": offset, "epochs": epochs,
+        "arm": name, "sweep": sweep, "fresh": fresh, "from_epoch": offset, "epochs": epochs,
         "interval_ms": grid.interval, "drive": grid.drive, "drive_steps": grid.drive_steps,
-        "input_rate_per_ms": grid.input_rate, "lr": args.lr, "seed": int(arm["seed"]),
+        "input_rate_per_ms": grid.input_rate, "lr": lr, "seed": int(arm["seed"]),
         "right": right / epochs, "groups": tally,
         "histogram": {str(k): dict(sorted(v.items())) for k, v in histogram.items()},
         "inputs": {**inputs, "epochs": epochs,
                    "input_spikes_per_epoch_min_median_max": [per[0], per[len(per) // 2], per[-1]]},
     }
-    out_dir = MAIN / "runs" / "synapse-read-probe" / sweep
+    out_dir = MAIN / "runs" / "synapse-read-probe" / label
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{name}.json").write_text(json.dumps(result, indent=1))
     np.savez_compressed(out_dir / f"{name}.npz", labels=np.array(kept_labels, dtype=np.uint8),
@@ -173,15 +177,37 @@ def run(job):
     return name
 
 
-def main():
-    sweep, epochs = sys.argv[1], int(sys.argv[2])
+def jobs_of(label, sweep, epochs, words):
+    """The jobs for one sweep's arms, as its own rust-sweep.py arguments name them: continuations of its checkpoints,
+    or with `sweep` None, fresh networks of the same arms that never learn -- each seed's untrained read."""
     rs = driver()
-    sys.argv = ["rust-sweep.py"] + sys.argv[sys.argv.index("--") + 1:]
-    args = rs.parse()
+    argv = sys.argv
+    sys.argv = ["rust-sweep.py"] + list(words)
+    try:
+        args = rs.parse()
+    finally:
+        sys.argv = argv
     _swept, arms = rs.grid_and_arms(args)
     fixed = rs.fixed_words(args)
-    jobs = [(sweep, epochs, arm, fixed, args.scale, args.floor_ratio, args.wiring, args.eligibility[0]) for arm in arms]
-    with Pool(len(jobs)) as pool:
+    return [(label, sweep, epochs, arm, fixed, args.scale, args.floor_ratio, args.wiring, args.eligibility[0])
+            for arm in arms]
+
+
+def main():
+    """docs/synapse-read-probe.py SWEEP EPOCHS -- <the sweep's rust-sweep.py arguments>, one sweep on as many workers as
+    it has arms; or docs/synapse-read-probe.py --batch SPEC.json --workers N, every entry of SPEC -- {"label", "sweep"
+    (null for fresh learning-off networks), "epochs", "args"} -- in one pool of N, the biggest networks first."""
+    if sys.argv[1] == "--batch":
+        spec = json.loads(Path(sys.argv[2]).read_text())
+        workers = int(sys.argv[sys.argv.index("--workers") + 1])
+        jobs = [job for entry in spec for job in jobs_of(entry["label"], entry["sweep"], entry["epochs"], entry["args"])]
+        jobs.sort(key=lambda job: -job[3].get("hidden_neurons", 0.0))
+    else:
+        sweep, epochs = sys.argv[1], int(sys.argv[2])
+        jobs = jobs_of(sweep, sweep, epochs, sys.argv[sys.argv.index("--") + 1:])
+        workers = len(jobs)
+    print(f"{len(jobs)} jobs on {min(workers, len(jobs))} workers", flush=True)
+    with Pool(min(workers, len(jobs))) as pool:
         for name in pool.imap_unordered(run, jobs):
             print("done", name, flush=True)
 

@@ -25,9 +25,15 @@ code, 11.10) from those it should be off: d' = (mean on - mean off) / sqrt of th
 variances; and the temperature at which n_k/T would be the Poisson matched filter's log-likelihood
 if every output were alike, T = 1 / ln(on rate / off rate).
 
-Usage: docs/synapse-matched-filter.py SWEEP [SWEEP ...]
+Where runs/synapse-read-probe/<SWEEP>-lr0-fresh holds the same arms built fresh from their seeds and never learning
+(docs/synapse-read-probe.py --batch, a null sweep), each arm is set against its own seed's untrained read: a random
+input-to-output wiring already carries much of the digit, so what an arm learned is its rise above that, not above
+chance (seed 1 on the synapse point: 0.52 untrained, September 26, 2026).
+
+Usage: docs/synapse-matched-filter.py [--timed] SWEEP [SWEEP ...]  (the timed reader only with --timed)
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +44,8 @@ HERE = Path(__file__).resolve().parent
 MAIN = Path(subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=HERE,
                            capture_output=True, text=True, check=True).stdout.strip()).parent
 CLASSES, POPULATION = 10, 3
+TIMED = "--timed" in sys.argv  # the timed reader: 1,260 features, the slow one, and on the synapse arms it found nothing
+sys.argv = [a for a in sys.argv if a != "--timed"]
 
 
 def code(labels):
@@ -109,7 +117,7 @@ def arm(path):
     out["critic_ties_split"] = critic(counts[half:], ty, split_ties=True)
     out["poisson"] = poisson(counts[:half], fy, counts[half:], ty)
     out["whitened"], out["shrink"] = whitened(counts[:half], fy, counts[half:], ty)
-    out["whitened_timed"], out["shrink_timed"] = whitened(timed[:half], fy, timed[half:], ty)
+    out["whitened_timed"], out["shrink_timed"] = whitened(timed[:half], fy, timed[half:], ty) if TIMED else (None, None)
     rows = per_output(counts, labels)
     out["dprime"] = rows[:, 2].round(3).tolist()
     out["mean_on"], out["mean_off"] = rows[:, 0].round(3).tolist(), rows[:, 1].round(3).tolist()
@@ -124,21 +132,53 @@ def arm(path):
     return out
 
 
+def read_folder(folder):
+    """Every arm of a probe folder read by every reader, written beside them as matched-filter.json."""
+    results = [arm(p) for p in sorted(folder.glob("*.npz"))]
+    (folder / "matched-filter.json").write_text(json.dumps(results, indent=1))
+    return results
+
+
+def short(name):
+    """An arm's name cut to what tells the arms of one sweep apart: its rate, its hidden count, its seed."""
+    knobs = dict(re.findall(r"(lr|hidden_neurons|seed)(-?[0-9.]+)", name))
+    return f"lr{knobs.get('lr', '?')}-h{knobs.get('hidden_neurons', '0')}-s{knobs.get('seed', '?')}"
+
+
+def untrained_key(name):
+    """What pairs an arm with its seed's learning-off control: its name without its rate."""
+    return re.sub(r"-lr-?[0-9.]+", "", name)
+
+
 def main():
+    """Read each named probe folder, and where runs/synapse-read-probe/<sweep>-lr0-fresh holds the same arms built fresh
+    and never learning, set every arm against its own seed's untrained read."""
     for sweep in sys.argv[1:]:
         folder = MAIN / "runs" / "synapse-read-probe" / sweep
-        results = [arm(p) for p in sorted(folder.glob("*.npz"))]
-        (folder / "matched-filter.json").write_text(json.dumps(results, indent=1))
-        print(f"\n{sweep}: fraction right on the second half of each continuation (fit on the first)")
-        print(f"{'arm':<14} {'critic':>7} {'ties/m':>7} {'poisson':>8} {'whiten':>7} {'timed':>7}   "
-              f"{'on':>5} {'off':>5} {'T alike':>7}  d' median [min, max], outputs with d' < 0.2")
+        results = read_folder(folder)
+        fresh = folder.with_name(f"{sweep}-lr0-fresh")
+        controls = {untrained_key(r["arm"]): r for r in read_folder(fresh)} if fresh.is_dir() else {}
+        print(f"\n{sweep}: fraction right on the second half of each continuation (fit on the first)"
+              + (f", against the same seed built fresh and never learning ({fresh.name})" if controls else ""))
+        print(f"{'arm':<18} {'sums':>6} {'poisson':>8} {'whiten':>7} {'timed':>7} | {'untrained: sums':>15} {'whiten':>7} "
+              f"{'gain':>7} | d' median, outputs with d' < 0.2")
+        groups = {}
         for r in results:
-            short = "lr" + r["arm"].split("-lr")[1].split("-")[0] + "-" + r["arm"].rsplit("-", 1)[1]
+            c = controls.get(untrained_key(r["arm"]))
             dp = np.array(r["dprime"])
-            print(f"{short:<14} {r['critic']:7.3f} {r['critic_ties_split']:7.3f} {r['poisson']:8.3f} "
-                  f"{r['whitened']:7.3f} {r['whitened_timed']:7.3f}   {r['zone_on']:5.2f} {r['zone_off']:5.2f} "
-                  f"{r['temperature_if_alike'] or float('nan'):7.2f}  {np.median(dp):.2f} [{dp.min():.2f}, {dp.max():.2f}], "
-                  f"{int((dp < 0.2).sum())}")
+            gain = r["whitened"] - c["whitened"] if c else None
+            print(f"{short(r['arm']):<18} {r['critic']:6.3f} {r['poisson']:8.3f} {r['whitened']:7.3f} "
+                  f"{r['whitened_timed'] if TIMED else float('nan'):7.3f} | {c['critic'] if c else float('nan'):15.3f} "
+                  f"{c['whitened'] if c else float('nan'):7.3f} {gain if gain is not None else float('nan'):+7.3f} | "
+                  f"{np.median(dp):.2f}, {int((dp < 0.2).sum())}")
+            groups.setdefault(short(r["arm"]).rsplit("-s", 1)[0], []).append((r, c))
+        print(f"\n{'arm, over seeds':<18} {'n':>2} {'sums':>6} {'whiten':>7} {'untrained':>9} {'gain mean':>9} {'sd':>6}")
+        for key, pairs in groups.items():
+            gains = [r["whitened"] - c["whitened"] for r, c in pairs if c]
+            print(f"{key:<18} {len(pairs):2d} {np.mean([r['critic'] for r, _ in pairs]):6.3f} "
+                  f"{np.mean([r['whitened'] for r, _ in pairs]):7.3f} "
+                  f"{np.mean([c['whitened'] for _, c in pairs if c]) if gains else float('nan'):9.3f} "
+                  f"{np.mean(gains) if gains else float('nan'):+9.3f} {np.std(gains) if gains else float('nan'):6.3f}")
 
 
 if __name__ == "__main__":
