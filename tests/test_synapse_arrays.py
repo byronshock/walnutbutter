@@ -34,7 +34,7 @@ pytest.importorskip("scipy")
 
 from walnutbutter import constants as C  # noqa: E402
 from walnutbutter.arrays import ArrayNetwork, SynapseDraws  # noqa: E402
-from walnutbutter.goo import Goo  # noqa: E402
+from walnutbutter.goo import DEFAULT_WIRING, OLD_WIRING, Goo  # noqa: E402
 from walnutbutter.learning import Teacher  # noqa: E402
 from walnutbutter.monitor import run_epoch  # noqa: E402
 from walnutbutter.network import Network  # noqa: E402
@@ -53,10 +53,11 @@ def quiet(monkeypatch):
         monkeypatch.setattr(Neuron, name, getattr(Neuron, name))
 
 
-def goo(seed=3, weight=None, drive="rate", **settings) -> Goo:
-    """Goo 60 on the copy problem's read (§11), exploring at the synapse. A weight of 0.02 on every synapse keeps many
-    sources above zero potential, so §8.16's entry posts at most waves; random weights inhibit as well as excite."""
-    g = Goo(count=60, across=8, seed=seed, weight=weight)
+def goo(seed=3, weight=None, drive="rate", wiring=DEFAULT_WIRING, **settings) -> Goo:
+    """Goo 60 on the copy problem's read (§11), exploring at the synapse, under the default wiring unless one is named. A
+    weight of 0.02 on every synapse keeps many sources above zero potential, so §8.16's entry posts at most waves; random
+    weights inhibit as well as excite."""
+    g = Goo(count=60, across=8, seed=seed, weight=weight, wiring=wiring)
     g.rule, g.drive, g.read = "reinforce", "rate", "count"
     g.set_exploration("synapse", **settings)
     g.drive = drive
@@ -517,7 +518,8 @@ GOO_VARIANTS = [  # (scaling, TAU, seeds, weight, learning, options): each combi
     #
     # Held by §12.4's measure (parted, settled) -- each score to a part in a billion of the larger of itself and the
     # larger term its settles took, the weights to a part in a billion of themselves and to 1e-12 absolute -- on seeds 1
-    # to 40 for 20 epochs over the eight combinations (all four variants, 1,280 arms, September 25, 2026), 12 arms
+    # to 40 for 20 epochs over the eight combinations (all four variants, 1,280 arms, September 25, 2026, under the scaled
+    # rule, the default wiring then), 12 arms
     # parted, every one of them learning, from epoch 10 on, and none on a spike, a read count, a mark, the queue or the
     # stream: the accumulator's seeds 4, 10, 16, 17, 27, 30, 32, 33, 34 and 35 and the leak's 2 and 22. Eleven first
     # parted on a weight: eight past 1e-12 absolute and inside a part in 10^9 of themselves (1.0e-12 to 6.3e-12
@@ -535,19 +537,21 @@ GOO_VARIANTS = [  # (scaling, TAU, seeds, weight, learning, options): each combi
     ("fan-out", 2.0, (4,), None, False, {"quash": 0.02, "h0": 0.0, "steps": 2, "discharge": 3}),
 ]
 PARTING = {  # (drive, trace, family, scaling, TAU, seed): the arms of SEEDS that part inside their twenty epochs on this
-    # machine (a 7950X3D, numpy 2.5.3, September 25, 2026) -- how far the rounding grows is numpy's exp against libm's,
-    # so another platform may part elsewhere -- expected to fail, not strictly. The leak's seed 2 parts past a part in a
-    # billion inside the twenty epochs §12.4 holds the arrays to; the accumulator's seed 4 only on the 1e-12 absolute
-    # §12.4 names for the weights, inside a part in a billion of themselves, and whether that is agreement is Byron's to
-    # rule: §12.4 names both, and the test holds the weights to both until he does
-    ("rate", "all", "linear", "count", 2.0, 2): "§12.4: at epoch 15 weights[55] -0.0046430056038863285 against "
-    "-0.004643005604909937, 1.0e-12 apart and 2.2e-10 relative; at epoch 17 the same weight 1.6e-9 relative and "
-    "potentials[59] 2.0e-12 apart; by epoch 19 scores[89] 1.1e-8 relative -- past a part in a billion inside the tests' "
-    "twenty epochs",
-    ("rate", "all", "loglinear", "fan-out", math.inf, 4): "§12.4: at epoch 10 weights[38] -0.17556114825827004 against "
-    "-0.17556114826455116, 6.3e-12 apart and 3.6e-11 relative, the worst weights[87] 7.8e-12 apart and 4.0e-11 relative, "
-    "held there to epoch 19 -- past the 1e-12 absolute §12.4 names for the weights, inside a part in a billion of "
-    "themselves, every other quantity inside its tolerance",
+    # machine (a 9950X, numpy 2.5.3, September 29, 2026, under the driven-inputs rule, §4.5) -- how far the rounding grows
+    # is numpy's exp against libm's, so another platform, or another wiring, may part elsewhere -- expected to fail, not
+    # strictly. Both part only on the 1e-12 absolute §12.4 names for the potentials and the weights, inside a part in a
+    # billion of themselves, nothing exact and no score apart, and whether that is agreement is Byron's to rule: §12.4
+    # names both, and the test holds the weights to both until he does. Under the scaled rule, on a 7950X3D on September
+    # 25, the arms that parted were the leak's rate/all/linear/count seed 2 (past a part in a billion by epoch 17) and the
+    # accumulator's rate/all/loglinear/fan-out seed 4 (on the 1e-12 absolute alone); under the driven-inputs rule both hold
+    ("rate", "all", "loglinear", "fan-out", math.inf, 5): "§12.4: at epoch 15 potentials[47] -0.006789357841908555 "
+    "against -0.006789357840277203, 1.6e-12 apart and 2.4e-10 relative, and weights[152] 1.5e-12 apart and 3.5e-11 "
+    "relative; at epoch 19 weights[90] 1.0e-12 apart -- past the 1e-12 absolute §12.4 names, inside a part in a billion "
+    "of themselves, every other quantity inside its tolerance",
+    ("charged", "all", "linear", "count", 2.0, 3): "§12.4: at epoch 18 weights[108] -0.02426752319137035 against "
+    "-0.024267523192420287, 1.0e-12 apart and 4.3e-11 relative; at epoch 19 potentials[11] 1.1e-12 apart and 4.5e-11 "
+    "relative -- past the 1e-12 absolute §12.4 names, inside a part in a billion of themselves, every other quantity "
+    "inside its tolerance",
 }
 
 
@@ -701,8 +705,8 @@ def test_a_charge_is_integrated_before_a_signal_of_its_wave(tau):
     leak with the input brought up to now first, by the objects' exp, from a moment its decay parts libm and numpy."""
     Neuron.tau = tau
     last, decay = _decay_apart(tau)
-    g = goo(seed=1, drive="charged")
-    neurons = g.all_neurons()
+    g = goo(seed=1, drive="charged", wiring=OLD_WIRING)  # an input hears a signal only under the old wiring (§4.5a): under
+    neurons = g.all_neurons()  # the driven-inputs rule nothing projects onto one (§4.5), and the case cannot arise
     index = {id(n): i for i, n in enumerate(neurons)}
     inputs, steps, found = {index[id(n)] for n in g.input_row()}, g._drive_steps(), 0
     for c in (g.connections[k] for k in range(1, len(g.connections) + 1)):
@@ -718,7 +722,8 @@ def test_a_charge_is_integrated_before_a_signal_of_its_wave(tau):
                 break
         else:
             continue
-        mesh, net = _queued({a: p}, [(3.0 - 1e-12, "relay", index[id(c.source)]), (3.0, "charge", a)], seed=1)
+        mesh, net = _queued({a: p}, [(3.0 - 1e-12, "relay", index[id(c.source)]), (3.0, "charge", a)], seed=1,
+                            wiring=OLD_WIRING)
         mesh.all_neurons()[a].last_update = net.last_update[a] = last
         _run(mesh, net, 3.0, 3.5)
         assert parted(mesh, net) == [] and net.potential[a] == first == mesh.all_neurons()[a].potential

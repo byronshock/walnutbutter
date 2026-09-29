@@ -37,7 +37,9 @@ GOO_THRESHOLD = 0.2  # goo's THRESHOLD, quoted per THRESHOLD_FAN_IN and scaled b
 # copy. The threshold belongs to the container, the third reading §3.4 named, adopted for goo
 GOO_MINIMUM_POTENTIAL = GOO_THRESHOLD * MINIMUM_POTENTIAL / THRESHOLD  # the floor follows at the ratio of -4, as
 # every goo sweep ran it (§5.2, one axis, two points)
-GOO_SCALING_FACTOR = 0.05  # goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026: "P(i projects
+GOO_SCALING_FACTOR = 0.05  # the knob of goo's driven-inputs rule (AUTHORITY.md §4.5, the default since September 29,
+# 2026: an input hears no one, every other neuron hears N times this over the N - 1 others) and of the scaled rule before
+# it (§4.5a, --old-wiring; Byron, September 16, 2026: "P(i projects
 # onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij necessary to give j an average of N * scaling_factor
 # inputs. Please default scaling_factor to 0.05"). Every neuron hears N times this many synapses in expectation -- 32.7 on
 # the mnist goo of 654, 3 on goo 60 -- at the probability that fan-in makes over the sources it may hear, stopped at 1: the

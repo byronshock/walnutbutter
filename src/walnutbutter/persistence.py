@@ -24,7 +24,7 @@ import json
 from pathlib import Path
 
 from .constants import GOO_SCALING_FACTOR
-from .goo import Goo, scaled_projection
+from .goo import SCALED_WIRINGS, Goo, scaled_projection
 from .network import EXPLORATIONS, TRACE_VENTURED_BIAS, Network
 from .neuron import Neuron
 
@@ -272,21 +272,19 @@ def _restore_goo(data: dict) -> Goo:
     """Rebuild goo from its count and its wiring rule, then load its weights.
 
     Where nothing about the topology was drawn -- the earlier wirings at
-    projection 1, the scaled rule where every probability is 0 or 1 -- a goo
-    built without a seed restores exactly; otherwise the seed decided the
-    wiring and is needed. A checkpoint from
-    before the zone rule (one that records `direct_projection`) cannot be
-    rebuilt: its zones projected onto each other.
+    projection 1, the driven-inputs and scaled rules where every probability
+    is 0 or 1 -- a goo built without a seed restores exactly; otherwise the
+    seed decided the wiring and is needed. A checkpoint from before the zone
+    rule (one that records `direct_projection`) cannot be rebuilt: its zones
+    projected onto each other.
     """
     if "direct_projection" in data:
         raise ValueError(f"{path_of(data)}: goo built before the zone rule of September 14, 2026; its wiring cannot be rebuilt")
-    # the wiring it was built under: recorded since the uniform rule of September 15; before that, the zone rule, with or
-    # without the afternoon's equal fan-in (§3.4)
-    wiring = data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones")
+    wiring = wiring_of(data)  # never the default: a checkpoint restores under its own wiring (§4.9)
     scaling_factor = data.get("scaling_factor", GOO_SCALING_FACTOR)
-    if wiring in ("scaled", "scaled-open"):
+    if wiring in SCALED_WIRINGS:
         outputs = data.get("outputs") or across_of(data)
-        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), outputs, scaling_factor, zone, wiring == "scaled-open") < 1.0
+        drawn = any(0.0 < scaled_projection(data["count"], across_of(data), outputs, scaling_factor, zone, wiring) < 1.0
                     for zone in ("input", "hidden", "output"))
         how = f"at scaling factor {scaling_factor:g}"
     else:
@@ -312,6 +310,12 @@ def _restore_goo(data: dict) -> Goo:
     goo.epoch = data["epoch"]
     return goo
 
+
+
+def wiring_of(data: dict) -> str:
+    """The wiring a checkpoint was built under (§4.9): recorded since the uniform rule of September 15, 2026; before that,
+    the zone rule, with or without the afternoon's equal fan-in (§3.4)."""
+    return data.get("wiring", "zones-equal" if data.get("equal_fan_in") else "zones")
 
 
 def path_of(data: dict) -> str:

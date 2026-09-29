@@ -26,7 +26,7 @@ import pytest
 
 from walnutbutter import fast
 from walnutbutter.constants import TARGET_RATE, UNSTICK_TARGET
-from walnutbutter.goo import Goo
+from walnutbutter.goo import DEFAULT_WIRING, OLD_WIRING, Goo
 from walnutbutter.learning import Teacher
 from walnutbutter.monitor import run_epoch
 from walnutbutter.network import input_stream
@@ -47,10 +47,11 @@ def quiet(monkeypatch):
         monkeypatch.setattr(Neuron, name, getattr(Neuron, name))
 
 
-def goo(seed=3, weight=None, drive="rate", **settings) -> Goo:
-    """Goo 60 on the copy problem's read (§11), exploring at the synapse. A weight of 0.02 on every synapse keeps many
-    sources above zero potential, so §8.16's entry posts at most waves and most weights move under the rule."""
-    g = Goo(count=60, across=8, seed=seed, weight=weight)
+def goo(seed=3, weight=None, drive="rate", wiring=DEFAULT_WIRING, **settings) -> Goo:
+    """Goo 60 on the copy problem's read (§11), exploring at the synapse, under the default wiring unless one is named. A
+    weight of 0.02 on every synapse keeps many sources above zero potential, so §8.16's entry posts at most waves and,
+    under the old wiring, most weights move under the rule."""
+    g = Goo(count=60, across=8, seed=seed, weight=weight, wiring=wiring)
     g.rule, g.drive, g.read = "reinforce", "rate", "count"
     g.set_exploration("synapse", **settings)
     g.drive = drive
@@ -202,13 +203,15 @@ def test_fast_train_is_the_teacher_s_run(drive, trace, family, homeostasis, unst
     reaches, to the bit. Its eligibility, named as None, is hazard here (§8.3), and the engine keeps every trace through
     the centre call train makes."""
     patterns = input_stream(15, goo().raw_bit_count(), 3)
-    mesh = goo(weight=0.02, drive=drive, trace=trace, family=family)
+    # the old wiring (§4.5a): at 0.02 on every synapse the driven-inputs rule's outputs, hearing one another, all fire every
+    # epoch on three of the four arms, the copy reward stands at 0.5 and no weight moves, which the last line needs
+    mesh = goo(weight=0.02, drive=drive, trace=trace, family=family, wiring=OLD_WIRING)
     mesh.use_input_stream(patterns, None)
     start = [n.threshold for n in mesh.all_neurons()]
     moves = dict(homeostasis=homeostasis, target_rate=TARGET_RATE, unstick=unstick, unstick_target=UNSTICK_TARGET)
     teacher = Teacher(mesh, seed=7, rule="reinforce", eligibility="hazard", target="copy", lr=0.5, **moves)
     rewards = [teacher.epoch(verbose=False) for _ in range(15)]
-    twin = goo(weight=0.02, drive=drive, trace=trace, family=family)
+    twin = goo(weight=0.02, drive=drive, trace=trace, family=family, wiring=OLD_WIRING)
     mean, trace_, engine, report = fast.train(twin, 15, lr=0.5, target="copy", patterns=patterns, seed=7, trace_every=1,
                                               **moves)
     assert trace_ == rewards and engine.traced() and engine.exploration() == "synapse"
@@ -441,8 +444,8 @@ def test_a_charge_is_integrated_before_a_signal_of_its_wave():
     the charge anchoring the wave; at the potential picked the two orders of the sum differ in the last bit, and both
     engines land on the charge first's."""
     Neuron.tau = math.inf  # no decay, so the sum is the whole of the arithmetic
-    g = goo(seed=1, drive="charged")
-    neurons, index = fast.flatten(g)[:2]
+    g = goo(seed=1, drive="charged", wiring=OLD_WIRING)  # an input hears a signal only under the old wiring (§4.5a): under
+    neurons, index = fast.flatten(g)[:2]  # the driven-inputs rule nothing projects onto one (§4.5), and the case cannot arise
     edges = [c for n in neurons for c in n.outgoing]
     inputs, steps, found = {index[n] for n in g.input_row()}, g._drive_steps(), 0
     for e, c in enumerate(edges):
@@ -456,7 +459,7 @@ def test_a_charge_is_integrated_before_a_signal_of_its_wave():
                 break
         else:
             continue
-        g2, engine, ns, _ = _queued({a: p}, [(3.0 - 1e-12, SIGNAL, e), (3.0, EXTERNAL, a)], seed=1)
+        g2, engine, ns, _ = _queued({a: p}, [(3.0 - 1e-12, SIGNAL, e), (3.0, EXTERNAL, a)], seed=1, wiring=OLD_WIRING)
         mine, theirs, objects, rust = _run(g2, engine, 3.5, ns)
         assert mine == theirs and objects == rust and rust[a] == charged_first, (a, e, p)
         found += 1

@@ -489,7 +489,8 @@ def test_the_gain_settles_what_posting_every_wave_would(family):
     leak's path runs the accumulator's dynamics to the bit and posts every wave's entry directly, by the fan-in walk; the
     accumulator's gain settles the same sums at spikes, the floor, forced spikes, a discharge and the reads -- within
     rounding, since a regrouping is not required to reproduce the sum bit for bit (§8.11)."""
-    grouped, direct = goo(60, seed=5), goo(60, seed=5)
+    grouped, direct = goo(60, seed=1), goo(60, seed=1)  # seed 1: under the driven-inputs rule seed 5's goo posts 9 scores
+    # in the six epochs, too few to hold the two bookkeepings to each other
     for net in (grouped, direct):
         net.set_exploration("synapse", h0=0.05, family=family)
     a, b = random.Random(9), random.Random(9)

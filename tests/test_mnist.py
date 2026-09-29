@@ -368,13 +368,15 @@ def test_clock_neurons_lead_the_input_zone_and_fire_every_epoch():
 
 def test_a_checkpoint_keeps_the_output_zone(tmp_path):
     from walnutbutter.persistence import checkpoint, restore
-    goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None, projection=0.5)
-    run_epoch(goo, verbose=False)
-    data = checkpoint(goo, tmp_path / "zones.json")
-    assert data["outputs"] == 6
-    back, _ = restore(tmp_path / "zones.json")
-    assert back.outputs == 6 and len(back.output_row()) == 6 and back.input_zone_is_apart() and back.outputs_are_apart() and back.wiring == "scaled"
-    assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]
+    for wiring, apart in (("driven-inputs", False), ("scaled", True)):  # the outputs hear one another under the rule (§4.5)
+        goo = Goo(count=20, across=4, outputs=6, seed=3, weight=None, projection=0.5, wiring=wiring)
+        run_epoch(goo, verbose=False)
+        data = checkpoint(goo, tmp_path / "zones.json")
+        assert data["outputs"] == 6
+        back, _ = restore(tmp_path / "zones.json")
+        assert back.outputs == 6 and len(back.output_row()) == 6 and back.input_zone_is_apart() and back.wiring == wiring
+        assert back.outputs_are_apart() is apart
+        assert [c.weight for c in back.connections.values()] == [c.weight for c in goo.connections.values()]
 
 
 def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
@@ -391,9 +393,13 @@ def test_the_supervised_direction_and_the_estimators_correlation_over_a_run():
     direction = mnist.supervised_direction(goo)
     edges = [c for n in goo.all_neurons() for c in n.outgoing]
     d, mask = direction(edges)
-    assert len(d) == len(mask) == len(edges) == len(goo.connections) and mask.all()  # every synapse of the feedforward goo is input -> output
+    inputs, outputs = set(goo.input_row()), set(goo.output_row())
+    assert len(d) == len(mask) == len(edges) == len(goo.connections)
+    assert mask.tolist() == [c.source in inputs and c.target in outputs for c in edges]  # the input-to-output synapses; with no
+    assert not mask.all() and all(c.source in outputs and c.target in outputs for c, m in zip(edges, mask) if not m)  # hidden
+    assert not d[~mask].any()  # neurons the rest are outputs onto outputs (§4.5), outside the mask
     assert np.abs(d).max() <= 1.0 and all(d[e] == 0.0 for e, c in enumerate(edges) if c.source in goo.input_row()[:3])  # clocks: no direction
-    assert 0.3 < (np.abs(d) > 0.02).mean() < 0.7  # a good part of the synapses have a direction worth the name
+    assert 0.3 < (np.abs(d[mask]) > 0.02).mean() < 0.7  # a good part of the synapses have a direction worth the name
     on, on_given = mnist.pixel_statistics(3)
     assert on.shape == (395,) and on_given.shape == (10, 395) and on[:3].tolist() == [1.0, 1.0, 1.0]
     assert np.allclose(on[3:199] + on[199:], 1.0)  # a bit and its complement

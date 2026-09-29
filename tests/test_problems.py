@@ -255,9 +255,14 @@ def test_the_default_drive_leaves_no_wave_front_at_time_zero():
     and the 9% that do not are the driven spikes themselves, anchored at multiples of INTERVAL.
     That the epoch no longer holds a whole number of hops is a consequence of A1's fix and is
     recorded with it -- it weakens the very synchrony Byron struck `forced` for on September 14.
+
+    The numbers are the old wiring's (§4.5a), and the test builds under it. Under the driven-inputs rule (§4.5, September
+    29, 2026) the same goo puts 52% of its non-input spikes on the run's lattice, not 94%: its inputs hear nothing, so
+    they no longer carry a cascade across epochs on the lattice time zero set, and each epoch's forced spikes start one
+    of their own.
     """
     def spikes_on_the_grid(drive):
-        grid = Goo(count=60, across=12, weight=None, seed=1)
+        grid = Goo(count=60, across=12, weight=None, seed=1, wiring="scaled")
         grid.readout, grid.read, grid.drive = "top", "fired", drive
         hop, on_grid, total, at_zero = Neuron.hop, 0, 0, 0
         row = set(grid.input_row())

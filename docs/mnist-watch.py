@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
+    from walnutbutter.goo import DEFAULT_WIRING, OLD_WIRING, WIRINGS
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--seed", type=int, default=4)
     parser.add_argument("--eligibility", choices=("hazard", "hebb", "count_hebb", "wrong_hebb", "perturb"), default="hazard")
@@ -50,8 +51,12 @@ def main() -> int:
     parser.add_argument("--tau", type=float, default=None, help="the potential's leak in ms; the constant unless given")
     parser.add_argument("--population", type=int, default=None, help="the problem's unless given")
     parser.add_argument("--outputs", type=int, default=None, help="the problem's unless given")
-    parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
-                        help="goo's wiring (§3.4): the command line's default, scaled, unless given; ff2 is fully connected feedforward")
+    wiring = parser.add_mutually_exclusive_group()
+    wiring.add_argument("--wiring", choices=WIRINGS, default=None,
+                        help=f"goo's wiring (§4.5-4.7): the command line's default, {DEFAULT_WIRING}, unless given, or under "
+                             "--resume the checkpoint's; ff2 is fully connected feedforward")
+    wiring.add_argument("--old-wiring", dest="wiring", action="store_const", const=OLD_WIRING,
+                        help=f"the old rule (§4.5a): --wiring {OLD_WIRING}")
     parser.add_argument("--projection", type=float, default=None, help="P for --wiring ff2-partial (and the three older wirings)")
     parser.add_argument("--resume", default=None, metavar="NETWORK.json", help="continue from a sweep's saved network (see above)")
     parser.add_argument("--every", type=int, default=1000, help="epochs between lines")
@@ -76,6 +81,8 @@ def main() -> int:
     for flag in ("population", "outputs"):
         if getattr(args, flag) is not None:
             fixed += [f"--{flag.replace('_', '-')}", str(getattr(args, flag))]
+    if args.resume:  # built under the checkpoint's own wiring unless one is named (§4.9)
+        args.wiring = rs.resume_wiring(args.wiring, Path(args.resume))
     grid, cli = rs.grid_of("mnist", arm, args.eligibility, True, args.floor_ratio, args.wiring, tuple(fixed))
     patterns, labels = dataset_stream("mnist", args.seed)
     offset, reference, explore_seed, baseline, explore_state = 0, None, args.seed, None, None

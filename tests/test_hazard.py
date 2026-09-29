@@ -87,9 +87,14 @@ def test_a_neuron_that_hears_nothing_is_left_at_the_containers_threshold_in_ever
     hearing nothing) made untenable; and the array engine had divided by the zero width and silenced it (NaN)."""
     np = pytest.importorskip("numpy")
     from walnutbutter.arrays import ArrayNetwork
-    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD
-    mesh, twin = goo(), goo()  # the scaled rule at 0.05 on forty neurons: two synapses a neuron in expectation
-    deaf = [i for i, n in enumerate(mesh.all_neurons()) if not n.incoming]
+    from walnutbutter.constants import GOO_MINIMUM_POTENTIAL, GOO_THRESHOLD, THRESHOLD_FAN_IN
+    mesh, twin = goo(), goo()  # the driven-inputs rule at 0.05 on forty neurons: two synapses a neuron in expectation
+    inputs = range(mesh.across)  # §4.10: under the driven-inputs rule an input hears no one and is scaled as though it heard
+    scale = min(mesh.count * mesh.scaling_factor, mesh.count - 1) / THRESHOLD_FAN_IN  # min(N s, N - 1) -- 4.11 does not reach it
+    assert all(not mesh.all_neurons()[i].incoming for i in inputs)
+    assert all(mesh.all_neurons()[i].threshold == pytest.approx(GOO_THRESHOLD * scale) and
+               mesh.all_neurons()[i].minimum_potential == pytest.approx(GOO_MINIMUM_POTENTIAL * scale) for i in inputs)
+    deaf = [i for i, n in enumerate(mesh.all_neurons()) if not n.incoming and i not in inputs]  # deaf by the draw
     assert len(deaf) >= 3
     assert all(mesh.all_neurons()[i].threshold == GOO_THRESHOLD and mesh.all_neurons()[i].minimum_potential == GOO_MINIMUM_POTENTIAL for i in deaf)
     mesh.set_delta(0.455)

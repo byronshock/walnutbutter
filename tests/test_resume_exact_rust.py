@@ -270,7 +270,8 @@ def test_an_arm_killed_between_checkpoints_resumes_from_the_last_one(tmp_path, m
 
 # --- exploration at the synapse (AUTHORITY.md §7.5-§7.9, §8.16, §8.17, 5.4b): §12.9's checkpoint and §12.11's resume ---
 
-SYNAPSE_ARM = {"threshold": 0.6, "synapse_hazard": 0.1, "goo": 24.0, "seed": 3}  # a rest hazard that leaves escapes in flight
+SYNAPSE_ARM = {"threshold": 0.6, "synapse_hazard": 0.1, "goo": 24.0, "seed": 1}  # a rest hazard that leaves escapes in flight;
+# seed 1, where seed 3's driven-inputs goo leaves none in flight at the cut under the linear family at TAU 2
 
 
 def _rs():
@@ -544,3 +545,26 @@ def test_a_resume_that_names_no_clock_runs_on_the_checkpoint_s(tmp_path, monkeyp
     assert resumed_csv == whole_csv
     named = rs.run_arm(job("named", 3, ("--tau", "inf") + mode, "first"))
     assert named["tau"] == math.inf and _arm_files(tmp_path, "named", arm, rs)[0]["tau"] == math.inf
+
+
+def test_a_resumed_arm_is_built_under_its_checkpoints_wiring(tmp_path):
+    """§4.9: a checkpoint restores under the wiring it was built with, never under whatever the default has since become.
+    The sweep driver builds a resumed arm beside it under the checkpoint's wiring unless the sweep names one, and refuses
+    a checkpoint wired by another rule than the one named. The default became driven-inputs on September 29, 2026 (§4.5),
+    and every checkpoint from before is scaled (§4.5a)."""
+    from walnutbutter.persistence import checkpoint
+    rs = _rs()
+    arm = {"goo": 24.0, "seed": 1}
+    old, _ = rs.grid_of("copy", arm, "hazard", True, -4.0, "scaled")
+    source = tmp_path / "arm-network.json"
+    checkpoint(old, source)
+    assert rs.resume_wiring(None, source) == "scaled" and rs.resume_wiring("driven-inputs", source) == "driven-inputs"
+    assert rs.resume_wiring(None, tmp_path / "none.json") is None  # nothing to resume: the sweep's own, the default
+    fresh, _ = rs.grid_of("copy", arm, "hazard", True, -4.0, rs.resume_wiring(None, source))
+    grid, offset, reference, _, _ = rs.resume_grid(fresh, source)
+    assert grid.wiring == fresh.wiring == "scaled" and offset == 0
+    assert reference == [c.weight for n in old.all_neurons() for c in n.outgoing]
+    default, _ = rs.grid_of("copy", arm, "hazard", True, -4.0, None)
+    assert default.wiring == "driven-inputs"
+    with pytest.raises(ValueError, match="wired by the scaled rule and the arm by the driven-inputs rule"):
+        rs.resume_grid(default, source)
