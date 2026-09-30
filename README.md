@@ -113,21 +113,30 @@ net.reset()                     # allow every neuron to fire again
 The plane taken away (AUTHORITY.md §4.1). A container with positions has to
 say what "near" means before it can say what connects; goo has no positions, so
 there is no distance to measure and nothing to be near, and what is left is
-the scaled rule (AUTHORITY.md §3.4, Byron, September 16, 2026): no neuron
-projects onto itself, no input neuron onto another, and every other
-ordered pair projects, one way, at the probability that gives its target
-N times `--scaling-factor` synapses in expectation over the sources it may
-hear (GOO_SCALING_FACTOR, 0.05: 32.7 synapses a neuron on the mnist goo of
-654, 3 on goo 60). The input zone is kept from talking to itself and the
-outputs are kept apart (Byron, the same night: "With hidden=0 we have no
-cycles ... a two-layer feedforward network"): an input hears the hidden
-neurons, an output hears the inputs directly and the hidden neurons and
-projects onto the hidden alone, so no interior is needed, only that the
-zones not overlap, and with none the goo is inputs -> outputs and nothing
-else. A neuron that hears nothing is left at the container's threshold
-(AUTHORITY.md §5.2). `--goo` makes 60 neurons
-(GOO_COUNT; it was the grid's 80 while the two were compared): about 180
-projections at 0.05, the seed's choice of them. `--wiring` reaches the three
+the driven-inputs rule (AUTHORITY.md §4.5, Byron, September 29, 2026): an
+input neuron is driven and hears no one -- nothing projects onto it -- and
+every other ordered pair projects, one way, at N times `--scaling-factor`
+over the N - 1 others, stopped at 1, so every neuron but an input hears
+N s synapses in expectation (GOO_SCALING_FACTOR, 0.05: 32.7 synapses a
+neuron on the mnist goo of 654, 3 on goo 60), an output from the other
+outputs too. An input's threshold and floor are scaled as though it heard
+min(N s, N - 1) (§4.10). No interior is needed, only that the zones not
+overlap, and with none the goo is inputs onto outputs and outputs onto one
+another. A neuron the draw leaves hearing nothing is left at the
+container's threshold (§4.11). `--goo` makes 60 neurons (GOO_COUNT; it was
+the grid's 80 while the two were compared): about 160 projections at 0.05,
+the seed's choice of them.
+
+`--old-wiring` (`--wiring scaled`, AUTHORITY.md §4.5a) is the rule from
+September 16 to 29, 2026: no input onto another input, every neuron
+hearing N s over the sources it may hear, and the outputs kept apart
+(Byron, September 16: "With hidden=0 we have no cycles ... a two-layer
+feedforward network"): an input hears the hidden neurons, an output hears
+the inputs directly and the hidden neurons and projects onto the hidden
+alone, and with no hidden neurons the goo is inputs -> outputs and nothing
+else, its inputs left at the container's threshold. A checkpoint restores
+under the wiring it was built with, whatever the default has since become
+(§4.9). `--wiring` reaches the three
 earlier rules at `--projection`: `zones-equal`, the zone rule of September
 14 with the equal fan-in of the 15th (the zones never project onto each
 other and an interior-to-zone projection is scaled up so every neuron hears
@@ -310,7 +319,7 @@ thresholded at half; the input zone is three clock neurons always driven,
 the 196 on-off pixels and their 196 complements; ten classes on 30 outputs
 read by count, and the class critic: the label's three outputs out-spike
 every other class's three, or nothing. `walnutbutter --problem mnist` builds
-a goo of 654 for it, 199 hidden neurons between the zones; `--hidden-neurons H` sets the hidden count (0 is allowed under the scaled rule: the outputs hear the inputs directly) and `--goo N` the total.
+a goo of 654 for it, 199 hidden neurons between the zones; `--hidden-neurons H` sets the hidden count (0 is allowed: the outputs hear the inputs directly and, under the default wiring, one another) and `--goo N` the total.
 
 With `--delta D` (ESCAPE_DELTA, AUTHORITY.md §5.2) the firing decision
 itself is the draw: a neuron that is not refractory fires at a wave with
@@ -440,7 +449,7 @@ src/walnutbutter/
   fast.py      the Rust wave loop (rust/), built from a network; train(), compare() against the object engine
   exploration.py the Box-Muller noise draws both engines share
   constants.py every global constant: the default network, the neuron's clock, the learning rule's knobs
-  goo.py       Goo: no positions, wired by the scaled rule, zones by index; the only container
+  goo.py       Goo: no positions, wired by the driven-inputs rule, zones by index; the only container
   inputs.py    random bits, complement coding, parsing and formatting
   monitor.py   main(): build a network and run its first epoch; run_epoch(): reset and present a new input
   learning.py  output targets, reward, the global-reinforcement rule, and Teacher

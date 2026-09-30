@@ -37,7 +37,10 @@ baseline is carried over (§9.3), and so is the state of every stream, so the co
 the same run to the bit, as §12.11 requires (September 21, 2026; before that the exploration
 stream was reseeded and the engine's state was left behind, and a resume parted from the
 uninterrupted run at its first epoch). `--population` and `--outputs`, fixed for the
-sweep, rebuild an arm under a layout the problem no longer defaults to.
+sweep, rebuild an arm under a layout the problem no longer defaults to, and the arm is
+built under the wiring its checkpoint was built with unless the sweep names one with
+`--wiring` or `--old-wiring` (§4.9) -- the default became driven-inputs on September 29,
+2026, and a checkpoint from before is scaled.
 
 `--checkpoint-every N` (25,000 epochs by default; 0 turns it off) writes each arm's
 checkpoint as it goes rather than only at the end, with the arm's record so far inside it.
@@ -74,6 +77,7 @@ import sys
 import time
 
 from walnutbutter.constants import DECISION_MEMORY, ESCAPE_DELTA  # the driver's default eligibility follows the neuron (§1.3)
+from walnutbutter.goo import DEFAULT_WIRING, OLD_WIRING, WIRINGS
 from walnutbutter.network import (DRIVES, EXPLORATIONS, SYNAPSE_HAZARD_FAMILIES, SYNAPSE_HAZARD_SCALINGS, TRACE_VENTURED_BIAS,
                                   TRACES)
 from multiprocessing import Pool
@@ -98,7 +102,7 @@ KNOBS = {  # knob -> command-line flag on the simulator, for the record in the r
     "hidden_neurons": "--hidden-neurons",  # goo's hidden count, the goo being inputs + hidden + outputs (§8, mnist)
     "filter_memory": "--filter-memory",  # the epochs a matched filter's templates and noise remember (§9.4)
     "projection": "--projection",  # the probability of goo's three earlier wirings, under --wiring (§3.4)
-    "scaling_factor": "--scaling-factor",  # goo's scaled rule: every neuron hears N times this in expectation (§3.4)
+    "scaling_factor": "--scaling-factor",  # the scaled wirings' knob: a neuron that may hear hears N times this in expectation (§4.5)
     "synapse_hazard": "--synapse-hazard",  # h0, the rest hazard, under --exploration synapse (§7.6)
     "drive_steps": "--drive-steps",  # DRIVE_STEPS, the charged drive's deliveries from rest to threshold (5.4b)
     "seed": "--seed",
@@ -127,8 +131,12 @@ def parse() -> argparse.Namespace:
                             help="more than one value sweeps it, an arm per value; one runs the whole sweep under it")
     parser.add_argument("--floor-ratio", type=float, default=None, metavar="R",
                         help="tie the floor to the threshold, arm by arm: MINIMUM_POTENTIAL = R * THRESHOLD (goo's ratio is -4)")
-    parser.add_argument("--wiring", choices=("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform"), default=None,
-                        help="which rule wires goo (§3.4): the command line's default, scaled, unless given")
+    wiring = parser.add_mutually_exclusive_group()
+    wiring.add_argument("--wiring", choices=WIRINGS, default=None,
+                        help=f"which rule wires goo (§4.5-4.7): the command line's default, {DEFAULT_WIRING}, unless given; a "
+                             "resumed arm is built under its checkpoint's wiring unless the sweep names one (§4.9)")
+    wiring.add_argument("--old-wiring", dest="wiring", action="store_const", const=OLD_WIRING,
+                        help=f"wire goo by the old rule (§4.5a): --wiring {OLD_WIRING}")
     parser.add_argument("--no-scale-with-fan-in", dest="scale", action="store_false",
                         help="run goo at a flat threshold and floor instead of the §5.2 rescaling")
     parser.add_argument("--eligibility", nargs="+", choices=("hazard", "hebb"),
@@ -354,6 +362,23 @@ RESUMED_SETTINGS = ("readout", "read", "read_window", "pickiness", "interval", "
 # a checkpoint resumes under the drive it was saved under unless the sweep names one (§12.9, resume_grid)
 
 
+def resume_wiring(wiring: str | None, source) -> str | None:
+    """The wiring to build a resumed arm under: the sweep's where it names one, else the checkpoint's (§4.9).
+
+    A checkpoint restores under the wiring it was built with, never under
+    whatever the default has since become, so the arm grid_of builds beside it
+    -- whose weights are the reference the estimator measures from -- is built
+    under that wiring too; otherwise a checkpoint from before September 29,
+    2026, when the default became driven-inputs, would be refused for a mesh
+    it never had. A sweep that names a wiring is held to it, and resume_grid
+    refuses a checkpoint built under another.
+    """
+    if wiring is not None or not Path(source).exists():
+        return wiring
+    from walnutbutter.persistence import read_checkpoint, wiring_of
+    return wiring_of(read_checkpoint(source))
+
+
 def resume_grid(fresh, source):
     """The arm's network as `runs/<other>/<arm>-network.json` left it, ready to run on: (grid, epochs already run, first-start weights, baseline).
 
@@ -390,6 +415,9 @@ def resume_grid(fresh, source):
     restored, data = restore(source)
     if data.get("seed") != fresh.seed:  # the reference weights would be another network's, and the correlation meaningless
         raise ValueError(f"{source} was built from seed {data.get('seed')}; the arm is seed {fresh.seed} -- resume a network under its own seed")
+    if restored.wiring != fresh.wiring:  # §4.9: the same, for the wiring; the edge count below would miss a coincidence
+        raise ValueError(f"{source} was wired by the {restored.wiring} rule and the arm by the {fresh.wiring} rule -- a "
+                         "network resumes under its own wiring (§4.9)")
     edges = sum(len(n.outgoing) for n in restored.all_neurons())
     if edges != len(reference) or len(restored.all_neurons()) != len(fresh.all_neurons()):
         raise ValueError(f"{source} holds a network of {len(restored.all_neurons())} neurons and {edges} synapses; the arm builds "
@@ -494,6 +522,8 @@ def run_arm(job: tuple) -> dict:
         # so recovering from a machine going down is the same line again and costs at most --checkpoint-every epochs.
         resume_from, resumed_self = name, True
     try:  # an arm the command line refuses, or a resume §12.9 refuses, says so in its line rather than killing the sweep
+        if resume_from:  # built under the checkpoint's own wiring unless the sweep names one (§4.9)
+            wiring = resume_wiring(wiring, ROOT / "runs" / resume_from / f"{arm_name(arm)}-network.json")
         grid, args = grid_of(problem, arm, eligibility, scale, floor_ratio, wiring, fixed)
     except ValueError as exc:
         return {"arm": arm_name(arm), "refused": str(exc)}

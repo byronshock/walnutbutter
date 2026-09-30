@@ -255,9 +255,17 @@ def test_the_default_drive_leaves_no_wave_front_at_time_zero():
     and the 9% that do not are the driven spikes themselves, anchored at multiples of INTERVAL.
     That the epoch no longer holds a whole number of hops is a consequence of A1's fix and is
     recorded with it -- it weakens the very synchrony Byron struck `forced` for on September 14.
+
+    The run-wide 94% is not the drive's doing alone: it holds because this goo, at this seed, keeps one reverberation
+    going from time zero through all forty epochs, and every spike it makes keeps time zero's timing. Traced by timing
+    (September 29, 2026), every spike here is some epoch's start plus a whole number of hops; each epoch's forced spikes
+    add a handful of their own that die inside the epoch. The time-zero reverberation dies at epoch 50 under this wiring,
+    and a later epoch's inputs restart it on their own timing. Under the driven-inputs rule (§4.5) the same seed's
+    reverberation is captured by epoch 22's inputs, and again by epoch 44's, so 52% of the forty epochs' non-input
+    spikes are on the run's lattice. The numbers are the old wiring's (§4.5a), and the test builds under it.
     """
     def spikes_on_the_grid(drive):
-        grid = Goo(count=60, across=12, weight=None, seed=1)
+        grid = Goo(count=60, across=12, weight=None, seed=1, wiring="scaled")
         grid.readout, grid.read, grid.drive = "top", "fired", drive
         hop, on_grid, total, at_zero = Neuron.hop, 0, 0, 0
         row = set(grid.input_row())

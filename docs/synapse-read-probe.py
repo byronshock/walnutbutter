@@ -29,6 +29,10 @@ since, the evidence critic is gone (AUTHORITY.md §9.4) and a continuation is pa
 mnist's matched filter, starting empty since those checkpoints carry none -- and is the network continued under another
 critic, not the same run.
 
+A continuation is built under the wiring its checkpoint was built with, unless the arguments name one (§4.9). A fresh
+control is built under the arguments' wiring, the command line's default unless they name one -- driven-inputs since
+September 29, 2026 -- so a control set beside a sweep run before that names --old-wiring, or it is another network.
+
 Usage: docs/synapse-read-probe.py SWEEP EPOCHS -- <the sweep's own rust-sweep.py arguments>
 """
 import json
@@ -75,11 +79,13 @@ def run(job):
     from walnutbutter.problems import dataset_stream
 
     name = rs.arm_name(arm)
-    grid, args = rs.grid_of("mnist", arm, eligibility, scale, floor_ratio, wiring, tuple(fixed))
     fresh = sweep is None  # a control: the arm's network as its seed builds it, never learning (lr 0)
+    source = None if fresh else MAIN / "runs" / sweep / f"{name}-network.json"
+    if not fresh:  # a continuation is built under its checkpoint's wiring unless the arguments name one (§4.9)
+        wiring = rs.resume_wiring(wiring, source)
+    grid, args = rs.grid_of("mnist", arm, eligibility, scale, floor_ratio, wiring, tuple(fixed))
     offset, baseline, explore_state = 0, None, None
     if not fresh:
-        source = MAIN / "runs" / sweep / f"{name}-network.json"
         grid, offset, _reference, baseline, explore_state = rs.resume_grid(grid, source)
     patterns, labels = dataset_stream("mnist", int(arm["seed"]))
     grid.use_input_stream(patterns, labels)  # §12.11: the stream continues where the checkpoint left it

@@ -12,7 +12,7 @@ from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 
-from .goo import DEFAULT_COUNT as GOO_COUNT, WIRINGS, ZONE_WIRINGS, Goo
+from .goo import DEFAULT_COUNT as GOO_COUNT, DEFAULT_WIRING, OLD_WIRING, SCALED_WIRINGS, WIRINGS, ZONE_WIRINGS, Goo
 from .constants import GOO_MINIMUM_POTENTIAL, GOO_PROJECTION, GOO_SCALING_FACTOR, GOO_THRESHOLD
 from .inputs import parse_bits
 from .constants import (
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         const=GOO_COUNT,
         default=None,
         metavar="N",
-        help=f"how many neurons the goo has: no positions at all, wired by the scaled rule at --scaling-factor "
+        help=f"how many neurons the goo has: no positions at all, wired by --wiring at --scaling-factor "
         f"(default: the problem's, else {GOO_COUNT}). Goo has its own "
         f"threshold and floor, {GOO_THRESHOLD:g} and {GOO_MINIMUM_POTENTIAL:g} before its fan-in scaling, which "
         f"--threshold and --minimum-potential override. "
@@ -118,8 +118,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="H",
         help="goo's hidden count (AUTHORITY.md §8; Byron, September 16, 2026: 'How will we know if they are buying us anything "
         "if they are always part of the economy?'): the goo is the input zone, H hidden neurons and the output zone, so "
-        "--hidden-neurons sizes it instead of --goo; 0 is allowed under the scaled rule, the outputs then hearing the inputs "
-        "directly (default: the problem's, 199 for mnist; otherwise --goo sizes the goo and the hidden count follows)",
+        "--hidden-neurons sizes it instead of --goo; 0 is allowed, the outputs then hearing the inputs directly and, under "
+        "the default wiring, one another (default: the problem's, 199 for mnist; otherwise --goo sizes the goo and the "
+        "hidden count follows)",
     )
     parser.add_argument(
         "--scale-with-fan-in",
@@ -139,8 +140,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=GOO_PROJECTION,
         metavar="P",
         help=f"the probability of goo's three earlier wirings, under --wiring zones-equal, zones or uniform (AUTHORITY.md "
-        f"§3.4); the scaled rule does not read it. Under the zone rule: the probability an ordered pair with an interior end "
-        f"projects, one way, each direction its own draw; pairs with both ends in a zone never project, and under "
+        f"§3.4); the driven-inputs and scaled rules do not read it. Under the zone rule: the probability an ordered "
+        f"pair with an interior end projects, one way, each direction its own draw; pairs with both ends in a zone never project, and under "
         f"zones-equal an interior-to-zone projection is scaled up so that every neuron hears the same number in expectation "
         f"(default: {GOO_PROJECTION:g})",
     )
@@ -151,25 +152,38 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=GOO_SCALING_FACTOR,
         metavar="S",
-        help=f"goo's wiring, the scaled rule (AUTHORITY.md §3.4; Byron, September 16, 2026): every neuron hears N times S "
-        f"synapses in expectation, each ordered pair projecting, one way, at that fan-in over the sources the target may "
-        f"hear, stopped at 1: the hidden neurons for an input, the inputs and hidden neurons for an output, everyone else "
-        f"for a hidden neuron. No neuron projects onto itself, no input onto another input, and no output onto any zone "
-        f"(the outputs apart, Byron, September 16, 2026): an output hears the inputs directly and projects onto the hidden "
-        f"alone (default: {GOO_SCALING_FACTOR:g}: 32.7 synapses on the mnist goo of 654, 3 on goo 60)",
+        help=f"the knob of goo's scaled wirings (AUTHORITY.md §4.5, §4.5a): every neuron that may hear anything hears "
+        f"N times S synapses in expectation, each ordered pair projecting, one way, at that fan-in over the sources the "
+        f"target may hear, stopped at 1. Under the driven-inputs rule, the default, an input hears no one and every other "
+        f"neuron the N - 1 others, outputs included; under the scaled rule (--old-wiring) an input hears the hidden "
+        f"neurons, an output the inputs and hidden neurons, a hidden neuron everyone else "
+        f"(default: {GOO_SCALING_FACTOR:g}: 32.7 synapses on the mnist goo of 654, 3 on goo 60)",
     )
-    parser.add_argument(
+    wiring = parser.add_mutually_exclusive_group()
+    wiring.add_argument(
         "--wiring",
         choices=WIRINGS,
-        default="scaled",
-        help="which rule wires goo (AUTHORITY.md §3.4): scaled, the rule since September 16, 2026, at --scaling-factor, the "
-        "outputs apart since 03:05 that night; ff2, fully connected feedforward -- every input onto every output and nothing "
-        "else, two layers and no hidden neurons (Byron, the same afternoon); ff2-partial, the same two layers with each "
-        "input-to-output pair drawn at --projection (Byron, September 17); scaled-open, the night's first version, the outputs open to every zone; "
+        default=DEFAULT_WIRING,
+        help="which rule wires goo (AUTHORITY.md §4.5-4.7): driven-inputs, the rule since September 29, 2026, at "
+        "--scaling-factor -- an input hears no one and is driven, its axis scaled as though it heard min(N s, N - 1) "
+        "(§4.10), and every other neuron may hear every other, an output another output included; scaled, the rule "
+        "from September 16 (--old-wiring, §4.5a), the outputs apart since 03:05 that night; ff2, fully connected "
+        "feedforward -- every input onto every output and nothing else, two layers and no hidden neurons (Byron, the "
+        "afternoon of the 16th); ff2-partial, the same two layers with each input-to-output pair drawn at --projection "
+        "(Byron, September 17); scaled-open, the night's first version, the outputs open to every zone; "
         "or one of the three before them at --projection -- zones-equal (the zone rule with equal fan-in, the rule until "
         "the 16th: the zones never project onto each other and an interior-to-zone projection is scaled up so every "
         "neuron hears the same number), zones (that rule without the equal fan-in) or uniform (one probability over "
-        "every ordered pair). The two zone wirings need an interior (default: scaled)",
+        f"every ordered pair). The two zone wirings need an interior (default: {DEFAULT_WIRING})",
+    )
+    wiring.add_argument(
+        "--old-wiring",
+        "--old_wiring",
+        dest="wiring",
+        action="store_const",
+        const=OLD_WIRING,
+        help="wire goo by the old rule, scaled (AUTHORITY.md §4.5a), the default from September 16 to 29, 2026: "
+        "--wiring scaled",
     )
     parser.add_argument(
         "--no-scale-with-fan-in",
@@ -999,8 +1013,8 @@ def _run(args: argparse.Namespace) -> int:
                 inner, edge = (grid.interior() or grid.all_neurons())[0], grid.all_neurons()[0]
                 if grid.scale_with_fan_in_on:
                     print(
-                        f"fan-in scaling (§5.2): an interior neuron hears {len(inner.incoming)} synapses and starts at "
-                        f"threshold {inner.threshold:.3f}, floor {inner.minimum_potential:.3f}; a zone neuron hears "
+                        f"fan-in scaling (§4.10): an interior neuron hears {len(inner.incoming)} synapses and starts at "
+                        f"threshold {inner.threshold:.3f}, floor {inner.minimum_potential:.3f}; an input neuron hears "
                         f"{len(edge.incoming)} and starts at {edge.threshold:.3f}, {edge.minimum_potential:.3f}",
                         file=sys.stderr,
                     )
@@ -1178,6 +1192,13 @@ def health(grid) -> str:
 
 def _wiring_summary(grid: Goo) -> str:
     """One line on what goo's wiring lets talk to what, for the run's header."""
+    if grid.wiring == "driven-inputs":
+        hidden = grid.interior_count()
+        heard = min(grid.expected_fan_in(), grid.count - 1)
+        return (f"every neuron but an input hears {grid.expected_fan_in():g} synapses in expectation, from the "
+                f"{grid.count - 1} others at P {grid.hidden_projection():.3g}, an output from the other outputs too; an input "
+                f"hears no one and is driven, its axis scaled as though it heard {heard:g} (§4.10); the inputs project onto "
+                + (f"the {hidden} hidden and the outputs" if hidden else "the outputs"))
     if grid.wiring == "scaled":
         hidden = grid.interior_count()
         heard = (f"an input from the {hidden} hidden at P {grid.input_projection():.3g}" if hidden
@@ -1206,7 +1227,7 @@ def _seed_worker(job: dict) -> dict:
         minimum_potential=settings["minimum_potential"],
         scale_with_fan_in=job.get("scale_with_fan_in") is not False,
         projection=job.get("projection", GOO_PROJECTION), outputs=job.get("outputs"),
-        wiring=job.get("wiring", "scaled"), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
+        wiring=job.get("wiring", DEFAULT_WIRING), scaling_factor=job.get("scaling_factor", GOO_SCALING_FACTOR),
     )
     Neuron.refractory, Neuron.hop = job.get("refractory", Neuron.refractory), job.get("hop", Neuron.hop)
     Neuron.bored_after = job.get("bored_after", Neuron.bored_after)
@@ -1334,8 +1355,8 @@ def _run_seeds(args: argparse.Namespace) -> int:
             print("error: the array engine needs numpy and scipy; install them with: pip install -e '.[arrays]'", file=sys.stderr)
             return 2
     workers = max(1, min(args.seeds, (os.cpu_count() or 2) - 1))
-    density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring == "scaled"
-               else f"at projection {args.projection:g} under the {args.wiring} wiring")
+    density = (f"at scaling factor {args.scaling_factor:g}" if args.wiring in SCALED_WIRINGS
+               else f"at projection {args.projection:g}") + f" under the {args.wiring} wiring"
     hidden = args.goo - args.across - (args.outputs or args.across)
     shape = f"{args.goo} neurons of goo {density}, {args.across} in, {hidden} hidden and {args.outputs or args.across} out"
     # say which axis the arm ran on, so a sweep's own log identifies it (§5.2)

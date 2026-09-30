@@ -7,12 +7,27 @@ containers that had positions -- the hex grid, the hexagonal columns, the
 lattice and the spread -- left the specification on September 17, 2026 and
 are kept at the tag lab-notebook-2026-09-17.
 
-Its wiring is the scaled rule (Byron, September 16, 2026: "P(i projects
-onto j) = 0 if i == j; 0 if i and j are both in the input zone; P_ij
-necessary to give j an average of N * scaling_factor inputs"), with the
-outputs kept apart (Byron, the same night: "I would like the outputs kept
-apart from one another again. With hidden=0 we have no cycles ... a
-two-layer feedforward network"):
+Its wiring is the driven-inputs rule (AUTHORITY.md §4.5; Byron, September 29,
+2026: "Inputs are only driven neurons for now. They do not receive signal
+from hidden or output neurons. [...] All other neurons are allowed to
+project to one another. Outputs may inform other outputs."):
+
+    P(neuron i projects onto neuron j) = 0                     if i == j
+                                       = 0                     if j is in the input zone
+                                       = min(1, N s / (N - 1)) otherwise
+
+so every neuron but an input hears N s synapses in expectation, from the
+N - 1 others, an output from the other outputs too; an input hears nothing
+and is driven, its potential axis scaled as though it heard min(N s, N - 1)
+(§4.10) rather than left at scale 1. With no hidden neurons it is inputs
+onto outputs and outputs onto one another.
+
+The old wiring, called by --old-wiring (§4.5a), is the scaled rule (Byron,
+September 16, 2026: "P(i projects onto j) = 0 if i == j; 0 if i and j are
+both in the input zone; P_ij necessary to give j an average of N *
+scaling_factor inputs"), with the outputs kept apart (Byron, the same
+night: "I would like the outputs kept apart from one another again. With
+hidden=0 we have no cycles ... a two-layer feedforward network"):
 
     P(neuron i projects onto neuron j) = 0                   if i == j
                                        = 0                   if i and j are both in the input zone
@@ -87,24 +102,30 @@ from .neuron import Neuron
 
 DEFAULT_COUNT = GOO_COUNT  # sixty since September 14, 2026 (§1.2); it was the grid's eighty while the two were compared
 ZONES = 2  # what `rows` counts in goo: the input zone and the output zone, and no depth between them
-WIRINGS = ("scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform")  # the rule (§3.4), the fully
-# connected feedforward rule beside it and its partly connected form (September 16-17, 2026), and the four before them,
-# kept so their checkpoints restore
+WIRINGS = ("driven-inputs", "scaled", "ff2", "ff2-partial", "scaled-open", "zones-equal", "zones", "uniform")  # the rule
+# (§4.5, September 29, 2026), the old one (§4.5a), the fully connected feedforward rule and its partly connected form
+# (September 16-17, 2026), and the four before them, kept so their checkpoints restore
+DEFAULT_WIRING = "driven-inputs"  # §4.5; --old-wiring is "scaled" (§4.5a)
+OLD_WIRING = "scaled"
 TWO_LAYER_WIRINGS = ("ff2", "ff2-partial")  # every input onto every output at 1 or at P, nothing else: no hidden neurons under them
-SCALED_WIRINGS = ("scaled", "scaled-open")  # the rule and the night's open version of it: N s heard in expectation
+SCALED_WIRINGS = ("driven-inputs", "scaled", "scaled-open")  # N s heard in expectation over the sources a neuron may hear
 ZONE_WIRINGS = ("zones-equal", "zones")  # the wirings whose zones talk only through an interior, and so need one
 
 
-def scaled_projection(count: int, across: int, outputs: int, scaling_factor: float, zone: str, open: bool = False) -> float:
-    """The scaled rule's P(i -> j) (§3.4): N s over the sources j may hear, stopped at 1; 0 where it has none.
+def scaled_projection(count: int, across: int, outputs: int, scaling_factor: float, zone: str,
+                      wiring: str = "scaled") -> float:
+    """P(i -> j) under a scaled wiring: N s over the sources j may hear, stopped at 1; 0 where it has none.
 
-    `zone` is j's: "input", "hidden" or "output". Under the rule an input may
-    hear the N - I - O hidden neurons, an output the N - O inputs and hidden
-    neurons, a hidden neuron the N - 1 others. Under the night's open rule
-    (`open`) an input may hear the N - I outside its zone and any other
-    neuron the N - 1 others.
+    `zone` is j's: "input", "hidden" or "output". Under the driven-inputs
+    rule (§4.5) an input hears no one and any other neuron the N - 1 others.
+    Under the scaled rule (§4.5a) an input may hear the N - I - O hidden
+    neurons, an output the N - O inputs and hidden neurons, a hidden neuron
+    the N - 1 others. Under the night's open rule ("scaled-open") an input may
+    hear the N - I outside its zone and any other neuron the N - 1 others.
     """
-    if open:
+    if wiring == "driven-inputs":
+        sources = 0 if zone == "input" else count - 1
+    elif wiring == "scaled-open":
         sources = count - across if zone == "input" else count - 1
     else:
         sources = {"input": count - across - outputs, "output": count - outputs, "hidden": count - 1}[zone]
@@ -114,7 +135,7 @@ def scaled_projection(count: int, across: int, outputs: int, scaling_factor: flo
 
 
 class Goo(Network):
-    """`count` neurons with no positions, wired by the scaled rule of AUTHORITY.md §3.4. Zones by index."""
+    """`count` neurons with no positions, wired by the driven-inputs rule of AUTHORITY.md §4.5. Zones by index."""
 
     def __init__(
         self,
@@ -128,10 +149,10 @@ class Goo(Network):
         scale_with_fan_in: bool = True,
         projection: float = GOO_PROJECTION,
         outputs: int | None = None,
-        wiring: str = "scaled",
+        wiring: str = DEFAULT_WIRING,
         scaling_factor: float = GOO_SCALING_FACTOR,
     ):
-        """Make the goo and wire it by the rule (§3.4): the scaled rule with the outputs apart.
+        """Make the goo and wire it by the rule (§4.5): the driven-inputs rule.
 
         `count` is how many neurons (GOO_COUNT, sixty); `across` the width of
         the input zone, the first `across` neurons, and `outputs` the width of
@@ -140,7 +161,9 @@ class Goo(Network):
         different widths). The zones may not overlap. `scaling_factor` is the
         rule's knob: every neuron hears `count` times it in expectation, from
         everyone but itself and, for an input neuron, but the rest of its
-        zone. `wiring` is "scaled", the rule; "scaled-open" (the night's first
+        zone. `wiring` is "driven-inputs", the rule (§4.5): an input hears no
+        one, every other neuron the N - 1 others; "scaled", the old wiring
+        (§4.5a), the outputs apart; "scaled-open" (the night's first
         scaled rule, the outputs open to every zone), "zones-equal" (the zone
         rule with equal fan-in, the rule until September 16, 2026), "zones"
         (the plain zone rule) and "uniform" (one probability over every pair)
@@ -151,7 +174,8 @@ class Goo(Network):
 
         `threshold` and `minimum_potential` default to goo's own constants
         (§1.2), and `scale_with_fan_in` rescales each neuron's potential axis
-        by its own in-degree over THRESHOLD_FAN_IN (§5.2). `weight` is given
+        by its own in-degree over THRESHOLD_FAN_IN (§4.10) -- an input's, under
+        the driven-inputs rule, by min(N s, N - 1). `weight` is given
         to every projection; None draws each uniformly from `weight_range`.
         The seed's stream is spent, in order, on the projection draws and
         weights pair by pair, then the inputs (§5.2: there is no permutation).
@@ -214,8 +238,8 @@ class Goo(Network):
         return self.count - self.across - self.outputs
 
     def expected_fan_in(self) -> float:
-        """What a neuron hears in expectation: N s under the scaled rules; the whole input zone for an output under ff2; P (N - 1)
-        for an interior neuron under the zone rules."""
+        """What a neuron hears in expectation: N s under the scaled rules (an input nothing, under driven-inputs); the whole
+        input zone for an output under ff2; P (N - 1) for an interior neuron under the zone rules."""
         if self.wiring in SCALED_WIRINGS:
             return self.count * self.scaling_factor
         if self.wiring == "ff2":
@@ -234,7 +258,7 @@ class Goo(Network):
         """The rule's P(i -> j) for j in the input zone: N s over the hidden neurons (over N - I under the open rule), stopped at 1; 0 under ff2."""
         if self.wiring in TWO_LAYER_WIRINGS:
             return 0.0
-        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "input", self.wiring == "scaled-open")
+        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "input", self.wiring)
 
     def output_projection(self) -> float:
         """The rule's P(i -> j) for j in the output zone: N s over the inputs and hidden neurons (over N - 1 under the open rule); 1 under ff2."""
@@ -242,13 +266,13 @@ class Goo(Network):
             return 1.0
         if self.wiring == "ff2-partial":
             return self.projection
-        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "output", self.wiring == "scaled-open")
+        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "output", self.wiring)
 
     def hidden_projection(self) -> float:
         """The rule's P(i -> j) for a hidden j: N s / (N - 1), stopped at 1; there are none under ff2."""
         if self.wiring in TWO_LAYER_WIRINGS:
             return 0.0
-        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "hidden", self.wiring == "scaled-open")
+        return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, "hidden", self.wiring)
 
     def zone_projection(self) -> float:
         """P(an interior neuron projects onto a zone neuron) under the three earlier wirings.
@@ -280,7 +304,7 @@ class Goo(Network):
                 return 0.0  # the input zone does not talk to itself
             if self.wiring == "scaled" and source == "output" and target != "hidden":
                 return 0.0  # an output projects onto no zone: not onto another output, not onto an input (the outputs apart)
-            return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, target, self.wiring == "scaled-open")
+            return scaled_projection(self.count, self.across, self.outputs, self.scaling_factor, target, self.wiring)
         if self.wiring == "uniform":
             return self.projection
         zone = self._zone
@@ -361,6 +385,22 @@ class Goo(Network):
     def mean_out_degree(self) -> float:
         return sum(len(n.outgoing) for n in self.neurons) / len(self.neurons) if self.neurons else 0.0
 
+    def scale_with_fan_in(self, threshold: float, minimum_potential: float, reference: float = THRESHOLD_FAN_IN) -> None:
+        """Each neuron's axis by its in-degree (§4.10); under the driven-inputs rule an input's by min(N s, N - 1).
+
+        An input hears nothing under that rule, and is scaled as a neuron of
+        its goo's density would be rather than left at scale 1 (§4.11). Byron,
+        September 29, 2026: "I would rather inputs keep a threshold matched to
+        their old scale until we determine if there is a different optimal
+        operating point." A number of the count and s: nothing is drawn.
+        """
+        super().scale_with_fan_in(threshold, minimum_potential, reference)
+        if self.wiring == "driven-inputs":
+            scale = min(self.count * self.scaling_factor, self.count - 1) / reference
+            for neuron in self.neurons[:self.across]:
+                neuron.threshold = threshold * scale
+                neuron.minimum_potential = minimum_potential * scale
+
     def fan_in_scale(self) -> float:
         """How far a neuron hearing everyone else has its potential axis stretched: (count - 1) / THRESHOLD_FAN_IN."""
         return (self.count - 1) / THRESHOLD_FAN_IN
@@ -379,7 +419,8 @@ class Goo(Network):
     def __repr__(self) -> str:
         zones = f"{self.across} in, {self.interior_count()} hidden, {self.outputs} out"
         if self.wiring in SCALED_WIRINGS:
-            apart = "zones apart, inputs onto outputs" if self.wiring == "scaled" else "input zone apart"
+            apart = {"driven-inputs": "inputs driven, hearing no one", "scaled": "zones apart, inputs onto outputs",
+                     "scaled-open": "input zone apart"}[self.wiring]
             return (f"Goo({self.count} neurons, {len(self.connections)} projections at scaling factor "
                     f"{self.scaling_factor:g}; {zones}, {apart})")
         if self.wiring == "ff2":
